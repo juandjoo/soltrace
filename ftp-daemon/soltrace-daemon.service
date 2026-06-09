@@ -8,8 +8,13 @@ Type=simple
 User=root
 WorkingDirectory=/opt/soltrace-daemon
 ExecStart=/opt/soltrace-daemon/venv/bin/python3 soltrace_daemon.py
-Restart=always
-RestartSec=10
+Restart=on-failure
+RestartSec=30
+# exit code 1(안전 종료)은 재시작하지 않음
+RestartPreventExitStatus=1
+# 10분 내 5회 이상 재시작 시 중단
+StartLimitIntervalSec=600
+StartLimitBurst=5
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=soltrace-daemon

@@ -15,8 +15,8 @@ poll_interval = 5
 # 데몬 -> WAS 하트비트 주기 (초)
 heartbeat_interval = 30
 
-# 전송 실패 시 재시도 횟수
-retry_max = 5
+# 전송 실패 시 재시도 횟수 (최대 3회, 초과 시 안전 종료)
+retry_max = 3
 
 # 재시도 사이 대기 (초, 횟수 누적 적용)
 retry_delay = 10
