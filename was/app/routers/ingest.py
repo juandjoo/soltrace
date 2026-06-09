@@ -8,6 +8,7 @@ from app.models import Device, FtpLog
 from app.schemas import (
     DeviceRegister, HeartbeatRequest, IngestResponse, LogBatch,
 )
+from app import write_buffer as wb
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 
@@ -105,7 +106,13 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
         accepted += 1
 
     if entries:
-        db.bulk_save_objects(entries)
-        db.commit()
+        # 즉시 DB 쓰기 대신 버퍼에 넣어 워커 블로킹 제거
+        # 버퍼가 아직 초기화 안 된 경우(테스트 등)는 직접 쓰기 fallback
+        buf = wb.get_buffer()
+        if buf:
+            buf.add(entries)
+        else:
+            db.bulk_save_objects(entries)
+            db.commit()
 
     return IngestResponse(accepted=accepted, rejected=rejected)

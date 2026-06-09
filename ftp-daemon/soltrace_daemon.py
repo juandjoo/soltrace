@@ -35,9 +35,9 @@ defaults = {
     "was_url": "http://soltrace.mbone.net",
     "transfer_log": "/usr/service/logs/proftpd/TransferLog",
     "extended_log": "/usr/service/logs/proftpd/ExtendedAllLog",
-    "batch_size": "100",
-    "poll_interval": "5",
-    "heartbeat_interval": "30",
+    "batch_size": "200",
+    "poll_interval": "10",
+    "heartbeat_interval": "60",
     "retry_max": "3",
     "retry_delay": "10",
     "http_timeout": "15",
@@ -408,6 +408,8 @@ class SolTraceDaemon:
         self._consecutive_failures = 0
         self._error_message: Optional[str] = None
         self._last_queue_size = 0
+        # dirty tracking: 이전 전송값 기억 (임계값 이상 변화 시에만 전송)
+        self._prev_status_sent: dict = {}
 
         state_dir = self.cfg["state_dir"]
         self.client = WasClient(
@@ -425,24 +427,26 @@ class SolTraceDaemon:
             FileTailer(self.cfg["extended_log"], parse_extended_log, state_dir),
         ]
 
-    def _collect_status(self) -> dict:
-        """시스템 및 데몬 상태 지표를 수집한다."""
+    def _collect_status(self, force: bool = False) -> dict:
+        """
+        상태 지표를 수집한다.
+        force=False 이면 이전 전송값과 비교해 의미 있는 변화가 있는 필드만 반환.
+        force=True 이면 (종료·오류 시) 전체 전송.
+        """
         try:
-            cpu = psutil.cpu_percent(interval=None)
+            cpu = round(psutil.cpu_percent(interval=None), 1)
         except Exception:
             cpu = None
         try:
-            mem = psutil.virtual_memory()
-            mem_mb = mem.used / (1024 * 1024)
+            mem_mb = round(psutil.virtual_memory().used / (1024 * 1024), 1)
         except Exception:
             mem_mb = None
         try:
-            disk = psutil.disk_usage(self.cfg["state_dir"])
-            disk_free_gb = disk.free / (1024 ** 3)
+            disk_free_gb = round(psutil.disk_usage(self.cfg["state_dir"]).free / (1024 ** 3), 2)
         except Exception:
             disk_free_gb = None
 
-        return {
+        current = {
             "daemon_status": self._daemon_status,
             "last_send_time": self._last_send_time.isoformat() if self._last_send_time else None,
             "buffer_lines": len(self.buffer._read_raw()) if self.buffer.exists() else 0,
@@ -450,10 +454,43 @@ class SolTraceDaemon:
             "consecutive_failures": self._consecutive_failures,
             "error_message": self._error_message,
             "cpu_percent": cpu,
-            "mem_mb": round(mem_mb, 1) if mem_mb is not None else None,
-            "disk_free_gb": round(disk_free_gb, 2) if disk_free_gb is not None else None,
+            "mem_mb": mem_mb,
+            "disk_free_gb": disk_free_gb,
             "daemon_uptime": int(time.monotonic() - self._start_time),
         }
+
+        if force:
+            self._prev_status_sent = current.copy()
+            return current
+
+        # 임계값 이상 변화한 필드만 포함 (하트비트 payload 최소화)
+        prev = self._prev_status_sent
+        dirty = {}
+        thresholds = {
+            "cpu_percent": 5.0,      # ±5% 이상 변화 시
+            "mem_mb": 20.0,          # ±20MB 이상 변화 시
+            "disk_free_gb": 0.5,     # ±0.5GB 이상 변화 시
+            "buffer_lines": 10,      # ±10건 이상 변화 시
+            "queue_size": 5,
+            "daemon_uptime": 60,     # 60초마다 갱신
+            "consecutive_failures": 0,  # 0 = 변화 즉시 전송
+        }
+        for key, val in current.items():
+            prev_val = prev.get(key)
+            threshold = thresholds.get(key)
+            if threshold is None:
+                # 문자열·시간 필드: 값이 바뀌면 전송
+                if val != prev_val:
+                    dirty[key] = val
+            elif val is None:
+                if prev_val is not None:
+                    dirty[key] = val
+            elif prev_val is None or abs(val - prev_val) >= threshold:
+                dirty[key] = val
+
+        if dirty:
+            self._prev_status_sent.update(dirty)
+        return dirty  # 빈 dict 가능 (변화 없으면 heartbeat body 최소화)
 
     def _get_local_ip(self) -> str:
         try:
@@ -516,10 +553,10 @@ class SolTraceDaemon:
         for tailer in self.tailers:
             tailer.advance()
 
-        # 종료 전 상태를 WAS에 즉시 전송 (모니터링 목적)
+        # 종료 전 상태를 WAS에 즉시 전송 (모니터링 목적, 전체 강제 전송)
         self._daemon_status = "stopping"
         try:
-            self.client.heartbeat(self.hostname, self.ip, self._collect_status())
+            self.client.heartbeat(self.hostname, self.ip, self._collect_status(force=True))
         except Exception:
             pass
 
@@ -590,7 +627,7 @@ class SolTraceDaemon:
             log.info("Signal %s received, shutting down...", sig)
             self._daemon_status = "stopping"
             try:
-                self.client.heartbeat(self.hostname, self.ip, self._collect_status())
+                self.client.heartbeat(self.hostname, self.ip, self._collect_status(force=True))
             except Exception:
                 pass
             self.running = False
