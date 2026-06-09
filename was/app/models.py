@@ -71,6 +71,6 @@ class FtpLog(Base):
     device = relationship("Device", back_populates="logs")
 
     __table_args__ = (
+        Index("idx_ftp_logs_log_time", "log_time"),
         Index("idx_ftp_logs_device_time", "device_id", "log_time"),
-        Index("idx_ftp_logs_username_time", "username", "log_time"),
     )

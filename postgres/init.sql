@@ -1,10 +1,11 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";  -- ILIKE '%...%' 인덱스 지원
 
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
     hostname VARCHAR(255) NOT NULL,
     ip_address VARCHAR(45),
-    device_key VARCHAR(64) UNIQUE NOT NULL,
+    device_key VARCHAR(64) UNIQUE NOT NULL,  -- UNIQUE → 묵시적 인덱스
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'disabled')),
     os_info TEXT,
     proftpd_version VARCHAR(50),
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS groups (
 CREATE TABLE IF NOT EXISTS device_groups (
     device_id INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     group_id INT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-    PRIMARY KEY (device_id, group_id)
+    PRIMARY KEY (device_id, group_id)  -- device_id 선행 조회용
 );
 
 CREATE TABLE IF NOT EXISTS ftp_logs (
@@ -44,13 +45,45 @@ CREATE TABLE IF NOT EXISTS ftp_logs (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_ftp_logs_device_time ON ftp_logs(device_id, log_time DESC);
-CREATE INDEX IF NOT EXISTS idx_ftp_logs_username ON ftp_logs(username);
-CREATE INDEX IF NOT EXISTS idx_ftp_logs_log_time ON ftp_logs(log_time DESC);
-CREATE INDEX IF NOT EXISTS idx_ftp_logs_action ON ftp_logs(action);
-CREATE INDEX IF NOT EXISTS idx_ftp_logs_device_username ON ftp_logs(device_id, username);
-CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status);
+-- ────────────────────────────────────────────────────────────────────────────
+-- ftp_logs 인덱스
+-- ────────────────────────────────────────────────────────────────────────────
 
+-- [1] 기간 범위 조회 (대시보드 base filter, 로그 목록 전체 기간 조회)
+--     WHERE log_time >= ? AND log_time <= ?  ORDER BY log_time DESC
+CREATE INDEX IF NOT EXISTS idx_ftp_logs_log_time
+    ON ftp_logs(log_time DESC);
+
+-- [2] 장비별 기간 조회 (장비 선택 + 기간 필터 - 가장 빈번한 복합 조건)
+--     WHERE device_id = ? AND log_time >= ?  ORDER BY log_time DESC
+CREATE INDEX IF NOT EXISTS idx_ftp_logs_device_time
+    ON ftp_logs(device_id, log_time DESC);
+
+-- [3] username ILIKE '%...%' 검색 (pg_trgm GIN - B-tree로는 부분일치 불가)
+--     WHERE username ILIKE '%keyword%'
+CREATE INDEX IF NOT EXISTS idx_ftp_logs_username_trgm
+    ON ftp_logs USING GIN (username gin_trgm_ops);
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- device_groups 인덱스
+-- ────────────────────────────────────────────────────────────────────────────
+
+-- [4] 그룹별 장비 역방향 조회 (PK는 device_id 선행이므로 group_id 단독 조회 불가)
+--     WHERE group_id = ?  (그룹에 속한 장비 목록, device_count 집계)
+CREATE INDEX IF NOT EXISTS idx_device_groups_group_id
+    ON device_groups(group_id);
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 제거된 인덱스 (이유)
+-- ────────────────────────────────────────────────────────────────────────────
+-- idx_ftp_logs_action          : action 값 8개 → 저카디널리티, 플래너가 seq scan 선호
+-- idx_ftp_logs_username        : B-tree는 ILIKE '%...%' 미지원 → GIN(trgm)으로 대체
+-- idx_ftp_logs_device_username : device_id+username 조합이나 ILIKE 미지원으로 무효
+-- idx_devices_status           : status 값 3개 → 전체 row 대비 효과 없음
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Trigger
+-- ────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
