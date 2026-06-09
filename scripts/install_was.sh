@@ -32,12 +32,23 @@ fi
 cd "$SCRIPT_DIR"
 if [ ! -f .env ]; then
     echo "[3/4] .env 파일 생성 중..."
-    cp .env.example .env
-    # SECRET_KEY 자동 생성
-    SECRET_KEY=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 48 | head -n 1)
-    sed -i "s/change-this-to-a-random-32-char-string/${SECRET_KEY}/" .env
-    echo "  >> .env 생성됨. DB_PASSWORD 및 ADMIN_PASSWORD를 변경해주세요."
-    echo "  >> vi .env"
+    _rand() { cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w "$1" | head -n 1; }
+    DB_PASSWORD=$(_rand 32)
+    SECRET_KEY=$(_rand 48)
+    ADMIN_PASSWORD=$(_rand 16)
+    cat > .env <<EOF
+DB_PASSWORD=${DB_PASSWORD}
+SECRET_KEY=${SECRET_KEY}
+ADMIN_PASSWORD=${ADMIN_PASSWORD}
+LISTEN_PORT=80
+EOF
+    echo "  >> .env 생성됨 (모든 키 자동 생성)"
+    echo "  ┌─────────────────────────────────────────"
+    echo "  │ DB_PASSWORD   : ${DB_PASSWORD}"
+    echo "  │ ADMIN_PASSWORD: ${ADMIN_PASSWORD}"
+    echo "  │ SECRET_KEY    : ${SECRET_KEY}"
+    echo "  └─────────────────────────────────────────"
+    echo "  ※ 위 값을 안전한 곳에 보관하세요."
 else
     echo "[3/4] .env 이미 존재함 (스킵)"
 fi
