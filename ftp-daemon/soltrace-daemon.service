@@ -1,27 +1,47 @@
 [Unit]
 Description=SolTrace FTP Log Daemon
+# 네트워크와 proftpd 기동 후 시작 (proftpd 없어도 시작은 허용)
 After=network-online.target proftpd.service
 Wants=network-online.target
+# proftpd 재시작 시 데몬도 함께 재시작
+PartOf=proftpd.service
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/opt/soltrace-daemon
 ExecStart=/opt/soltrace-daemon/venv/bin/python3 soltrace_daemon.py
+
+# ── 재시작 정책 ──────────────────────────────────────────────────
+# on-failure: 비정상 종료(크래시·OOM·예외) 시 자동 재시작
+# exit(0) 정상 종료, SIGTERM(systemctl stop) → 재시작 안 함
 Restart=on-failure
-RestartSec=30
-# exit code 1(안전 종료)은 재시작하지 않음
+RestartSec=10
+
+# exit code 1 = 재전송 3회 실패 후 안전 종료 → 재시작 안 함
+# (관리자가 원인 확인 후 수동 시작: systemctl start soltrace-daemon)
 RestartPreventExitStatus=1
-# 10분 내 5회 이상 재시작 시 중단
-StartLimitIntervalSec=600
-StartLimitBurst=5
+
+# 5분 내 3회 이상 재시작 실패 시 더 이상 재시작 안 함
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+# ── 타임아웃 ────────────────────────────────────────────────────
+# 시작 응답 제한 (30초 내 프로세스 기동 안 되면 실패 처리)
+TimeoutStartSec=30
+# 종료 시 상태 저장 대기 시간 (15초 내 미종료 시 SIGKILL)
+TimeoutStopSec=15
+
+# ── 로그 ────────────────────────────────────────────────────────
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=soltrace-daemon
 
-# Resource limits (FTP 서버 영향 최소화)
+# ── 리소스 제한 (FTP 서버 영향 최소화) ───────────────────────────
 MemoryMax=64M
 CPUQuota=10%
+# 오픈 가능한 파일 수 (로그 파일 + 소켓 포함)
+LimitNOFILE=1024
 
 [Install]
 WantedBy=multi-user.target

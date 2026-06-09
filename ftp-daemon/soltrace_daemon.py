@@ -39,6 +39,8 @@ defaults = {
     "heartbeat_interval": "30",
     "retry_max": "3",
     "retry_delay": "10",
+    "http_timeout": "15",
+    "max_buffer_lines": "50000",
     "state_dir": "/var/lib/soltrace",
     "buffer_file": "/var/lib/soltrace/buffer.jsonl",
     "log_file": "/var/log/soltrace-daemon.log",
@@ -297,12 +299,12 @@ class WasClient:
     RETRY_MAX = 3
     RETRY_DELAY = 10  # 고정 10초 대기
 
-    def __init__(self, base_url: str, device_key: str):
+    def __init__(self, base_url: str, device_key: str, http_timeout: int = 15):
         self.base_url = base_url.rstrip("/")
         self.device_key = device_key
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
-        self.session.timeout = 15
+        self.session.timeout = http_timeout
 
     def _post(self, path: str, payload: dict) -> Optional[dict]:
         url = f"{self.base_url}/api/v1{path}"
@@ -340,21 +342,23 @@ class WasClient:
 class DiskBuffer:
     """전송 실패 항목을 로컬에 보관한다. 원자적 쓰기로 부분 기록을 방지한다."""
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, max_lines: int = 50000):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.max_lines = max_lines
         self._lock = threading.Lock()
 
     def write(self, entries: list):
-        """버퍼에 항목을 추가한다 (atomic append via temp file)."""
+        """버퍼에 항목을 추가한다 (atomic write). max_lines 초과 시 오래된 항목 제거."""
         with self._lock:
             tmp = self.path.with_suffix(".tmp")
-            # 기존 버퍼 + 새 항목 합쳐서 원자적으로 교체
-            existing = self._read_raw()
+            combined = self._read_raw() + entries
+            if self.max_lines > 0 and len(combined) > self.max_lines:
+                dropped = len(combined) - self.max_lines
+                combined = combined[dropped:]
+                log.warning("Buffer max_lines(%d) exceeded, dropped %d oldest entries", self.max_lines, dropped)
             with open(tmp, "w") as f:
-                for e in existing:
-                    f.write(json.dumps(e) + "\n")
-                for e in entries:
+                for e in combined:
                     f.write(json.dumps(e) + "\n")
             tmp.replace(self.path)
 
@@ -396,8 +400,12 @@ class SolTraceDaemon:
         self.device_key = get_device_key()
 
         state_dir = self.cfg["state_dir"]
-        self.client = WasClient(base_url=self.cfg["was_url"], device_key=self.device_key)
-        self.buffer = DiskBuffer(self.cfg["buffer_file"])
+        self.client = WasClient(
+            base_url=self.cfg["was_url"],
+            device_key=self.device_key,
+            http_timeout=int(self.cfg["http_timeout"]),
+        )
+        self.buffer = DiskBuffer(self.cfg["buffer_file"], max_lines=int(self.cfg["max_buffer_lines"]))
         self.batch_size = int(self.cfg["batch_size"])
         self.poll_interval = int(self.cfg["poll_interval"])
         self.heartbeat_interval = int(self.cfg["heartbeat_interval"])
