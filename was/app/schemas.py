@@ -43,6 +43,17 @@ class DeviceResponse(BaseModel):
     proftpd_version: Optional[str]
     daemon_version: Optional[str]
     last_heartbeat: Optional[datetime]
+    # 데몬 상태
+    daemon_status: Optional[str] = "unknown"
+    last_send_time: Optional[datetime] = None
+    buffer_lines: Optional[int] = 0
+    queue_size: Optional[int] = 0
+    consecutive_failures: Optional[int] = 0
+    error_message: Optional[str] = None
+    cpu_percent: Optional[float] = None
+    mem_mb: Optional[float] = None
+    disk_free_gb: Optional[float] = None
+    daemon_uptime: Optional[int] = None
     created_at: datetime
     groups: List[GroupBrief] = []
 
@@ -86,6 +97,17 @@ class HeartbeatRequest(BaseModel):
     device_key: str
     hostname: Optional[str] = None
     ip_address: Optional[str] = None
+    # 데몬 상태 (running / degraded / error / stopping)
+    daemon_status: Optional[str] = None
+    last_send_time: Optional[datetime] = None
+    buffer_lines: Optional[int] = None
+    queue_size: Optional[int] = None
+    consecutive_failures: Optional[int] = None
+    error_message: Optional[str] = None
+    cpu_percent: Optional[float] = None
+    mem_mb: Optional[float] = None
+    disk_free_gb: Optional[float] = None
+    daemon_uptime: Optional[int] = None
 
 class LogEntry(BaseModel):
     log_time: datetime

@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
 
+import psutil
 import requests
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -332,9 +333,11 @@ class WasClient:
             "daemon_version": "1.0.0",
         })
 
-    def heartbeat(self, hostname: str, ip: str) -> Optional[dict]:
-        return self._post("/ingest/heartbeat", {"device_key": self.device_key,
-                                                "hostname": hostname, "ip_address": ip})
+    def heartbeat(self, hostname: str, ip: str, status_payload: Optional[dict] = None) -> Optional[dict]:
+        body = {"device_key": self.device_key, "hostname": hostname, "ip_address": ip}
+        if status_payload:
+            body.update(status_payload)
+        return self._post("/ingest/heartbeat", body)
 
 
 # ── Disk Buffer ───────────────────────────────────────────────────────────────
@@ -398,6 +401,13 @@ class SolTraceDaemon:
         self.hostname = socket.gethostname()
         self.ip = self._get_local_ip()
         self.device_key = get_device_key()
+        self._start_time = time.monotonic()
+        # 상태 추적
+        self._daemon_status = "running"
+        self._last_send_time: Optional[datetime] = None
+        self._consecutive_failures = 0
+        self._error_message: Optional[str] = None
+        self._last_queue_size = 0
 
         state_dir = self.cfg["state_dir"]
         self.client = WasClient(
@@ -414,6 +424,36 @@ class SolTraceDaemon:
             FileTailer(self.cfg["transfer_log"], parse_transfer_log, state_dir),
             FileTailer(self.cfg["extended_log"], parse_extended_log, state_dir),
         ]
+
+    def _collect_status(self) -> dict:
+        """시스템 및 데몬 상태 지표를 수집한다."""
+        try:
+            cpu = psutil.cpu_percent(interval=None)
+        except Exception:
+            cpu = None
+        try:
+            mem = psutil.virtual_memory()
+            mem_mb = mem.used / (1024 * 1024)
+        except Exception:
+            mem_mb = None
+        try:
+            disk = psutil.disk_usage(self.cfg["state_dir"])
+            disk_free_gb = disk.free / (1024 ** 3)
+        except Exception:
+            disk_free_gb = None
+
+        return {
+            "daemon_status": self._daemon_status,
+            "last_send_time": self._last_send_time.isoformat() if self._last_send_time else None,
+            "buffer_lines": len(self.buffer._read_raw()) if self.buffer.exists() else 0,
+            "queue_size": self._last_queue_size,
+            "consecutive_failures": self._consecutive_failures,
+            "error_message": self._error_message,
+            "cpu_percent": cpu,
+            "mem_mb": round(mem_mb, 1) if mem_mb is not None else None,
+            "disk_free_gb": round(disk_free_gb, 2) if disk_free_gb is not None else None,
+            "daemon_uptime": int(time.monotonic() - self._start_time),
+        }
 
     def _get_local_ip(self) -> str:
         try:
@@ -436,13 +476,20 @@ class SolTraceDaemon:
             log.error("Registration failed (will retry next heartbeat)")
 
     def _heartbeat_loop(self):
+        # psutil CPU 측정은 첫 호출이 0을 반환하므로 워밍업
+        psutil.cpu_percent(interval=None)
         while self.running:
             time.sleep(self.heartbeat_interval)
             if not self.running:
                 break
-            result = self.client.heartbeat(self.hostname, self.ip)
+            status_payload = self._collect_status()
+            result = self.client.heartbeat(self.hostname, self.ip, status_payload)
             if result:
-                log.debug("Heartbeat OK status=%s", result.get("status"))
+                log.debug("Heartbeat OK status=%s daemon=%s cpu=%.1f%% mem=%.0fMB",
+                          result.get("status"),
+                          status_payload.get("daemon_status"),
+                          status_payload.get("cpu_percent") or 0,
+                          status_payload.get("mem_mb") or 0)
             else:
                 log.warning("Heartbeat failed")
 
@@ -466,9 +513,16 @@ class SolTraceDaemon:
         if unsent:
             self.buffer.write(unsent)
             log.critical("Saved %d unsent entries to buffer: %s", len(unsent), self.cfg["buffer_file"])
-        # 위치를 advance해야 재시작 시 같은 항목을 다시 읽지 않는다
         for tailer in self.tailers:
             tailer.advance()
+
+        # 종료 전 상태를 WAS에 즉시 전송 (모니터링 목적)
+        self._daemon_status = "stopping"
+        try:
+            self.client.heartbeat(self.hostname, self.ip, self._collect_status())
+        except Exception:
+            pass
+
         log.critical("Safe shutdown initiated - daemon will exit with code 1")
         self._exit_code = 1
         self.running = False
@@ -484,7 +538,9 @@ class SolTraceDaemon:
                 except Exception as e:
                     log.warning("Tailer error: %s", e)
 
+            self._last_queue_size = len(all_entries)
             if not all_entries:
+                self._last_queue_size = 0
                 time.sleep(self.poll_interval)
                 continue
 
@@ -492,13 +548,20 @@ class SolTraceDaemon:
             result = self.client.send_logs(all_entries)
 
             if result:
-                # 성공: 위치를 디스크에 커밋
+                # 성공
+                self._last_send_time = datetime.now(timezone.utc)
+                self._consecutive_failures = 0
+                self._error_message = None
+                self._daemon_status = "running"
                 for tailer in self.tailers:
                     tailer.commit()
                 log.debug("Sent %d entries: accepted=%d rejected=%d",
                           len(all_entries), result.get("accepted", 0), result.get("rejected", 0))
             else:
-                # 3회 모두 실패: 안전 종료
+                # 3회 모두 실패
+                self._consecutive_failures += 1
+                self._error_message = f"전송 {WasClient.RETRY_MAX}회 실패 ({len(all_entries)}건 미전송)"
+                self._daemon_status = "error"
                 log.critical("Send failed after %d retries (%d entries)",
                              WasClient.RETRY_MAX, len(all_entries))
                 self._safe_shutdown(all_entries)
@@ -525,6 +588,11 @@ class SolTraceDaemon:
 
         def _stop(sig, _frame):
             log.info("Signal %s received, shutting down...", sig)
+            self._daemon_status = "stopping"
+            try:
+                self.client.heartbeat(self.hostname, self.ip, self._collect_status())
+            except Exception:
+                pass
             self.running = False
 
         signal.signal(signal.SIGTERM, _stop)

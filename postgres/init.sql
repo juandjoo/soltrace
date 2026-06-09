@@ -5,15 +5,43 @@ CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
     hostname VARCHAR(255) NOT NULL,
     ip_address VARCHAR(45),
-    device_key VARCHAR(64) UNIQUE NOT NULL,  -- UNIQUE → 묵시적 인덱스
+    device_key VARCHAR(64) UNIQUE NOT NULL,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'disabled')),
     os_info TEXT,
     proftpd_version VARCHAR(50),
     daemon_version VARCHAR(20),
     last_heartbeat TIMESTAMPTZ,
+    -- 데몬 상태
+    daemon_status VARCHAR(20) DEFAULT 'unknown',
+    last_send_time TIMESTAMPTZ,
+    buffer_lines INT DEFAULT 0,
+    queue_size INT DEFAULT 0,
+    consecutive_failures INT DEFAULT 0,
+    error_message TEXT,
+    cpu_percent FLOAT,
+    mem_mb FLOAT,
+    disk_free_gb FLOAT,
+    daemon_uptime INT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 기존 DB 마이그레이션 (컬럼 없는 경우에만 추가)
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='devices' AND column_name='daemon_status') THEN
+        ALTER TABLE devices
+            ADD COLUMN daemon_status VARCHAR(20) DEFAULT 'unknown',
+            ADD COLUMN last_send_time TIMESTAMPTZ,
+            ADD COLUMN buffer_lines INT DEFAULT 0,
+            ADD COLUMN queue_size INT DEFAULT 0,
+            ADD COLUMN consecutive_failures INT DEFAULT 0,
+            ADD COLUMN error_message TEXT,
+            ADD COLUMN cpu_percent FLOAT,
+            ADD COLUMN mem_mb FLOAT,
+            ADD COLUMN disk_free_gb FLOAT,
+            ADD COLUMN daemon_uptime INT;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS groups (
     id SERIAL PRIMARY KEY,

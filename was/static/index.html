@@ -177,12 +177,26 @@ body { background:#f0f2f5; font-size:14px; }
           <table class="table table-hover mb-0">
             <thead class="table-light">
               <tr>
-                <th>호스트명</th><th>IP</th><th>상태</th><th>데몬 버전</th>
-                <th>마지막 연결</th><th>그룹</th><th>등록일</th><th></th>
+                <th>호스트명</th><th>IP</th><th>장비상태</th><th>데몬상태</th>
+                <th>CPU / MEM / Disk</th><th>버퍼</th>
+                <th>마지막 연결</th><th>그룹</th><th></th>
               </tr>
             </thead>
-            <tbody id="deviceTable"><tr><td colspan="8" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
+            <tbody id="deviceTable"><tr><td colspan="9" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Device Status Modal -->
+    <div class="modal fade" id="deviceStatusModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title"><i class="bi bi-activity me-1"></i>데몬 상태 상세 - <span id="dsHostname"></span></h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="dsBody"></div>
         </div>
       </div>
     </div>
@@ -491,6 +505,41 @@ function statusBadge(s) {
   return `<span class="badge bg-${map[s]||'secondary'} text-${s==='pending'?'dark':''}">${labels[s]||s}</span>`;
 }
 
+function daemonBadge(s, errMsg) {
+  const cfg = {
+    running:  {cls:'success',  icon:'bi-check-circle-fill', label:'정상'},
+    degraded: {cls:'warning',  icon:'bi-exclamation-triangle-fill', label:'저하'},
+    error:    {cls:'danger',   icon:'bi-x-circle-fill', label:'오류'},
+    stopping: {cls:'secondary',icon:'bi-stop-circle', label:'종료중'},
+    unknown:  {cls:'light',    icon:'bi-question-circle', label:'미확인'},
+  };
+  const c = cfg[s] || cfg.unknown;
+  const tip = errMsg ? ` title="${errMsg.replace(/"/g,'&quot;')}" data-bs-toggle="tooltip"` : '';
+  return `<span class="badge bg-${c.cls} text-${s==='unknown'?'dark':''}"${tip}><i class="bi ${c.icon} me-1"></i>${c.label}</span>`;
+}
+
+function metricBar(val, max, unit, warnAt, dangerAt) {
+  if (val == null) return '<span class="text-muted small">-</span>';
+  const pct = Math.min(100, (val / max) * 100);
+  const color = val >= dangerAt ? 'danger' : val >= warnAt ? 'warning' : 'success';
+  return `<div style="min-width:70px">
+    <div class="d-flex justify-content-between" style="font-size:11px">
+      <span>${val.toFixed(1)}${unit}</span>
+    </div>
+    <div class="progress" style="height:4px">
+      <div class="progress-bar bg-${color}" style="width:${pct}%"></div>
+    </div>
+  </div>`;
+}
+
+function fmtUptime(s) {
+  if (!s) return '-';
+  if (s < 60) return s + '초';
+  if (s < 3600) return Math.floor(s/60) + '분';
+  if (s < 86400) return Math.floor(s/3600) + '시간';
+  return Math.floor(s/86400) + '일';
+}
+
 function timeAgo(dt) {
   if (!dt) return '-';
   const diff = (Date.now() - new Date(dt)) / 1000;
@@ -500,36 +549,93 @@ function timeAgo(dt) {
   return new Date(dt).toLocaleDateString('ko-KR');
 }
 
+let _deviceCache = [];
+
 async function loadDevices() {
   const filter = document.getElementById('deviceFilter').value;
   const url = '/devices' + (filter ? `?status=${filter}` : '');
   const devices = await api('GET', url);
   if (!devices) return;
+  _deviceCache = devices;
 
   const tbody = document.getElementById('deviceTable');
   if (!devices.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">등록된 장비가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">등록된 장비가 없습니다.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = devices.map(d => `
-    <tr>
-      <td><strong>${d.hostname}</strong></td>
-      <td class="text-muted">${d.ip_address||'-'}</td>
+  tbody.innerHTML = devices.map(d => {
+    const hbDiff = d.last_heartbeat ? (Date.now() - new Date(d.last_heartbeat)) / 1000 : 9999;
+    const offline = hbDiff > 120;  // 2분 이상 미응답 = 오프라인
+    const dStatus = offline && d.daemon_status === 'running' ? 'degraded' : (d.daemon_status || 'unknown');
+    const errMsg = d.error_message || (offline ? `마지막 하트비트: ${timeAgo(d.last_heartbeat)}` : null);
+
+    return `<tr class="${dStatus==='error'?'table-danger-subtle':''}">
+      <td>
+        <strong>${d.hostname}</strong>
+        <div class="text-muted" style="font-size:11px">${d.daemon_version||''}</div>
+      </td>
+      <td class="text-muted small">${d.ip_address||'-'}</td>
       <td>${statusBadge(d.status)}</td>
-      <td class="text-muted">${d.daemon_version||'-'}</td>
+      <td>
+        ${daemonBadge(dStatus, errMsg)}
+        <div class="text-muted" style="font-size:11px">${fmtUptime(d.daemon_uptime)} 가동</div>
+      </td>
+      <td>
+        <div class="d-flex gap-2 align-items-center">
+          ${metricBar(d.cpu_percent, 100, '%', 70, 90)}
+          ${metricBar(d.mem_mb, 512, 'MB', 400, 480)}
+          ${d.disk_free_gb != null ? `<span class="small text-muted">💾${d.disk_free_gb.toFixed(1)}G</span>` : ''}
+        </div>
+      </td>
+      <td class="small">
+        ${d.buffer_lines > 0 ? `<span class="badge bg-warning text-dark">${d.buffer_lines.toLocaleString()}건</span>` : '<span class="text-muted">-</span>'}
+        ${d.queue_size > 0 ? `<span class="badge bg-info text-dark ms-1">Q:${d.queue_size}</span>` : ''}
+      </td>
       <td class="text-muted small">${timeAgo(d.last_heartbeat)}</td>
       <td>${d.groups.map(g=>`<span class="badge bg-light text-dark border me-1">${g.name}</span>`).join('')||'<span class="text-muted small">-</span>'}</td>
-      <td class="text-muted small">${new Date(d.created_at).toLocaleDateString('ko-KR')}</td>
-      <td class="text-end">
+      <td class="text-end text-nowrap">
         ${d.status === 'pending' ? `<button class="btn btn-xs btn-success me-1" onclick="confirmDevice(${d.id})">확인</button>` : ''}
         ${d.status === 'confirmed' ? `<button class="btn btn-xs btn-warning me-1" onclick="disableDevice(${d.id})">비활성</button>` : ''}
         ${d.status === 'disabled' ? `<button class="btn btn-xs btn-success me-1" onclick="enableDevice(${d.id})">활성화</button>` : ''}
+        <button class="btn btn-xs btn-outline-info me-1" onclick="showDeviceStatus(${d.id})"><i class="bi bi-activity"></i></button>
         <button class="btn btn-xs btn-outline-secondary me-1" onclick="openDeviceGroups(${d.id},'${d.hostname}',${JSON.stringify(d.groups.map(g=>g.id))})">그룹</button>
         <button class="btn btn-xs btn-outline-danger" onclick="deleteDevice(${d.id})"><i class="bi bi-trash"></i></button>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
+
+  // Bootstrap tooltip 초기화
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
+    new bootstrap.Tooltip(el, {placement:'top'})
+  );
+}
+
+function showDeviceStatus(id) {
+  const d = _deviceCache.find(x => x.id === id);
+  if (!d) return;
+  document.getElementById('dsHostname').textContent = d.hostname;
+  const rows = [
+    ['데몬 상태',       daemonBadge(d.daemon_status||'unknown', d.error_message)],
+    ['에러 메시지',     d.error_message ? `<span class="text-danger">${d.error_message}</span>` : '-'],
+    ['마지막 전송',     d.last_send_time ? new Date(d.last_send_time).toLocaleString('ko-KR') : '-'],
+    ['연속 실패',       d.consecutive_failures != null ? `${d.consecutive_failures}회` : '-'],
+    ['버퍼 대기',       d.buffer_lines != null ? `${d.buffer_lines.toLocaleString()}건` : '-'],
+    ['큐 대기',         d.queue_size != null ? `${d.queue_size}건` : '-'],
+    ['CPU 사용률',      d.cpu_percent != null ? `${d.cpu_percent.toFixed(1)}%` : '-'],
+    ['메모리 사용',     d.mem_mb != null ? `${d.mem_mb.toFixed(0)} MB` : '-'],
+    ['디스크 여유',     d.disk_free_gb != null ? `${d.disk_free_gb.toFixed(2)} GB` : '-'],
+    ['데몬 가동시간',   fmtUptime(d.daemon_uptime)],
+    ['마지막 하트비트', d.last_heartbeat ? new Date(d.last_heartbeat).toLocaleString('ko-KR') : '-'],
+    ['OS',              d.os_info || '-'],
+    ['proftpd',         d.proftpd_version || '-'],
+    ['데몬 버전',       d.daemon_version || '-'],
+  ];
+  document.getElementById('dsBody').innerHTML = `
+    <table class="table table-sm">
+      <tbody>${rows.map(([k,v])=>`<tr><th class="text-muted fw-normal" style="width:140px">${k}</th><td>${v}</td></tr>`).join('')}</tbody>
+    </table>`;
+  new bootstrap.Modal(document.getElementById('deviceStatusModal')).show();
 }
 
 async function confirmDevice(id) {

@@ -51,11 +51,24 @@ def heartbeat(req: HeartbeatRequest, db: Session = Depends(get_db)):
     device = db.query(Device).filter(Device.device_key == req.device_key).first()
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+
     device.last_heartbeat = datetime.now(timezone.utc)
     if req.hostname:
         device.hostname = req.hostname
     if req.ip_address:
         device.ip_address = req.ip_address
+
+    # 데몬 상태 저장 (전송된 필드만 반영)
+    _status_fields = (
+        "daemon_status", "last_send_time", "buffer_lines", "queue_size",
+        "consecutive_failures", "error_message", "cpu_percent",
+        "mem_mb", "disk_free_gb", "daemon_uptime",
+    )
+    for field in _status_fields:
+        val = getattr(req, field, None)
+        if val is not None:
+            setattr(device, field, val)
+
     db.commit()
     return {"status": device.status}
 
