@@ -1,0 +1,22 @@
+[Unit]
+Description=SolTrace FTP Log Daemon
+After=network-online.target proftpd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/soltrace-daemon
+ExecStart=/opt/soltrace-daemon/venv/bin/python3 soltrace_daemon.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=soltrace-daemon
+
+# Resource limits (FTP 서버 영향 최소화)
+MemoryMax=64M
+CPUQuota=10%
+
+[Install]
+WantedBy=multi-user.target

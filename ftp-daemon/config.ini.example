@@ -1,0 +1,29 @@
+[daemon]
+# WAS 서버 주소
+was_url = http://soltrace.mbone.net
+
+# proftpd 로그 파일 경로
+transfer_log  = /usr/service/logs/proftpd/TransferLog
+extended_log  = /usr/service/logs/proftpd/ExtendedAllLog
+
+# 배치 전송 건수 (한 번에 최대 몇 건 묶어서 전송)
+batch_size = 100
+
+# 로그 파일 폴링 주기 (초)
+poll_interval = 5
+
+# 데몬 -> WAS 하트비트 주기 (초)
+heartbeat_interval = 30
+
+# 전송 실패 시 재시도 횟수
+retry_max = 5
+
+# 재시도 사이 대기 (초, 횟수 누적 적용)
+retry_delay = 10
+
+# 전송 실패 항목 임시 저장 경로
+buffer_file = /var/lib/soltrace/buffer.jsonl
+
+# 데몬 로그 파일
+log_file  = /var/log/soltrace-daemon.log
+log_level = INFO

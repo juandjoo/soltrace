@@ -1,0 +1,27 @@
+# 환경설정 (민감정보)
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Docker volumes
+postgres/data/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 데몬 런타임 파일
+ftp-daemon/*.key
+ftp-daemon/*.jsonl
