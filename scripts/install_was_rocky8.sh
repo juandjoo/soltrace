@@ -103,11 +103,22 @@ sudo -u postgres psql -d soltrace -f "$SCRIPT_DIR/postgres/init.sql"
 # 소유권/권한 이관: 앱이 soltrace 로 접속해 런타임에 파티션을 생성하므로
 # (PG15+ public 스키마 CREATE 기본 회수 + 파티션 추가는 부모 테이블 소유자 필요)
 # DB·스키마 소유권과 init.sql 로 생성된 모든 객체를 soltrace 로 넘긴다.
-sudo -u postgres psql -d soltrace <<SQL
+# REASSIGN OWNED BY postgres 는 슈퍼유저 시스템 객체까지 걸려 거부되므로,
+# public 스키마의 앱 테이블·시퀀스만 골라 소유권을 옮긴다.
+sudo -u postgres psql -d soltrace <<'SQL'
 ALTER DATABASE soltrace OWNER TO soltrace;
 GRANT ALL ON SCHEMA public TO soltrace;
 ALTER SCHEMA public OWNER TO soltrace;
-REASSIGN OWNED BY postgres TO soltrace;
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname='public' LOOP
+    EXECUTE format('ALTER TABLE public.%I OWNER TO soltrace', r.tablename);
+  END LOOP;
+  FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname='public' LOOP
+    EXECUTE format('ALTER SEQUENCE public.%I OWNER TO soltrace', r.sequencename);
+  END LOOP;
+END $$;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO soltrace;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO soltrace;
 SQL
