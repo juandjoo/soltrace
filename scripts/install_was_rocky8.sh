@@ -204,6 +204,14 @@ cat > /etc/cron.d/soltrace-partitions <<CRON
 CRON
 chmod 644 /etc/cron.d/soltrace-partitions
 
+# DB 증분 백업 cron 등록 (매일 03:00, 최대 3년치 보관)
+chmod +x "$SCRIPT_DIR/scripts/backup_db.sh"
+cat > /etc/cron.d/soltrace-backup <<CRON
+# SolTrace DB 증분 백업 (월별 파티션 기반, 3년 보관)
+0 3 * * * root bash $SCRIPT_DIR/scripts/backup_db.sh >> /var/log/soltrace/backup.log 2>&1
+CRON
+chmod 644 /etc/cron.d/soltrace-backup
+
 echo ""
 echo "=== 설치 완료 ==="
 echo "상태 확인: systemctl status soltrace-was nginx postgresql-16"

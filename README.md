@@ -61,7 +61,9 @@ soltrace/
     ├── deploy_rocky8.sh           # 로컬 → GitLab + GitHub push + WAS 원격 업데이트
     ├── install_was_rocky8.sh      # WAS 최초 설치 (Rocky Linux 8)
     ├── update_rocky8.sh           # WAS pull + 재배포 (Rocky Linux 8)
-    └── install_daemon_rocky8.sh   # 데몬 최초 설치 (Rocky Linux 8)
+    ├── install_daemon_rocky8.sh   # 데몬 최초 설치 (Rocky Linux 8)
+    ├── create_partitions.sh       # ftp_logs 월별 파티션 자동 생성 (cron)
+    └── backup_db.sh               # DB 증분 백업, 최대 3년치 보관 (cron)
 ```
 
 ---
