@@ -220,6 +220,7 @@ systemctl restart nginx
 # 방화벽 허용 (firewalld 사용 시)
 if systemctl is-active --quiet firewalld; then
     firewall-cmd --permanent --add-service=http
+    firewall-cmd --permanent --add-service=https
     firewall-cmd --reload
 fi
 
