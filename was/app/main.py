@@ -25,7 +25,7 @@ app = FastAPI(
     title="SolTrace - FTP Log Analyzer",
     version="1.0.0",
     lifespan=lifespan,
-    docs_url="/api/docs",
+    docs_url=None,
     redoc_url=None,
 )
 

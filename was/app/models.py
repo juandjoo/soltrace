@@ -83,4 +83,10 @@ class FtpLog(Base):
     __table_args__ = (
         Index("idx_ftp_logs_log_time", "log_time"),
         Index("idx_ftp_logs_device_time", "device_id", "log_time"),
+        Index(
+            "idx_ftp_logs_username_trgm",
+            "username",
+            postgresql_using="gin",
+            postgresql_ops={"username": "gin_trgm_ops"},
+        ),
     )

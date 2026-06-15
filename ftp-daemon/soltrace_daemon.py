@@ -84,9 +84,8 @@ def get_device_key() -> str:
     key_file.parent.mkdir(parents=True, exist_ok=True)
     if key_file.exists():
         return key_file.read_text().strip()
-    hostname = socket.gethostname()
-    raw = f"{hostname}-{socket.getfqdn()}"
-    key = hashlib.sha256(raw.encode()).hexdigest()[:32]
+    import secrets
+    key = secrets.token_hex(16)
     key_file.write_text(key)
     return key
 

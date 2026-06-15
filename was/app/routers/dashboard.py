@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
 @router.get("", response_model=DashboardDetail)
 def get_dashboard(
-    days: int = Query(default=7, ge=1, le=365),
+    days: int = Query(default=7, ge=1, le=90),
     device_id: Optional[int] = None,
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),

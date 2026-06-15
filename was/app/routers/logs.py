@@ -1,7 +1,7 @@
 import csv
 import io
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -14,6 +14,8 @@ from app.models import Device, FtpLog
 from app.schemas import FtpLogResponse, LogListResponse
 
 router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
+
+DEFAULT_RANGE_DAYS = 30
 
 
 def _build_query(
@@ -54,6 +56,10 @@ def query_logs(
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
+    # 기간 미지정 시 최근 30일로 제한 — 전체 테이블 COUNT 방지
+    if start_time is None and end_time is None:
+        start_time = datetime.now(timezone.utc) - timedelta(days=DEFAULT_RANGE_DAYS)
+
     q = _build_query(db, device_id, username, action, log_status, start_time, end_time)
     total = q.with_entities(func.count()).scalar()
     items = (
@@ -84,31 +90,59 @@ def export_csv(
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    q = _build_query(db, device_id, username, action, log_status, start_time, end_time)
-    items = q.join(Device).order_by(FtpLog.log_time.desc()).limit(50000).all()
+    # 기간 미지정 시 최근 30일로 제한
+    if start_time is None and end_time is None:
+        start_time = datetime.now(timezone.utc) - timedelta(days=DEFAULT_RANGE_DAYS)
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["id", "device", "log_time", "client_ip", "username",
-                     "action", "file_path", "file_size", "transfer_time", "status"])
-    for log in items:
-        writer.writerow([
-            log.id,
-            log.device.hostname if log.device else "",
-            log.log_time.isoformat() if log.log_time else "",
-            log.client_ip or "",
-            log.username or "",
-            log.action,
-            log.file_path or "",
-            log.file_size,
-            log.transfer_time,
-            log.status,
-        ])
+    def generate():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["id", "device", "log_time", "client_ip", "username",
+                         "action", "file_path", "file_size", "transfer_time", "status"])
+        yield buf.getvalue()
 
-    output.seek(0)
+        # 튜플 쿼리로 ORM 객체 생성 없이 yield_per 스트리밍
+        q = (
+            db.query(
+                FtpLog.id, Device.hostname, FtpLog.log_time,
+                FtpLog.client_ip, FtpLog.username, FtpLog.action,
+                FtpLog.file_path, FtpLog.file_size, FtpLog.transfer_time, FtpLog.status,
+            )
+            .join(Device, FtpLog.device_id == Device.id)
+        )
+        if device_id:
+            q = q.filter(FtpLog.device_id == device_id)
+        if username:
+            q = q.filter(FtpLog.username.ilike(f"%{username}%"))
+        if action:
+            q = q.filter(FtpLog.action == action)
+        if log_status:
+            q = q.filter(FtpLog.status == log_status)
+        if start_time:
+            q = q.filter(FtpLog.log_time >= start_time)
+        if end_time:
+            q = q.filter(FtpLog.log_time <= end_time)
+
+        for row in q.order_by(FtpLog.log_time.desc()).yield_per(1000):
+            buf.seek(0)
+            buf.truncate(0)
+            writer.writerow([
+                row.id,
+                row.hostname or "",
+                row.log_time.isoformat() if row.log_time else "",
+                row.client_ip or "",
+                row.username or "",
+                row.action,
+                row.file_path or "",
+                row.file_size,
+                row.transfer_time,
+                row.status,
+            ])
+            yield buf.getvalue()
+
     filename = f"ftp_logs_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
     return StreamingResponse(
-        iter([output.getvalue()]),
+        generate(),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
