@@ -38,6 +38,17 @@ sed 's/server was:8000/server 127.0.0.1:8000/' \
 nginx -t
 systemctl reload nginx
 
+log ">> 자가 업데이트 래퍼/sudoers 동기화"
+# 웹 설정 페이지의 git 업데이트용. install 외 update 경로로도 항상 최신/존재하도록 보장.
+install -m 0755 -o root -g root \
+    "$APP_DIR/scripts/soltrace-selfupdate.sh" /usr/local/sbin/soltrace-selfupdate
+cat > /etc/sudoers.d/soltrace-update <<'SUDO'
+soltrace ALL=(root) NOPASSWD: /usr/local/sbin/soltrace-selfupdate ""
+SUDO
+chmod 440 /etc/sudoers.d/soltrace-update
+visudo -cf /etc/sudoers.d/soltrace-update || rm -f /etc/sudoers.d/soltrace-update
+sudo -u soltrace git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
+
 log ">> WAS 재시작"
 systemctl restart soltrace-was
 
