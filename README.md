@@ -185,12 +185,18 @@ sudo bash scripts/update_rocky8.sh develop
 ## 코드 배포
 
 ```bash
-# 로컬 → GitLab + GitHub 동시 push
-bash scripts/deploy.sh
+# 로컬 → GitLab + GitHub push + WAS 원격 업데이트 (Rocky Linux 8)
+WAS_HOST=192.168.0.10 bash scripts/deploy_rocky8.sh
 
 # 특정 브랜치
-bash scripts/deploy.sh develop
+WAS_HOST=192.168.0.10 bash scripts/deploy_rocky8.sh develop
+
+# 환경변수 전체 지정 예시
+WAS_HOST=192.168.0.10 WAS_USER=rocky WAS_KEY=~/.ssh/id_rsa WAS_REPO=~/soltrace \
+    bash scripts/deploy_rocky8.sh
 ```
+
+WAS_HOST 미설정 시 git push만 하고 원격 업데이트는 건너뛴다.
 
 ---
 
