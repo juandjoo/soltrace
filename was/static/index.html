@@ -74,6 +74,7 @@ body { background:#f0f2f5; font-size:14px; }
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('devices')"><i class="bi bi-hdd-stack"></i> 장비 관리</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('groups')"><i class="bi bi-diagram-3"></i> 그룹 관리</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i> 로그 조회</a></li>
+      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear"></i> 설정</a></li>
     </ul>
     <div class="mt-auto px-3">
       <button class="btn btn-sm btn-outline-secondary w-100" onclick="logout()"><i class="bi bi-box-arrow-right me-1"></i>로그아웃</button>
@@ -329,6 +330,72 @@ body { background:#f0f2f5; font-size:14px; }
       </div>
     </div>
 
+    <!-- Settings -->
+    <div id="page-settings" class="page">
+      <h4 class="mb-4">설정</h4>
+      <div class="row g-4" style="max-width:760px">
+
+        <!-- 텔코 정보 -->
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-broadcast-pin me-1"></i>텔코 정보</div>
+            <div class="card-body">
+              <div id="telcoMsg" class="alert d-none py-2 small"></div>
+              <div class="mb-3">
+                <label class="form-label small fw-semibold">통신사명</label>
+                <input class="form-control form-control-sm" id="telcoCarrier" placeholder="예: KT / SKB / LGU+">
+              </div>
+              <button class="btn btn-sm btn-primary" onclick="saveTelco()">저장</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 비밀번호 변경 -->
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-key me-1"></i>비밀번호 변경</div>
+            <div class="card-body">
+              <div id="pwMsg" class="alert d-none py-2 small"></div>
+              <div class="mb-3">
+                <label class="form-label small fw-semibold">현재 비밀번호</label>
+                <input type="password" class="form-control form-control-sm" id="pwCurrent">
+              </div>
+              <div class="mb-3">
+                <label class="form-label small fw-semibold">새 비밀번호 (8자 이상)</label>
+                <input type="password" class="form-control form-control-sm" id="pwNew">
+              </div>
+              <div class="mb-3">
+                <label class="form-label small fw-semibold">새 비밀번호 확인</label>
+                <input type="password" class="form-control form-control-sm" id="pwConfirm">
+              </div>
+              <button class="btn btn-sm btn-primary" onclick="changePassword()">변경</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 시스템 업데이트 -->
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-arrow-repeat me-1"></i>시스템 업데이트 (git)</div>
+            <div class="card-body">
+              <div id="updMsg" class="alert d-none py-2 small"></div>
+              <dl class="row small mb-3">
+                <dt class="col-sm-3 text-muted">브랜치</dt><dd class="col-sm-9" id="verBranch">-</dd>
+                <dt class="col-sm-3 text-muted">현재 커밋</dt><dd class="col-sm-9" id="verCommit">-</dd>
+                <dt class="col-sm-3 text-muted">커밋 일시</dt><dd class="col-sm-9" id="verDate">-</dd>
+                <dt class="col-sm-3 text-muted">메시지</dt><dd class="col-sm-9" id="verSubject">-</dd>
+                <dt class="col-sm-3 text-muted">상태</dt><dd class="col-sm-9" id="verStatus">-</dd>
+              </dl>
+              <button class="btn btn-sm btn-outline-secondary" id="checkUpdBtn" onclick="checkUpdate()">업데이트 확인</button>
+              <button class="btn btn-sm btn-warning" id="runUpdBtn" onclick="runUpdate()"><i class="bi bi-download me-1"></i>지금 업데이트</button>
+              <div class="form-text mt-2">업데이트 시 origin/main을 받아 재배포하며, 서비스가 1~2분간 재시작됩니다.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </div><!-- /main -->
 </div><!-- /appLayout -->
 
@@ -463,10 +530,86 @@ function nav(page) {
   if (page === 'devices') loadDevices();
   if (page === 'groups') loadGroups();
   if (page === 'logs') initLogsPage();
+  if (page === 'settings') loadSettings();
 }
 
 function initApp() {
   nav('dashboard');
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+function settingsMsg(id, type, text) {
+  const el = document.getElementById(id);
+  el.className = `alert alert-${type} py-2 small`;
+  el.textContent = text;
+}
+
+function renderVersion(v) {
+  if (!v) return;
+  document.getElementById('verBranch').textContent = v.branch || '-';
+  document.getElementById('verCommit').textContent = v.commit || '-';
+  document.getElementById('verDate').textContent = v.commit_date || '-';
+  document.getElementById('verSubject').textContent = v.subject || '-';
+  const st = document.getElementById('verStatus');
+  if (!v.checked) {
+    st.innerHTML = '<span class="text-muted">미확인 — "업데이트 확인"을 눌러주세요</span>';
+  } else if (v.update_available) {
+    st.innerHTML = `<span class="text-warning fw-semibold">업데이트 가능 (원격이 ${v.behind} 커밋 앞섬)</span>`;
+  } else {
+    st.innerHTML = '<span class="text-success">최신 상태</span>';
+  }
+}
+
+async function loadSettings() {
+  try {
+    const s = await api('GET', '/settings');
+    if (!s) return;
+    document.getElementById('telcoCarrier').value = s.telco.carrier_name || '';
+    renderVersion(s.version);
+  } catch (e) { settingsMsg('updMsg', 'danger', e.message); }
+}
+
+async function saveTelco() {
+  const carrier_name = document.getElementById('telcoCarrier').value.trim();
+  try {
+    await api('PUT', '/settings/telco', {carrier_name});
+    settingsMsg('telcoMsg', 'success', '저장되었습니다.');
+  } catch (e) { settingsMsg('telcoMsg', 'danger', e.message); }
+}
+
+async function changePassword() {
+  const cur = document.getElementById('pwCurrent').value;
+  const nw = document.getElementById('pwNew').value;
+  const cf = document.getElementById('pwConfirm').value;
+  if (nw.length < 8) { settingsMsg('pwMsg', 'danger', '새 비밀번호는 8자 이상이어야 합니다.'); return; }
+  if (nw !== cf) { settingsMsg('pwMsg', 'danger', '새 비밀번호 확인이 일치하지 않습니다.'); return; }
+  try {
+    await api('POST', '/settings/password', {current_password: cur, new_password: nw});
+    settingsMsg('pwMsg', 'success', '비밀번호가 변경되었습니다.');
+    document.getElementById('pwCurrent').value = '';
+    document.getElementById('pwNew').value = '';
+    document.getElementById('pwConfirm').value = '';
+  } catch (e) { settingsMsg('pwMsg', 'danger', e.message); }
+}
+
+async function checkUpdate() {
+  const btn = document.getElementById('checkUpdBtn');
+  btn.disabled = true; btn.textContent = '확인 중...';
+  try {
+    const v = await api('POST', '/settings/check-update');
+    renderVersion(v);
+  } catch (e) { settingsMsg('updMsg', 'danger', e.message); }
+  finally { btn.disabled = false; btn.textContent = '업데이트 확인'; }
+}
+
+async function runUpdate() {
+  if (!confirm('지금 업데이트하시겠습니까?\norigin/main을 받아 재배포하며 서비스가 1~2분간 재시작됩니다.')) return;
+  const btn = document.getElementById('runUpdBtn');
+  btn.disabled = true;
+  try {
+    const r = await api('POST', '/settings/update');
+    settingsMsg('updMsg', 'success', (r && r.message) || '업데이트를 시작했습니다.');
+  } catch (e) { settingsMsg('updMsg', 'danger', e.message); btn.disabled = false; }
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────

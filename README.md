@@ -63,7 +63,8 @@ soltrace/
     ├── update_rocky8.sh           # WAS pull + 재배포 (Rocky Linux 8)
     ├── install_daemon_rocky8.sh   # 데몬 최초 설치 (Rocky Linux 8)
     ├── create_partitions.sh       # ftp_logs 월별 파티션 자동 생성 (cron)
-    └── backup_db.sh               # DB 증분 백업, 최대 3년치 보관 (cron)
+    ├── backup_db.sh               # DB 증분 백업, 최대 3년치 보관 (cron)
+    └── soltrace-selfupdate.sh     # 웹 설정페이지 git 자가 업데이트 래퍼 (root, sudo)
 ```
 
 ---

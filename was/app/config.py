@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     admin_password: str = _DEFAULT_ADMIN
     access_token_expire_minutes: int = 60 * 24  # 24h
 
+    # ── 설정 페이지 (버전/자가 업데이트) ────────────────────────────────
+    repo_dir: str = "/opt/soltrace"                          # git 저장소 경로
+    selfupdate_cmd: str = "/usr/local/sbin/soltrace-selfupdate"  # sudo 로 실행할 root 래퍼
+
     # ── 서비스 영향도 감지 ──────────────────────────────────────────────
     alerts_enabled: bool = True
     alert_bucket_minutes: int = 10          # 집계 버킷 크기

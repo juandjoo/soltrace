@@ -1,6 +1,13 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";  -- ILIKE '%...%' 인덱스 지원
 
+-- 전역 설정 키-값 (관리자 비밀번호 해시, 텔코 정보 등)
+CREATE TABLE IF NOT EXISTS app_config (
+    key VARCHAR(64) PRIMARY KEY,
+    value TEXT,
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
     hostname VARCHAR(255) NOT NULL,

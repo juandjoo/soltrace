@@ -13,6 +13,33 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+class TelcoInfo(BaseModel):
+    carrier_name: str = Field(default="", max_length=100)
+
+class VersionInfo(BaseModel):
+    branch: Optional[str] = None
+    commit: Optional[str] = None
+    commit_date: Optional[str] = None
+    subject: Optional[str] = None
+    behind: Optional[int] = None          # 원격 대비 뒤처진 커밋 수 (확인 시)
+    update_available: bool = False
+    checked: bool = False                 # 원격 fetch 수행 여부
+
+class SettingsResponse(BaseModel):
+    telco: TelcoInfo
+    version: VersionInfo
+
+class UpdateTriggerResponse(BaseModel):
+    started: bool
+    message: str
+
+
 # ── Device ────────────────────────────────────────────────────────────────────
 
 class DeviceBase(BaseModel):

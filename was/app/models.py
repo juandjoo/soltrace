@@ -13,6 +13,15 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+class AppConfig(Base):
+    """전역 설정 키-값 저장소 (관리자 비밀번호 해시, 텔코 정보 등)."""
+    __tablename__ = "app_config"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(Text)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class Device(Base):
     __tablename__ = "devices"
 

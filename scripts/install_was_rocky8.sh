@@ -39,6 +39,7 @@ dnf install -y \
     python3.11 python3.11-devel \
     nginx \
     gcc \
+    git \
     libpq-devel
 
 # ── [2/7] PostgreSQL 초기화 ─────────────────────────────────────────────────
@@ -244,6 +245,25 @@ cat > /etc/cron.d/soltrace-backup <<CRON
 0 3 * * * root bash $SCRIPT_DIR/scripts/backup_db.sh >> /var/log/soltrace/backup.log 2>&1
 CRON
 chmod 644 /etc/cron.d/soltrace-backup
+
+# ── 웹 설정 페이지: git 자가 업데이트 래퍼 + sudoers ─────────────────────────
+# 래퍼는 repo 밖(root 소유, soltrace 수정 불가)에 두고, soltrace 는 sudo 로
+# "인자 없이"만 실행 가능하도록 제한한다.
+echo "자가 업데이트 래퍼 및 sudoers 등록 중..."
+install -m 0755 -o root -g root \
+    "$SCRIPT_DIR/scripts/soltrace-selfupdate.sh" /usr/local/sbin/soltrace-selfupdate
+
+cat > /etc/sudoers.d/soltrace-update <<'SUDO'
+# WAS(soltrace) 가 웹 설정 페이지에서 자가 업데이트만 트리거하도록 허용.
+# 인자 없이 호출하는 형태만 허용한다.
+soltrace ALL=(root) NOPASSWD: /usr/local/sbin/soltrace-selfupdate ""
+SUDO
+chmod 440 /etc/sudoers.d/soltrace-update
+# 문법 검증 (실패 시 잘못된 규칙 제거)
+visudo -cf /etc/sudoers.d/soltrace-update || rm -f /etc/sudoers.d/soltrace-update
+
+# WAS(soltrace) 가 git 으로 버전 정보를 읽을 수 있도록 안전 디렉터리 등록
+sudo -u "$APP_USER" git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
 
 echo ""
 echo "=== 설치 완료 ==="
