@@ -47,6 +47,8 @@ chown -R soltrace:soltrace "$DEPLOY_DIR/app" "$DEPLOY_DIR/static" "$DEPLOY_DIR/r
 "$DEPLOY_DIR/venv/bin/pip" install --quiet -r "$DEPLOY_DIR/requirements.txt"
 
 sudo -u postgres psql -d soltrace -f "$REPO_DIR/postgres/init.sql"
+# 새로 생긴 테이블/시퀀스 소유권을 soltrace 로 이관 (init.sql 은 postgres 로 적용됨)
+sudo -u postgres psql -d soltrace -tAc "SELECT format('ALTER TABLE public.%I OWNER TO soltrace;', tablename) FROM pg_tables WHERE schemaname='public' UNION ALL SELECT format('ALTER SEQUENCE public.%I OWNER TO soltrace;', sequencename) FROM pg_sequences WHERE schemaname='public'" | sudo -u postgres psql -d soltrace
 
 sed 's/server was:8000/server 127.0.0.1:8000/' "$REPO_DIR/nginx/nginx.conf" > /etc/nginx/nginx.conf
 nginx -t && systemctl reload nginx
