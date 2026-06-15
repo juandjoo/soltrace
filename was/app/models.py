@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    BigInteger, Column, DateTime, Float, ForeignKey,
-    Identity, Index, Integer, String, Text,
+    BigInteger, Boolean, Column, DateTime, Float, ForeignKey,
+    Identity, Index, Integer, String, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -94,4 +94,48 @@ class FtpLog(Base):
             postgresql_ops={"username": "gin_trgm_ops"},
         ),
         {"postgresql_partition_by": "RANGE (log_time)"},
+    )
+
+
+class ServiceMetric(Base):
+    """장비 × 시간버킷 서비스 품질 집계 (롤업 잡이 채움)."""
+    __tablename__ = "service_metrics"
+
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True)
+    bucket = Column(DateTime(timezone=True), primary_key=True)
+    transfers = Column(Integer, nullable=False, default=0)
+    transfer_fails = Column(Integer, nullable=False, default=0)
+    bytes = Column(BigInteger, nullable=False, default=0)
+    transfer_secs = Column(Float, nullable=False, default=0)
+    login_attempts = Column(Integer, nullable=False, default=0)
+    login_fails = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    __table_args__ = (
+        Index("idx_service_metrics_bucket", "bucket"),
+    )
+
+
+class ServiceAlert(Base):
+    """baseline 이탈로 판정된 서비스 이상 이벤트."""
+    __tablename__ = "service_alerts"
+
+    id = Column(BigInteger, Identity(), primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    bucket = Column(DateTime(timezone=True), nullable=False)
+    metric = Column(String(30), nullable=False)        # fail_rate | throughput | login_fail_rate
+    severity = Column(String(10), nullable=False, default="warning")
+    value = Column(Float, nullable=False)
+    baseline = Column(Float)
+    threshold = Column(Float)
+    sample_count = Column(Integer)
+    message = Column(Text)
+    notified = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+    device = relationship("Device")
+
+    __table_args__ = (
+        UniqueConstraint("device_id", "bucket", "metric", name="uq_service_alert_bucket_metric"),
+        Index("idx_service_alerts_created", "created_at"),
     )

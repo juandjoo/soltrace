@@ -141,6 +141,44 @@ CREATE INDEX IF NOT EXISTS idx_device_groups_group_id
 -- idx_devices_status           : status 값 3개 → 전체 row 대비 효과 없음
 
 -- ────────────────────────────────────────────────────────────────────────────
+-- 서비스 영향도 (부하로 인한 서비스 이상 감지)
+-- ────────────────────────────────────────────────────────────────────────────
+
+-- 장비 × 시간버킷(기본 10분) 집계. 롤업 잡이 ftp_logs에서 주기적으로 채운다.
+CREATE TABLE IF NOT EXISTS service_metrics (
+    device_id       INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    bucket          TIMESTAMPTZ NOT NULL,            -- 버킷 시작(UTC)
+    transfers       INT    NOT NULL DEFAULT 0,       -- upload+download 건수
+    transfer_fails  INT    NOT NULL DEFAULT 0,
+    bytes           BIGINT NOT NULL DEFAULT 0,
+    transfer_secs   DOUBLE PRECISION NOT NULL DEFAULT 0,  -- Σtransfer_time (throughput 계산용)
+    login_attempts  INT    NOT NULL DEFAULT 0,       -- 식별된 계정 로그인 시도(성공+실패)
+    login_fails     INT    NOT NULL DEFAULT 0,
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (device_id, bucket)
+);
+CREATE INDEX IF NOT EXISTS idx_service_metrics_bucket ON service_metrics(bucket DESC);
+
+-- baseline 이탈로 판정된 서비스 이상 이벤트.
+CREATE TABLE IF NOT EXISTS service_alerts (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    device_id    INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    bucket       TIMESTAMPTZ NOT NULL,
+    metric       VARCHAR(30) NOT NULL,   -- fail_rate | throughput | login_fail_rate
+    severity     VARCHAR(10) NOT NULL DEFAULT 'warning',  -- warning | critical
+    value        DOUBLE PRECISION NOT NULL,
+    baseline     DOUBLE PRECISION,
+    threshold    DOUBLE PRECISION,
+    sample_count INT,
+    message      TEXT,
+    notified     BOOLEAN NOT NULL DEFAULT FALSE,  -- 메일/웹훅 발송 여부
+    created_at   TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (device_id, bucket, metric)   -- 동일 버킷·지표 중복 알림 방지
+);
+CREATE INDEX IF NOT EXISTS idx_service_alerts_created ON service_alerts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_service_alerts_unnotified ON service_alerts(notified) WHERE notified = FALSE;
+
+-- ────────────────────────────────────────────────────────────────────────────
 -- Trigger
 -- ────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION update_updated_at()

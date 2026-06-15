@@ -10,6 +10,7 @@ from app.database import SessionLocal, engine
 from app.models import Base
 from app.routers import auth, dashboard, devices, groups, ingest, logs
 from app import write_buffer as wb
+from app import service_monitor as sm
 
 
 def _ensure_partitions(db):
@@ -50,7 +51,9 @@ async def lifespan(app: FastAPI):
         db.execute(text("SELECT 1"))
         _ensure_partitions(db)
     wb.init_buffer(SessionLocal, flush_interval=3, max_size=2000)
+    sm.init_monitor(SessionLocal)
     yield
+    sm.shutdown_monitor()
     wb.shutdown_buffer()
 
 

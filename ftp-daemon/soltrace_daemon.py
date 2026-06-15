@@ -178,9 +178,17 @@ def parse_extended_log(line: str) -> Optional[dict]:
         "session_id": pid,
     }
 
-    if command == "PASS" and status_code == 230:
-        entry["action"] = "login"
-        return entry
+    if command == "PASS":
+        if status_code == 230:
+            entry["action"] = "login"
+            return entry
+        # 인증 실패(530 등) — username(id)이 식별된 경우만 서비스 영향으로 기록.
+        # 빈/익명("-") 시도는 스캔성 노이즈이므로 제외 (위에서 username=None 처리됨).
+        if username is not None:
+            entry["action"] = "login"
+            entry["status"] = "fail"
+            return entry
+        return None
     if command == "QUIT":
         entry["action"] = "logout"
         return entry

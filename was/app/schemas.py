@@ -197,3 +197,39 @@ class DashboardDetail(BaseModel):
     top_users: List[TopItem]
     top_devices: List[TopItem]
     by_action: dict
+
+
+# ── Service health (서비스 영향도) ──────────────────────────────────────────────
+
+class ServiceHealthDevice(BaseModel):
+    device_id: int
+    hostname: str
+    status: str                       # ok | warning | critical | idle
+    last_bucket: Optional[datetime] = None
+    fail_rate: Optional[float] = None
+    throughput_mb: Optional[float] = None        # MB/s
+    login_fail_rate: Optional[float] = None
+    open_alerts: int = 0
+
+class ServiceAlertItem(BaseModel):
+    id: int
+    device_id: int
+    hostname: str
+    bucket: datetime
+    metric: str
+    severity: str
+    value: float
+    baseline: Optional[float] = None
+    message: Optional[str] = None
+    created_at: datetime
+
+class ServiceTrendPoint(BaseModel):
+    bucket: datetime
+    fail_rate: Optional[float] = None
+    throughput_mb: Optional[float] = None
+    login_fail_rate: Optional[float] = None
+
+class ServiceHealthResponse(BaseModel):
+    devices: List[ServiceHealthDevice]
+    alerts: List[ServiceAlertItem]
+    trend: List[ServiceTrendPoint] = []
