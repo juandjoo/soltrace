@@ -5,9 +5,13 @@ HTTP 요청이 DB 완료를 기다리지 않으므로 워커 블로킹을 제거
 import logging
 import threading
 import time
-from typing import List
+
+from sqlalchemy import insert as _sa_insert
 
 log = logging.getLogger("soltrace.wbuf")
+
+# GENERATED ALWAYS AS IDENTITY 및 서버 기본값 컬럼 제외
+_SKIP_COLS = frozenset({"id", "created_at"})
 
 
 class WriteBuffer:
@@ -69,7 +73,13 @@ class WriteBuffer:
         try:
             db = self._session_factory()
             try:
-                db.bulk_save_objects(batch)
+                mapper = type(batch[0])
+                cols = [
+                    c.key for c in mapper.__mapper__.column_attrs
+                    if c.key not in _SKIP_COLS
+                ]
+                mappings = [{c: getattr(obj, c) for c in cols} for obj in batch]
+                db.execute(_sa_insert(mapper), mappings)
                 db.commit()
                 log.debug("Flushed %d rows to DB", len(batch))
             finally:

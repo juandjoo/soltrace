@@ -1,10 +1,17 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import insert as sa_insert
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Device, FtpLog
+
+# id, created_at 제외 — GENERATED ALWAYS AS IDENTITY 컬럼을 INSERT에 포함하면 오류 발생
+_LOG_COLS = (
+    "device_id", "log_time", "client_ip", "username", "action",
+    "file_path", "file_size", "transfer_time", "transfer_type", "status", "session_id",
+)
 from app.schemas import (
     DeviceRegister, HeartbeatRequest, IngestResponse, LogBatch,
 )
@@ -112,7 +119,7 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
         if buf:
             buf.add(entries)
         else:
-            db.bulk_save_objects(entries)
+            db.execute(sa_insert(FtpLog), [{c: getattr(e, c) for c in _LOG_COLS} for e in entries])
             db.commit()
 
     return IngestResponse(accepted=accepted, rejected=rejected)
