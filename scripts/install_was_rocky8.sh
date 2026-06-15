@@ -8,7 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="/opt/soltrace"
 APP_USER="soltrace"
 
-_rand() { tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w "$1" | head -n 1; }
+# 랜덤 문자열 생성. head 가 파이프를 닫을 때 tr 의 SIGPIPE(141)로
+# set -o pipefail + set -e 가 죽지 않도록 서브셸에서 pipefail 을 끈다.
+_rand() { ( set +o pipefail; LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c "$1" ); }
 
 echo "=== SolTrace WAS 설치 시작 (Rocky Linux 8) ==="
 
