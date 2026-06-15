@@ -70,9 +70,6 @@ body { background:#f0f2f5; font-size:14px; }
     </div>
     <ul class="nav flex-column">
       <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i> 대시보드</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('health')"><i class="bi bi-activity"></i> 서비스 영향도</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('devices')"><i class="bi bi-hdd-stack"></i> 장비 관리</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('groups')"><i class="bi bi-diagram-3"></i> 그룹 관리</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i> 로그 조회</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear"></i> 설정</a></li>
     </ul>
@@ -97,73 +94,25 @@ body { background:#f0f2f5; font-size:14px; }
           <button class="btn btn-sm btn-outline-primary" onclick="loadDashboard()"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
-      <!-- Stat cards -->
+      <!-- 사용량: 사용자별 / 장비그룹별 -->
       <div class="row g-3 mb-4">
-        <div class="col-sm-6 col-xl-3">
-          <div class="card stat-card upload p-3">
-            <div class="text-muted small">업로드</div>
-            <div class="fs-4 fw-bold text-primary" id="stat-uploads">-</div>
-            <div class="text-muted small" id="stat-bytes-in">-</div>
-          </div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-          <div class="card stat-card download p-3">
-            <div class="text-muted small">다운로드</div>
-            <div class="fs-4 fw-bold text-success" id="stat-downloads">-</div>
-            <div class="text-muted small" id="stat-bytes-out">-</div>
-          </div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-          <div class="card stat-card delete p-3">
-            <div class="text-muted small">삭제</div>
-            <div class="fs-4 fw-bold text-danger" id="stat-deletes">-</div>
-            <div class="text-muted small" id="stat-users">- 사용자</div>
-          </div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-          <div class="card stat-card device p-3">
-            <div class="text-muted small">활성 장비</div>
-            <div class="fs-4 fw-bold text-purple" id="stat-devices" style="color:#6f42c1">-</div>
-            <div class="text-muted small">확인된 장비</div>
-          </div>
-        </div>
-      </div>
-      <!-- Charts row 1 -->
-      <div class="row g-3 mb-3">
-        <div class="col-xl-8">
-          <div class="card p-3">
-            <div class="fw-semibold mb-3 small">전송 추이 (일별)</div>
-            <canvas id="chartTimeline" height="80"></canvas>
-          </div>
-        </div>
-        <div class="col-xl-4">
-          <div class="card p-3">
-            <div class="fw-semibold mb-3 small">작업 유형 분포</div>
-            <canvas id="chartAction" height="160"></canvas>
-          </div>
-        </div>
-      </div>
-      <!-- Charts row 2 -->
-      <div class="row g-3">
         <div class="col-xl-6">
           <div class="card p-3">
-            <div class="fw-semibold mb-3 small">상위 사용자 (작업 수)</div>
-            <canvas id="chartTopUsers" height="120"></canvas>
+            <div class="fw-semibold mb-3 small">사용자별 사용량</div>
+            <canvas id="chartTopUsers" height="140"></canvas>
           </div>
         </div>
         <div class="col-xl-6">
           <div class="card p-3">
-            <div class="fw-semibold mb-3 small">장비별 활동량</div>
-            <canvas id="chartTopDevices" height="120"></canvas>
+            <div class="fw-semibold mb-3 small">장비그룹별 사용량</div>
+            <canvas id="chartTopGroups" height="140"></canvas>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Service health (서비스 영향도) -->
-    <div id="page-health" class="page">
-      <div class="d-flex align-items-center mb-4">
-        <h5 class="mb-0 fw-bold">서비스 영향도</h5>
+      <!-- 서비스 영향도 -->
+      <div class="d-flex align-items-center mb-2">
+        <h6 class="mb-0 fw-bold">서비스 영향도</h6>
         <div class="ms-auto d-flex gap-2">
           <select class="form-select form-select-sm" id="healthHours" onchange="loadServiceHealth()" style="width:130px">
             <option value="6">최근 6시간</option>
@@ -176,7 +125,6 @@ body { background:#f0f2f5; font-size:14px; }
       </div>
       <div class="text-muted small mb-3">FTP 서버 부하로 인한 서비스 품질 저하를 장비별 평소(baseline) 대비 이탈로 감지합니다.</div>
 
-      <!-- Device status cards -->
       <div class="row g-3 mb-3" id="healthCards">
         <div class="col-12 text-muted small">불러오는 중…</div>
       </div>
@@ -205,8 +153,14 @@ body { background:#f0f2f5; font-size:14px; }
 
     <!-- Devices -->
     <div id="page-devices" class="page">
+      <h5 class="mb-3 fw-bold">설정</h5>
+      <ul class="nav nav-pills mb-4">
+        <li class="nav-item"><a class="nav-link" href="#" onclick="nav('settings')">일반</a></li>
+        <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('devices')">장비 관리</a></li>
+        <li class="nav-item"><a class="nav-link" href="#" onclick="nav('groups')">그룹 관리</a></li>
+      </ul>
       <div class="d-flex align-items-center mb-4">
-        <h5 class="mb-0 fw-bold">장비 관리</h5>
+        <h6 class="mb-0 fw-bold">장비 관리</h6>
         <div class="ms-auto d-flex gap-2">
           <select class="form-select form-select-sm" id="deviceFilter" onchange="loadDevices()" style="width:120px">
             <option value="">전체</option>
@@ -248,8 +202,14 @@ body { background:#f0f2f5; font-size:14px; }
 
     <!-- Groups -->
     <div id="page-groups" class="page">
+      <h5 class="mb-3 fw-bold">설정</h5>
+      <ul class="nav nav-pills mb-4">
+        <li class="nav-item"><a class="nav-link" href="#" onclick="nav('settings')">일반</a></li>
+        <li class="nav-item"><a class="nav-link" href="#" onclick="nav('devices')">장비 관리</a></li>
+        <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('groups')">그룹 관리</a></li>
+      </ul>
       <div class="d-flex align-items-center mb-4">
-        <h5 class="mb-0 fw-bold">그룹 관리</h5>
+        <h6 class="mb-0 fw-bold">그룹 관리</h6>
         <button class="btn btn-sm btn-primary ms-auto" onclick="openGroupModal()">
           <i class="bi bi-plus-lg me-1"></i>그룹 추가
         </button>
@@ -332,7 +292,12 @@ body { background:#f0f2f5; font-size:14px; }
 
     <!-- Settings -->
     <div id="page-settings" class="page">
-      <h4 class="mb-4">설정</h4>
+      <h5 class="mb-3 fw-bold">설정</h5>
+      <ul class="nav nav-pills mb-4">
+        <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('settings')">일반</a></li>
+        <li class="nav-item"><a class="nav-link" href="#" onclick="nav('devices')">장비 관리</a></li>
+        <li class="nav-item"><a class="nav-link" href="#" onclick="nav('groups')">그룹 관리</a></li>
+      </ul>
       <div class="row g-4" style="max-width:760px">
 
         <!-- 텔코 정보 -->
@@ -522,11 +487,13 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
 // ── Navigation ────────────────────────────────────────────────────────────────
 function nav(page) {
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('#sidebar .nav-link').forEach(el => el.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  document.querySelector(`[onclick="nav('${page}')"]`).classList.add('active');
-  if (page === 'dashboard') loadDashboard();
-  if (page === 'health') loadServiceHealth();
+  // 장비/그룹 관리는 설정 하위 탭 → 사이드바는 '설정'을 활성 표시
+  const sidebarKey = ['devices', 'groups', 'settings'].includes(page) ? 'settings' : page;
+  document.querySelectorAll('#sidebar .nav-link').forEach(el => el.classList.remove('active'));
+  const link = document.querySelector(`#sidebar [onclick="nav('${sidebarKey}')"]`);
+  if (link) link.classList.add('active');
+  if (page === 'dashboard') { loadDashboard(); loadServiceHealth(); }
   if (page === 'devices') loadDevices();
   if (page === 'groups') loadGroups();
   if (page === 'logs') initLogsPage();
@@ -634,68 +601,44 @@ async function loadDashboard() {
   const data = await api('GET', `/dashboard?days=${days}`);
   if (!data) return;
 
-  const s = data.stats;
-  document.getElementById('stat-uploads').textContent = fmtNum(s.total_uploads);
-  document.getElementById('stat-bytes-in').textContent = fmtBytes(s.total_bytes_in) + ' 수신';
-  document.getElementById('stat-downloads').textContent = fmtNum(s.total_downloads);
-  document.getElementById('stat-bytes-out').textContent = fmtBytes(s.total_bytes_out) + ' 송신';
-  document.getElementById('stat-deletes').textContent = fmtNum(s.total_deletes);
-  document.getElementById('stat-users').textContent = fmtNum(s.active_users) + ' 사용자';
-  document.getElementById('stat-devices').textContent = fmtNum(s.active_devices);
-
-  // Timeline chart
-  destroyChart('timeline');
-  const ts = data.timeseries;
-  charts.timeline = new Chart(document.getElementById('chartTimeline'), {
-    type: 'line',
-    data: {
-      labels: ts.map(t => t.date),
-      datasets: [
-        {label:'업로드', data: ts.map(t=>t.uploads), borderColor:'#0d6efd', backgroundColor:'rgba(13,110,253,.08)', fill:true, tension:.3},
-        {label:'다운로드', data: ts.map(t=>t.downloads), borderColor:'#198754', backgroundColor:'rgba(25,135,84,.08)', fill:true, tension:.3},
-        {label:'삭제', data: ts.map(t=>t.deletes), borderColor:'#dc3545', backgroundColor:'rgba(220,53,69,.08)', fill:true, tension:.3},
-      ]
+  // 사용량(전송 바이트) 가로 막대 공통 옵션
+  const bytesBarOpts = {
+    indexAxis: 'y',
+    plugins: {
+      legend: {display: false},
+      tooltip: {callbacks: {label: c => fmtBytes(c.parsed.x)}},
     },
-    options: {plugins:{legend:{position:'top'}}, scales:{y:{beginAtZero:true}}}
-  });
+    scales: {x: {beginAtZero: true, ticks: {callback: v => fmtBytes(v)}}},
+  };
 
-  // Action donut
-  destroyChart('action');
-  const actions = data.by_action;
-  const actionLabels = Object.keys(actions);
-  const actionColors = {'upload':'#0d6efd','download':'#198754','delete':'#dc3545','rename':'#fd7e14','login':'#6c757d','logout':'#adb5bd','mkdir':'#20c997','rmdir':'#e83e8c'};
-  charts.action = new Chart(document.getElementById('chartAction'), {
-    type: 'doughnut',
-    data: {
-      labels: actionLabels,
-      datasets: [{data: actionLabels.map(k=>actions[k]), backgroundColor: actionLabels.map(k=>actionColors[k]||'#999')}]
-    },
-    options: {plugins:{legend:{position:'bottom'}}, cutout:'60%'}
-  });
-
-  // Top users bar
+  // 사용자별 사용량
   destroyChart('topUsers');
-  const tu = data.top_users.slice(0,8);
+  const tu = (data.top_users || []).slice(0, 8);
   charts.topUsers = new Chart(document.getElementById('chartTopUsers'), {
     type: 'bar',
-    data: {
-      labels: tu.map(u=>u.label),
-      datasets: [{label:'작업 수', data: tu.map(u=>u.count), backgroundColor:'#0d6efd88'}]
-    },
-    options: {indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true}}}
+    data: {labels: tu.map(u => u.label), datasets: [{label: '사용량', data: tu.map(u => u.bytes), backgroundColor: '#0d6efd88'}]},
+    options: bytesBarOpts,
   });
 
-  // Top devices bar
-  destroyChart('topDevices');
-  const td = data.top_devices.slice(0,8);
-  charts.topDevices = new Chart(document.getElementById('chartTopDevices'), {
-    type: 'bar',
-    data: {
-      labels: td.map(d=>d.label),
-      datasets: [{label:'작업 수', data: td.map(d=>d.count), backgroundColor:'#6f42c188'}]
-    },
-    options: {indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true}}}
-  });
+  // 장비그룹별 사용량
+  destroyChart('topGroups');
+  const tg = (data.top_groups || []).slice(0, 8);
+  const gEl = document.getElementById('chartTopGroups');
+  if (!tg.length) {
+    destroyChart('topGroups');
+    gEl.parentElement.querySelector('.no-group')?.remove();
+    const p = document.createElement('div');
+    p.className = 'no-group text-muted small';
+    p.textContent = '그룹에 속한 장비의 사용량이 없습니다.';
+    gEl.after(p);
+  } else {
+    gEl.parentElement.querySelector('.no-group')?.remove();
+    charts.topGroups = new Chart(gEl, {
+      type: 'bar',
+      data: {labels: tg.map(g => g.label), datasets: [{label: '사용량', data: tg.map(g => g.bytes), backgroundColor: '#6f42c188'}]},
+      options: bytesBarOpts,
+    });
+  }
 }
 
 // ── Service health (서비스 영향도) ─────────────────────────────────────────────

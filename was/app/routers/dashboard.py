@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import require_admin
-from app.models import Device, FtpLog
+from app.models import Device, DeviceGroup, FtpLog, Group
 from app.schemas import (
     DashboardDetail, DashboardStats, TimeSeriesPoint, TopItem,
     ServiceHealthResponse, ServiceHealthDevice, ServiceAlertItem, ServiceTrendPoint,
@@ -122,6 +122,24 @@ def get_dashboard(
     )
     top_devices = [TopItem(label=r.hostname, count=r.cnt, bytes=r.bytes) for r in top_dev_rows]
 
+    # ── By device group (장비그룹별 사용량) ───────────────────────────────────
+    # 장비가 여러 그룹에 속하면 그룹마다 집계됨 (그룹 단위 사용량 관점)
+    group_rows = (
+        base_q.join(Device, FtpLog.device_id == Device.id)
+        .join(DeviceGroup, DeviceGroup.device_id == Device.id)
+        .join(Group, Group.id == DeviceGroup.group_id)
+        .with_entities(
+            Group.name,
+            func.count().label("cnt"),
+            func.coalesce(func.sum(FtpLog.file_size), 0).label("bytes"),
+        )
+        .group_by(Group.name)
+        .order_by(func.coalesce(func.sum(FtpLog.file_size), 0).desc())
+        .limit(10)
+        .all()
+    )
+    top_groups = [TopItem(label=r.name, count=r.cnt, bytes=r.bytes) for r in group_rows]
+
     # ── By action ────────────────────────────────────────────────────────────
     action_rows = (
         base_q.with_entities(FtpLog.action, func.count().label("cnt"))
@@ -135,6 +153,7 @@ def get_dashboard(
         timeseries=timeseries,
         top_users=top_users,
         top_devices=top_devices,
+        top_groups=top_groups,
         by_action=by_action,
     )
 

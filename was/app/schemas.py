@@ -223,6 +223,7 @@ class DashboardDetail(BaseModel):
     timeseries: List[TimeSeriesPoint]
     top_users: List[TopItem]
     top_devices: List[TopItem]
+    top_groups: List[TopItem] = []
     by_action: dict
 
 
