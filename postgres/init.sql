@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS device_groups (
 );
 
 CREATE TABLE IF NOT EXISTS ftp_logs (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY,
     device_id INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     log_time TIMESTAMPTZ NOT NULL,
     client_ip VARCHAR(45),
@@ -70,8 +70,39 @@ CREATE TABLE IF NOT EXISTS ftp_logs (
     transfer_type VARCHAR(10),
     status VARCHAR(10) DEFAULT 'success' CHECK (status IN ('success', 'fail')),
     session_id VARCHAR(50),
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (id, log_time)
+) PARTITION BY RANGE (log_time);
+
+-- 초기 파티션 생성 (당월 + 향후 2개월) — 이미 존재하면 건너뜀
+DO $$
+DECLARE
+    base_date DATE := date_trunc('month', NOW())::DATE;
+    i         INT;
+    s         DATE;
+    e         DATE;
+    pname     TEXT;
+BEGIN
+    FOR i IN 0..2 LOOP
+        s := (base_date + (i || ' months')::INTERVAL)::DATE;
+        e := (s + '1 month'::INTERVAL)::DATE;
+        pname := 'ftp_logs_' || to_char(s, 'YYYY_MM');
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = pname AND n.nspname = 'public'
+        ) THEN
+            EXECUTE format(
+                'CREATE TABLE %I PARTITION OF ftp_logs FOR VALUES FROM (%L) TO (%L)',
+                pname, s, e
+            );
+            RAISE NOTICE 'Partition created: %', pname;
+        END IF;
+    END LOOP;
+END $$;
+
+-- DEFAULT 파티션: 매칭 파티션 없는 행 임시 보관 (신규 월 파티션 생성 전 안전망)
+CREATE TABLE IF NOT EXISTS ftp_logs_default PARTITION OF ftp_logs DEFAULT;
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- ftp_logs 인덱스

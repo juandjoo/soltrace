@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger, Column, DateTime, Float, ForeignKey,
-    Index, Integer, String, Text,
+    Identity, Index, Integer, String, Text,
 )
 from sqlalchemy.orm import relationship
 
@@ -64,9 +64,9 @@ class DeviceGroup(Base):
 class FtpLog(Base):
     __tablename__ = "ftp_logs"
 
-    id = Column(BigInteger, primary_key=True)
+    id = Column(BigInteger, Identity(), primary_key=True)
     device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
-    log_time = Column(DateTime(timezone=True), nullable=False)
+    log_time = Column(DateTime(timezone=True), nullable=False, primary_key=True)
     client_ip = Column(String(45))
     username = Column(String(255))
     action = Column(String(20), nullable=False)
@@ -89,4 +89,5 @@ class FtpLog(Base):
             postgresql_using="gin",
             postgresql_ops={"username": "gin_trgm_ops"},
         ),
+        {"postgresql_partition_by": "RANGE (log_time)"},
     )

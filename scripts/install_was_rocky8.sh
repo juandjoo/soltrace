@@ -196,6 +196,14 @@ if command -v setsebool &>/dev/null; then
     setsebool -P httpd_can_network_connect 1
 fi
 
+# 월별 파티션 자동 생성 cron 등록 (매월 1일 00:30)
+chmod +x "$SCRIPT_DIR/scripts/create_partitions.sh"
+cat > /etc/cron.d/soltrace-partitions <<CRON
+# SolTrace ftp_logs 월별 파티션 자동 생성
+30 0 1 * * root bash $SCRIPT_DIR/scripts/create_partitions.sh >> /var/log/soltrace/partitions.log 2>&1
+CRON
+chmod 644 /etc/cron.d/soltrace-partitions
+
 echo ""
 echo "=== 설치 완료 ==="
 echo "상태 확인: systemctl status soltrace-was nginx postgresql-16"

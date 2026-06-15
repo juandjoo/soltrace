@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -11,11 +12,43 @@ from app.routers import auth, dashboard, devices, groups, ingest, logs
 from app import write_buffer as wb
 
 
+def _ensure_partitions(db):
+    """당월 + 향후 2개월 파티션이 없으면 생성 (create_all 경로 대응)."""
+    is_partitioned = db.execute(text(
+        "SELECT COUNT(*) FROM pg_class c "
+        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE c.relname = 'ftp_logs' AND c.relkind = 'p' AND n.nspname = 'public'"
+    )).scalar()
+    if not is_partitioned:
+        return
+
+    # create_all 경로에서 init.sql 없이 기동 시 extension 보장
+    db.execute(text('CREATE EXTENSION IF NOT EXISTS "pg_trgm"'))
+
+    now = datetime.now(timezone.utc)
+    for offset in range(3):
+        total = now.month - 1 + offset
+        year, month = now.year + total // 12, total % 12 + 1
+        next_total = total + 1
+        ny, nm = now.year + next_total // 12, next_total % 12 + 1
+        part = f"ftp_logs_{year:04d}_{month:02d}"
+        db.execute(text(
+            f"CREATE TABLE IF NOT EXISTS {part} PARTITION OF ftp_logs "
+            f"FOR VALUES FROM ('{year:04d}-{month:02d}-01') TO ('{ny:04d}-{nm:02d}-01')"
+        ))
+
+    db.execute(text(
+        "CREATE TABLE IF NOT EXISTS ftp_logs_default PARTITION OF ftp_logs DEFAULT"
+    ))
+    db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         db.execute(text("SELECT 1"))
+        _ensure_partitions(db)
     wb.init_buffer(SessionLocal, flush_interval=3, max_size=2000)
     yield
     wb.shutdown_buffer()
