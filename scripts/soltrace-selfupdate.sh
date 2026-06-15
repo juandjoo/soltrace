@@ -34,10 +34,12 @@ exec >> "$LOG" 2>&1
 echo "[$(date '+%F %T')] selfupdate 시작 (branch=$BRANCH)"
 
 cd "$REPO_DIR"
-git config --global --add safe.directory "$REPO_DIR" 2>/dev/null || true
-git fetch origin
-git checkout "$BRANCH"
-git reset --hard "origin/$BRANCH"
+# root 가 soltrace 소유 저장소에서 git 실행 → dubious ownership 방지.
+# systemd 유닛은 HOME 이 달라 --global 이 안 먹으므로 -c 로 매 명령에 직접 지정.
+GIT="git -c safe.directory=$REPO_DIR"
+$GIT fetch origin
+$GIT checkout "$BRANCH"
+$GIT reset --hard "origin/$BRANCH"
 
 cp -r was/app "$DEPLOY_DIR/"
 cp -r was/static "$DEPLOY_DIR/"

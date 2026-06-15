@@ -264,6 +264,8 @@ visudo -cf /etc/sudoers.d/soltrace-update || rm -f /etc/sudoers.d/soltrace-updat
 
 # WAS(soltrace) 가 git 으로 버전 정보를 읽을 수 있도록 안전 디렉터리 등록
 sudo -u "$APP_USER" git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
+# root 가 저장소에서 git(업데이트/셀프업데이트) 실행 시 dubious ownership 방지 (HOME 비의존)
+git config --system --add safe.directory "$APP_DIR" 2>/dev/null || true
 
 echo ""
 echo "=== 설치 완료 ==="

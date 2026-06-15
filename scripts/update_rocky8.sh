@@ -13,6 +13,8 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 cd "$APP_DIR"
 
 log ">> 코드 pull: origin/$BRANCH"
+# root 가 soltrace 소유 저장소에서 git 실행 → dubious ownership 방지 (HOME 비의존)
+git config --system --add safe.directory "$APP_DIR" 2>/dev/null || true
 git fetch origin
 git checkout "$BRANCH"
 git reset --hard "origin/$BRANCH"
