@@ -35,7 +35,7 @@ for repo in powertools crb codeready-builder-for-rhel-8-x86_64-rpms; do
 done
 
 dnf install -y \
-    postgresql16-server postgresql16 \
+    postgresql16-server postgresql16 postgresql16-contrib \
     python3.11 python3.11-devel \
     nginx \
     gcc \
