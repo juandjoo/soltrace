@@ -24,6 +24,14 @@ fi
 # EPEL (nginx, python3.11)
 dnf install -y epel-release
 
+# PowerTools/CRB 활성화 (pgdg의 *-devel 이 요구하는 perl-IPC-Run 등이 여기 있음)
+dnf install -y dnf-plugins-core
+for repo in powertools crb codeready-builder-for-rhel-8-x86_64-rpms; do
+    if dnf repolist all 2>/dev/null | grep -qi "^${repo}\b"; then
+        dnf config-manager --set-enabled "$repo" && break
+    fi
+done
+
 dnf install -y \
     postgresql16-server postgresql16 \
     python3.11 python3.11-devel \
