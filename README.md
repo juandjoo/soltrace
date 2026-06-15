@@ -58,7 +58,7 @@ soltrace/
 │   ├── requirements.txt
 │   └── soltrace-daemon.service
 └── scripts/
-    ├── deploy.sh                  # 로컬 → GitLab + GitHub push
+    ├── deploy_rocky8.sh           # 로컬 → GitLab + GitHub push + WAS 원격 업데이트
     ├── install_was_rocky8.sh      # WAS 최초 설치 (Rocky Linux 8)
     ├── update_rocky8.sh           # WAS pull + 재배포 (Rocky Linux 8)
     └── install_daemon_rocky8.sh   # 데몬 최초 설치 (Rocky Linux 8)
