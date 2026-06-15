@@ -5,6 +5,9 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
+from openpyxl.cell import WriteOnlyCell
+from openpyxl.styles import Font
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -144,5 +147,74 @@ def export_csv(
     return StreamingResponse(
         generate(),
         media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/export/xlsx")
+def export_xlsx(
+    device_id: Optional[int] = None,
+    username: Optional[str] = None,
+    action: Optional[str] = None,
+    log_status: Optional[str] = Query(default=None, alias="status"),
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    if start_time is None and end_time is None:
+        start_time = datetime.now(timezone.utc) - timedelta(days=DEFAULT_RANGE_DAYS)
+
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet("FTP Logs")
+    ws.freeze_panes = "A2"
+
+    # 헤더 (굵게)
+    headers = ["ID", "장비", "일시", "클라이언트 IP", "사용자", "작업",
+               "파일 경로", "파일 크기(bytes)", "전송시간(s)", "상태"]
+    bold = Font(bold=True)
+    header_row = [WriteOnlyCell(ws, value=h) for h in headers]
+    for cell in header_row:
+        cell.font = bold
+    ws.append(header_row)
+
+    q = (
+        db.query(
+            FtpLog.id, Device.hostname, FtpLog.log_time,
+            FtpLog.client_ip, FtpLog.username, FtpLog.action,
+            FtpLog.file_path, FtpLog.file_size, FtpLog.transfer_time, FtpLog.status,
+        )
+        .join(Device, FtpLog.device_id == Device.id)
+    )
+    if device_id:
+        q = q.filter(FtpLog.device_id == device_id)
+    if username:
+        q = q.filter(FtpLog.username.ilike(f"%{username}%"))
+    if action:
+        q = q.filter(FtpLog.action == action)
+    if log_status:
+        q = q.filter(FtpLog.status == log_status)
+    if start_time:
+        q = q.filter(FtpLog.log_time >= start_time)
+    if end_time:
+        q = q.filter(FtpLog.log_time <= end_time)
+
+    for row in q.order_by(FtpLog.log_time.desc()).yield_per(1000):
+        # Excel은 timezone-aware datetime을 지원하지 않으므로 UTC naive로 변환
+        log_time = row.log_time.replace(tzinfo=None) if row.log_time else None
+        ws.append([
+            row.id, row.hostname or "", log_time,
+            row.client_ip or "", row.username or "", row.action,
+            row.file_path or "", row.file_size, row.transfer_time, row.status,
+        ])
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"ftp_logs_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
