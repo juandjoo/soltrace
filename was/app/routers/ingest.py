@@ -6,12 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Device, FtpLog
-
-# id, created_at 제외 — GENERATED ALWAYS AS IDENTITY 컬럼을 INSERT에 포함하면 오류 발생
-_LOG_COLS = (
-    "device_id", "log_time", "client_ip", "username", "action",
-    "file_path", "file_size", "transfer_time", "transfer_type", "status", "session_id",
-)
 from app.schemas import (
     DeviceRegister, HeartbeatRequest, IngestResponse, LogBatch,
 )
@@ -20,6 +14,12 @@ from app import write_buffer as wb
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 
 VALID_ACTIONS = {"upload", "download", "delete", "rename", "login", "logout", "mkdir", "rmdir"}
+
+# id, created_at 제외 — GENERATED ALWAYS AS IDENTITY 컬럼을 INSERT에 포함하면 오류 발생
+_LOG_COLS = (
+    "device_id", "log_time", "client_ip", "username", "action",
+    "file_path", "file_size", "transfer_time", "transfer_type", "status", "session_id",
+)
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)

@@ -22,9 +22,6 @@ def _ensure_partitions(db):
     if not is_partitioned:
         return
 
-    # create_all 경로에서 init.sql 없이 기동 시 extension 보장
-    db.execute(text('CREATE EXTENSION IF NOT EXISTS "pg_trgm"'))
-
     now = datetime.now(timezone.utc)
     for offset in range(3):
         total = now.month - 1 + offset
@@ -45,6 +42,9 @@ def _ensure_partitions(db):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # pg_trgm 확장을 create_all 전에 보장 — username GIN(gin_trgm_ops) 인덱스 생성 선행 조건
+    with engine.begin() as conn:
+        conn.execute(text('CREATE EXTENSION IF NOT EXISTS "pg_trgm"'))
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         db.execute(text("SELECT 1"))

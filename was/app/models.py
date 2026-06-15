@@ -39,7 +39,11 @@ class Device(Base):
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     groups = relationship("Group", secondary="device_groups", back_populates="devices")
-    logs = relationship("FtpLog", back_populates="device", lazy="dynamic")
+    # passive_deletes=True: 장비 삭제 시 자식 로그를 ORM이 로드/UPDATE하지 않고
+    # DB의 ON DELETE CASCADE에 위임 (대량 로그 NOT NULL UPDATE 실패/성능 저하 방지)
+    logs = relationship(
+        "FtpLog", back_populates="device", lazy="dynamic", passive_deletes=True
+    )
 
 
 class Group(Base):

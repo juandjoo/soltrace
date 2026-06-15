@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, text
+from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -32,19 +32,19 @@ def get_dashboard(
         base_q.with_entities(
             func.count().label("total"),
             func.coalesce(func.sum(
-                func.case((FtpLog.action == "upload", 1), else_=0)
+                case((FtpLog.action == "upload", 1), else_=0)
             ), 0).label("uploads"),
             func.coalesce(func.sum(
-                func.case((FtpLog.action == "download", 1), else_=0)
+                case((FtpLog.action == "download", 1), else_=0)
             ), 0).label("downloads"),
             func.coalesce(func.sum(
-                func.case((FtpLog.action == "delete", 1), else_=0)
+                case((FtpLog.action == "delete", 1), else_=0)
             ), 0).label("deletes"),
             func.coalesce(func.sum(
-                func.case((FtpLog.action == "upload", FtpLog.file_size), else_=0)
+                case((FtpLog.action == "upload", FtpLog.file_size), else_=0)
             ), 0).label("bytes_in"),
             func.coalesce(func.sum(
-                func.case((FtpLog.action == "download", FtpLog.file_size), else_=0)
+                case((FtpLog.action == "download", FtpLog.file_size), else_=0)
             ), 0).label("bytes_out"),
             func.count(func.distinct(FtpLog.username)).label("active_users"),
             func.count(func.distinct(FtpLog.device_id)).label("active_devices"),
@@ -67,11 +67,11 @@ def get_dashboard(
     ts_rows = (
         base_q.with_entities(
             func.date_trunc("day", FtpLog.log_time).label("day"),
-            func.coalesce(func.sum(func.case((FtpLog.action == "upload", 1), else_=0)), 0).label("uploads"),
-            func.coalesce(func.sum(func.case((FtpLog.action == "download", 1), else_=0)), 0).label("downloads"),
-            func.coalesce(func.sum(func.case((FtpLog.action == "delete", 1), else_=0)), 0).label("deletes"),
-            func.coalesce(func.sum(func.case((FtpLog.action == "upload", FtpLog.file_size), else_=0)), 0).label("bytes_in"),
-            func.coalesce(func.sum(func.case((FtpLog.action == "download", FtpLog.file_size), else_=0)), 0).label("bytes_out"),
+            func.coalesce(func.sum(case((FtpLog.action == "upload", 1), else_=0)), 0).label("uploads"),
+            func.coalesce(func.sum(case((FtpLog.action == "download", 1), else_=0)), 0).label("downloads"),
+            func.coalesce(func.sum(case((FtpLog.action == "delete", 1), else_=0)), 0).label("deletes"),
+            func.coalesce(func.sum(case((FtpLog.action == "upload", FtpLog.file_size), else_=0)), 0).label("bytes_in"),
+            func.coalesce(func.sum(case((FtpLog.action == "download", FtpLog.file_size), else_=0)), 0).label("bytes_out"),
         )
         .group_by(text("day"))
         .order_by(text("day"))
