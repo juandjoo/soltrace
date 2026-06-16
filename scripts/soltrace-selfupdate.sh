@@ -22,6 +22,7 @@ LOG="/var/log/soltrace/selfupdate.log"
 
 if [ "${1:-}" != "--run" ]; then
     exec systemd-run \
+        --no-block \
         --unit="soltrace-selfupdate" \
         --collect \
         --property=Type=oneshot \
