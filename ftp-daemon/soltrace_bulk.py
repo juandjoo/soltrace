@@ -27,6 +27,7 @@ proftpd 로그 파일의 과거 데이터를 WAS에 일괄 전송한다.
 """
 import argparse
 import configparser
+import gzip
 import hashlib
 import json
 import logging
@@ -59,7 +60,7 @@ def parse_date(s: Optional[str]) -> Optional[datetime]:
 
 
 def iter_file(path: str, parser, date_from: Optional[datetime], date_to: Optional[datetime]):
-    """파일 전체를 순회하며 필터 조건에 맞는 항목 yield."""
+    """파일 전체를 순회하며 필터 조건에 맞는 항목 yield. .gz 파일 자동 처리."""
     p = Path(path)
     if not p.exists():
         log.warning("File not found: %s", path)
@@ -67,7 +68,8 @@ def iter_file(path: str, parser, date_from: Optional[datetime], date_to: Optiona
     total = 0
     skipped_date = 0
     parse_errors = 0
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
+    opener = gzip.open if path.endswith(".gz") else open
+    with opener(path, "rt", encoding="utf-8", errors="replace") as f:
         for lineno, line in enumerate(f, 1):
             entry = parser(line)
             if entry is None:
