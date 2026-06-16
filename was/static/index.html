@@ -103,13 +103,13 @@ body { background:#f5f7fa; font-size:14px; }
         <div class="col-xl-6">
           <div class="card p-3">
             <div class="fw-semibold mb-3 small">사용자별 사용량</div>
-            <canvas id="chartTopUsers" height="140"></canvas>
+            <div style="position:relative; height:300px"><canvas id="chartTopUsers"></canvas></div>
           </div>
         </div>
         <div class="col-xl-6">
           <div class="card p-3">
             <div class="fw-semibold mb-3 small">장비그룹별 사용량</div>
-            <canvas id="chartTopGroups" height="140"></canvas>
+            <div style="position:relative; height:300px"><canvas id="chartTopGroups"></canvas></div>
           </div>
         </div>
       </div>
@@ -137,7 +137,7 @@ body { background:#f5f7fa; font-size:14px; }
         <div class="col-xl-12">
           <div class="card p-3">
             <div class="fw-semibold mb-3 small">전송 실패율 / 로그인 실패율 추이 (%)</div>
-            <canvas id="chartHealthRate" height="70"></canvas>
+            <div style="position:relative; height:240px"><canvas id="chartHealthRate"></canvas></div>
           </div>
         </div>
       </div>
@@ -190,7 +190,12 @@ body { background:#f5f7fa; font-size:14px; }
       <!-- Filters -->
       <div class="card mb-3 p-3">
         <div class="row g-2">
-          <div class="col-sm-3">
+          <div class="col-sm-2">
+            <select class="form-select form-select-sm" id="logGroupFilter" onchange="searchLogs(1)">
+              <option value="">전체 그룹</option>
+            </select>
+          </div>
+          <div class="col-sm-2">
             <select class="form-select form-select-sm" id="logDeviceFilter">
               <option value="">전체 장비</option>
             </select>
@@ -645,6 +650,8 @@ async function loadDashboard() {
   // 사용량(전송 바이트) 가로 막대 공통 옵션
   const bytesBarOpts = {
     indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
     plugins: {
       legend: {display: false},
       tooltip: {callbacks: {label: c => fmtBytes(c.parsed.x)}},
@@ -734,7 +741,7 @@ async function loadServiceHealth() {
         {label:'로그인 실패율', data: tr.map(t=> t.login_fail_rate==null?null:+(t.login_fail_rate*100).toFixed(2)), borderColor:'#fd7e14', backgroundColor:'rgba(253,126,20,.08)', fill:true, tension:.3, spanGaps:true},
       ]
     },
-    options: {plugins:{legend:{position:'top'}}, scales:{y:{beginAtZero:true}}}
+    options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top'}}, scales:{y:{beginAtZero:true}}}
   });
 
   // Alerts table
@@ -1023,19 +1030,26 @@ async function deleteGroup(id) {
 const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제'};
 
 async function initLogsPage() {
-  const devices = await api('GET', '/devices');
-  if (!devices) return;
-  const sel = document.getElementById('logDeviceFilter');
-  sel.innerHTML = '<option value="">전체 장비</option>' + devices.map(d=>`<option value="${d.id}">${d.hostname}</option>`).join('');
+  const [devices, groups] = await Promise.all([api('GET', '/devices'), api('GET', '/groups')]);
+  if (devices) {
+    document.getElementById('logDeviceFilter').innerHTML =
+      '<option value="">전체 장비</option>' + devices.map(d=>`<option value="${d.id}">${d.hostname}</option>`).join('');
+  }
+  if (groups) {
+    document.getElementById('logGroupFilter').innerHTML =
+      '<option value="">전체 그룹</option>' + groups.map(g=>`<option value="${g.id}">${g.telco?g.telco+' · ':''}${g.name}</option>`).join('');
+  }
 }
 
 function _logParams() {
   const params = new URLSearchParams();
+  const grp = document.getElementById('logGroupFilter').value;
   const dev = document.getElementById('logDeviceFilter').value;
   const user = document.getElementById('logUserFilter').value.trim();
   const action = document.getElementById('logActionFilter').value;
   const start = document.getElementById('logStartTime').value;
   const end = document.getElementById('logEndTime').value;
+  if (grp) params.set('group_id', grp);
   if (dev) params.set('device_id', dev);
   if (user) params.set('username', user);
   if (action) params.set('action', action);

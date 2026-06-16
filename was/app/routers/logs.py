@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import require_admin
-from app.models import Device, FtpLog
+from app.models import Device, DeviceGroup, FtpLog
 from app.schemas import FtpLogResponse, LogListResponse
 
 router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
@@ -21,18 +21,24 @@ router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
 DEFAULT_RANGE_DAYS = 30
 
 
-def _build_query(
+def _apply_filters(
+    q,
     db: Session,
+    *,
     device_id: Optional[int],
+    group_id: Optional[int],
     username: Optional[str],
     action: Optional[str],
     log_status: Optional[str],
     start_time: Optional[datetime],
     end_time: Optional[datetime],
 ):
-    q = db.query(FtpLog)
     if device_id:
         q = q.filter(FtpLog.device_id == device_id)
+    if group_id:
+        # 그룹에 속한 장비들의 로그 (단일 장비가 아닌 그룹 단위 조회)
+        members = db.query(DeviceGroup.device_id).filter(DeviceGroup.group_id == group_id)
+        q = q.filter(FtpLog.device_id.in_(members))
     if username:
         q = q.filter(FtpLog.username.ilike(f"%{username}%"))
     if action:
@@ -49,6 +55,7 @@ def _build_query(
 @router.get("", response_model=LogListResponse)
 def query_logs(
     device_id: Optional[int] = None,
+    group_id: Optional[int] = None,
     username: Optional[str] = None,
     action: Optional[str] = None,
     log_status: Optional[str] = Query(default=None, alias="status"),
@@ -63,7 +70,11 @@ def query_logs(
     if start_time is None and end_time is None:
         start_time = datetime.now(timezone.utc) - timedelta(days=DEFAULT_RANGE_DAYS)
 
-    q = _build_query(db, device_id, username, action, log_status, start_time, end_time)
+    q = _apply_filters(
+        db.query(FtpLog), db,
+        device_id=device_id, group_id=group_id, username=username, action=action,
+        log_status=log_status, start_time=start_time, end_time=end_time,
+    )
     total = q.with_entities(func.count()).scalar()
     items = (
         q.join(Device, FtpLog.device_id == Device.id)
@@ -85,6 +96,7 @@ def query_logs(
 @router.get("/export")
 def export_csv(
     device_id: Optional[int] = None,
+    group_id: Optional[int] = None,
     username: Optional[str] = None,
     action: Optional[str] = None,
     log_status: Optional[str] = Query(default=None, alias="status"),
@@ -113,18 +125,11 @@ def export_csv(
             )
             .join(Device, FtpLog.device_id == Device.id)
         )
-        if device_id:
-            q = q.filter(FtpLog.device_id == device_id)
-        if username:
-            q = q.filter(FtpLog.username.ilike(f"%{username}%"))
-        if action:
-            q = q.filter(FtpLog.action == action)
-        if log_status:
-            q = q.filter(FtpLog.status == log_status)
-        if start_time:
-            q = q.filter(FtpLog.log_time >= start_time)
-        if end_time:
-            q = q.filter(FtpLog.log_time <= end_time)
+        q = _apply_filters(
+            q, db,
+            device_id=device_id, group_id=group_id, username=username, action=action,
+            log_status=log_status, start_time=start_time, end_time=end_time,
+        )
 
         for row in q.order_by(FtpLog.log_time.desc()).yield_per(1000):
             buf.seek(0)
@@ -154,6 +159,7 @@ def export_csv(
 @router.get("/export/xlsx")
 def export_xlsx(
     device_id: Optional[int] = None,
+    group_id: Optional[int] = None,
     username: Optional[str] = None,
     action: Optional[str] = None,
     log_status: Optional[str] = Query(default=None, alias="status"),
@@ -186,18 +192,11 @@ def export_xlsx(
         )
         .join(Device, FtpLog.device_id == Device.id)
     )
-    if device_id:
-        q = q.filter(FtpLog.device_id == device_id)
-    if username:
-        q = q.filter(FtpLog.username.ilike(f"%{username}%"))
-    if action:
-        q = q.filter(FtpLog.action == action)
-    if log_status:
-        q = q.filter(FtpLog.status == log_status)
-    if start_time:
-        q = q.filter(FtpLog.log_time >= start_time)
-    if end_time:
-        q = q.filter(FtpLog.log_time <= end_time)
+    q = _apply_filters(
+        q, db,
+        device_id=device_id, group_id=group_id, username=username, action=action,
+        log_status=log_status, start_time=start_time, end_time=end_time,
+    )
 
     for row in q.order_by(FtpLog.log_time.desc()).yield_per(1000):
         # Excel은 timezone-aware datetime을 지원하지 않으므로 UTC naive로 변환
