@@ -7,7 +7,7 @@ import logging
 import re
 import smtplib
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from html import escape as _esc
 
@@ -41,15 +41,28 @@ def _fmt_metric(metric: str, value: float) -> str:
     return f"{value * 100:.1f}%"
 
 
+_KST = timedelta(hours=9)
+
+
+def _alert_label(alert: dict) -> str:
+    """[텔코]그룹명 형식. 텔코·그룹 없으면 device_hostname으로 폴백."""
+    telco = alert.get("telco") or ""
+    group = alert.get("group_name") or ""
+    if group:
+        return f"[{telco}]{group}" if telco else group
+    return alert.get("device_hostname", "unknown")
+
+
 def build_summary(alert: dict) -> str:
     sev = _SEVERITY_LABEL.get(alert["severity"], alert["severity"])
     metric = _METRIC_LABEL.get(alert["metric"], alert["metric"])
     base = alert.get("baseline")
     base_str = f" (평소 {_fmt_metric(alert['metric'], base)})" if base is not None else ""
+    kst = alert["bucket"] + _KST
     return (
-        f"[{sev}] {alert['device_hostname']} — {metric} "
+        f"[{sev}] {_alert_label(alert)} — {metric} "
         f"{_fmt_metric(alert['metric'], alert['value'])}{base_str} "
-        f"@ {alert['bucket']:%Y-%m-%d %H:%M} UTC"
+        f"@ {kst:%Y-%m-%d %H:%M} KST"
     )
 
 
@@ -117,20 +130,37 @@ def _send_email(alerts: list[dict], cfg: dict) -> bool:
     return True
 
 
+def _slack_alert_block(a: dict) -> dict:
+    sev = _SEVERITY_LABEL.get(a["severity"], a["severity"])
+    icon = ":rotating_light:" if a["severity"] == "critical" else ":warning:"
+    metric = _METRIC_LABEL.get(a["metric"], a["metric"])
+    base = a.get("baseline")
+    base_str = f"  |  평소 {_fmt_metric(a['metric'], base)}" if base is not None else ""
+    kst = a["bucket"] + _KST
+    label = _alert_label(a)
+    text = (
+        f"{icon} *[{sev}] {label}*\n"
+        f"> *지표:* {metric}  |  *현재:* {_fmt_metric(a['metric'], a['value'])}{base_str}\n"
+        f"> *시각:* {kst:%Y-%m-%d %H:%M} KST"
+    )
+    return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+
+
 def _slack_payload(alerts: list[dict]) -> dict:
-    """Slack Incoming Webhook 포맷 (blocks API)."""
+    """Slack Incoming Webhook 포맷 (Block Kit)."""
     is_test = any(a.get("test") for a in alerts)
     crit = sum(1 for a in alerts if a["severity"] == "critical")
     prefix = "[테스트] " if is_test else ""
-    header = f"{prefix}*[SolTrace] 서비스 영향 감지 {len(alerts)}건*" + (f"  _(심각 {crit})_" if crit else "")
-    lines = [f"• {build_summary(a)}" for a in alerts]
-    return {
-        "text": header,
-        "blocks": [
-            {"type": "section", "text": {"type": "mrkdwn", "text": header}},
-            {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}},
-        ],
-    }
+    title = f"{prefix}*[SolTrace] 서비스 영향 감지 {len(alerts)}건*"
+    if crit:
+        title += f"  _(심각 {crit}건)_"
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": f"{'[테스트] ' if is_test else ''}SolTrace 서비스 알림"}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": title}},
+        {"type": "divider"},
+        *[_slack_alert_block(a) for a in alerts],
+    ]
+    return {"text": title, "blocks": blocks}
 
 
 def _generic_payload(alerts: list[dict]) -> dict:
@@ -260,6 +290,30 @@ _CHANNEL_MAP = {
 }
 
 
+def _enrich_alerts(alerts: list[dict], db) -> list[dict]:
+    """device_id → (group_name, telco) 일괄 조회 후 alert에 주입. 이미 있으면 스킵."""
+    ids = list({a["device_id"] for a in alerts if a.get("device_id") is not None})
+    if not ids:
+        return alerts
+    rows = db.execute(
+        text(
+            "SELECT DISTINCT ON (dg.device_id) dg.device_id, g.name, g.telco "
+            "FROM device_groups dg JOIN groups g ON g.id = dg.group_id "
+            "WHERE dg.device_id = ANY(:ids) "
+            "ORDER BY dg.device_id, (g.telco IS NOT NULL) DESC, g.id"
+        ),
+        {"ids": ids},
+    ).fetchall()
+    info = {r[0]: (r[1], r[2]) for r in rows}
+    enriched = []
+    for a in alerts:
+        if "group_name" not in a:
+            gname, telco = info.get(a.get("device_id"), (None, None))
+            a = {**a, "group_name": gname, "telco": telco}
+        enriched.append(a)
+    return enriched
+
+
 def dispatch(alerts: list[dict], db, channel: str = "all") -> bool:
     """메일·웹훅·HMS 발송. channel='all'이면 설정된 모든 채널, 아니면 지정 채널만.
     notify_muted=true 이면 테스트 발송이 아닌 한 모두 건너뜀."""
@@ -269,12 +323,12 @@ def dispatch(alerts: list[dict], db, channel: str = "all") -> bool:
     if not is_test and is_muted(db):
         log.info("Notifications are muted — skipping dispatch")
         return False
+    alerts = _enrich_alerts(alerts, db)
     cfg = _load_cfg(db)
     fns = list(_CHANNEL_MAP.values()) if channel == "all" else [_CHANNEL_MAP[channel]] if channel in _CHANNEL_MAP else []
     sent = False
     for fn in fns:
         try:
-            # HMS는 텔코 조회를 위해 db 전달
             kwargs = {"db": db} if fn is _send_hms else {}
             if fn(alerts, cfg, **kwargs):
                 sent = True
