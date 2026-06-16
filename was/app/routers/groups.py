@@ -29,7 +29,10 @@ def list_groups(db: Session = Depends(get_db), _: str = Depends(require_admin)):
 def create_group(body: GroupCreate, db: Session = Depends(get_db), _: str = Depends(require_admin)):
     if db.query(Group).filter(Group.name == body.name).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
-    group = Group(**body.model_dump())
+    data = body.model_dump()
+    if data.get("group_type") != "telco":
+        data["telco"] = None      # telco 유형이 아니면 통신사 비움
+    group = Group(**data)
     db.add(group)
     db.commit()
     db.refresh(group)
@@ -51,6 +54,8 @@ def update_group(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(group, field, value)
+    if group.group_type != "telco":
+        group.telco = None        # telco 유형이 아니면 통신사 비움
     db.commit()
     db.refresh(group)
     return _to_response(group, db)

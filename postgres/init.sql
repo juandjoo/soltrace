@@ -55,6 +55,16 @@ CREATE TABLE IF NOT EXISTS groups (
     name VARCHAR(100) NOT NULL UNIQUE,
     group_type VARCHAR(50) NOT NULL CHECK (group_type IN ('telco', 'service', 'other')),
     description TEXT,
+    telco VARCHAR(100),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+-- 기존 DB 마이그레이션 (CREATE TABLE IF NOT EXISTS 로는 컬럼이 추가되지 않음)
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS telco VARCHAR(100);
+
+-- 통신사 목록
+CREATE TABLE IF NOT EXISTS telcos (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

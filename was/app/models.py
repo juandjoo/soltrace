@@ -14,12 +14,21 @@ def _now():
 
 
 class AppConfig(Base):
-    """전역 설정 키-값 저장소 (관리자 비밀번호 해시, 텔코 정보 등)."""
+    """전역 설정 키-값 저장소 (관리자 비밀번호 해시 등)."""
     __tablename__ = "app_config"
 
     key = Column(String(64), primary_key=True)
     value = Column(Text)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class Telco(Base):
+    """통신사 목록 (그룹의 telco 유형에서 선택)."""
+    __tablename__ = "telcos"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_now)
 
 
 class Device(Base):
@@ -62,6 +71,7 @@ class Group(Base):
     name = Column(String(100), unique=True, nullable=False)
     group_type = Column(String(50), nullable=False)
     description = Column(Text)
+    telco = Column(String(100))  # group_type='telco' 일 때 통신사명
     created_at = Column(DateTime(timezone=True), default=_now)
 
     devices = relationship("Device", secondary="device_groups", back_populates="groups")

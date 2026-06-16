@@ -6,15 +6,10 @@ from sqlalchemy.orm import Session
 from app.config import settings as cfg
 from app.database import get_db
 from app.deps import require_admin
-from app.schemas import (
-    PasswordChangeRequest, SettingsResponse, TelcoInfo,
-    UpdateTriggerResponse, VersionInfo,
-)
-from app.security import get_config, set_config, verify_admin_password, set_admin_password
+from app.schemas import PasswordChangeRequest, UpdateTriggerResponse, VersionInfo
+from app.security import verify_admin_password, set_admin_password
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
-
-TELCO_CARRIER_KEY = "telco_carrier"
 
 
 def _git(*args: str, timeout: int = 10) -> str | None:
@@ -46,16 +41,9 @@ def _version_info(check_remote: bool = False) -> VersionInfo:
     return info
 
 
-@router.get("", response_model=SettingsResponse)
-def get_settings(db: Session = Depends(get_db), _: str = Depends(require_admin)):
-    carrier = get_config(db, TELCO_CARRIER_KEY, "") or ""
-    return SettingsResponse(telco=TelcoInfo(carrier_name=carrier), version=_version_info())
-
-
-@router.put("/telco", response_model=TelcoInfo)
-def update_telco(body: TelcoInfo, db: Session = Depends(get_db), _: str = Depends(require_admin)):
-    set_config(db, TELCO_CARRIER_KEY, body.carrier_name.strip())
-    return TelcoInfo(carrier_name=body.carrier_name.strip())
+@router.get("/version", response_model=VersionInfo)
+def get_version(_: str = Depends(require_admin)):
+    return _version_info()
 
 
 @router.post("/password", status_code=status.HTTP_204_NO_CONTENT)

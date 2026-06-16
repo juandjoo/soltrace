@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from app.database import SessionLocal, engine
 from app.models import Base
-from app.routers import auth, dashboard, devices, groups, ingest, logs, settings
+from app.routers import auth, dashboard, devices, groups, ingest, logs, settings, telcos
 from app import write_buffer as wb
 from app import service_monitor as sm
 
@@ -72,6 +72,7 @@ app.include_router(groups.router)
 app.include_router(logs.router)
 app.include_router(dashboard.router)
 app.include_router(settings.router)
+app.include_router(telcos.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

@@ -246,7 +246,9 @@ body { background:#f5f7fa; font-size:14px; }
 
         <!-- 좌측 세로 탭 -->
         <ul class="nav settings-vnav flex-column" style="min-width:170px">
-          <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('general')"><i class="bi bi-sliders2 me-2"></i>일반</a></li>
+          <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-broadcast-pin me-2"></i>텔코 정보</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('password')"><i class="bi bi-key me-2"></i>비밀번호</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack me-2"></i>장비 관리</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3 me-2"></i>그룹 관리</a></li>
         </ul>
@@ -254,60 +256,62 @@ body { background:#f5f7fa; font-size:14px; }
         <!-- 우측 내용 -->
         <div class="flex-grow-1" style="min-width:0">
 
-          <!-- 일반 -->
-          <div id="settings-general" class="settings-pane">
-            <div class="row g-4" style="max-width:760px">
-              <div class="col-12">
-                <div class="card">
-                  <div class="card-header bg-white fw-semibold"><i class="bi bi-broadcast-pin me-1"></i>텔코 정보</div>
-                  <div class="card-body">
-                    <div id="telcoMsg" class="alert d-none py-2 small"></div>
-                    <div class="mb-3">
-                      <label class="form-label small fw-semibold">통신사명</label>
-                      <input class="form-control form-control-sm" id="telcoCarrier" placeholder="예: KT / SKB / LGU+">
-                    </div>
-                    <button class="btn btn-sm btn-primary" onclick="saveTelco()">저장</button>
-                  </div>
+          <!-- 텔코 정보 -->
+          <div id="settings-telco" class="settings-pane" style="max-width:620px">
+            <div class="card">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-broadcast-pin me-1"></i>통신사 목록</div>
+              <div class="card-body">
+                <div id="telcoMsg" class="alert d-none py-2 small"></div>
+                <div class="input-group input-group-sm mb-3">
+                  <input class="form-control" id="telcoName" placeholder="통신사명 입력 (예: KT)" onkeydown="if(event.key==='Enter')addTelco()">
+                  <button class="btn btn-primary" onclick="addTelco()"><i class="bi bi-plus-lg me-1"></i>추가</button>
                 </div>
+                <ul class="list-group list-group-flush" id="telcoList">
+                  <li class="list-group-item text-muted small">불러오는 중…</li>
+                </ul>
               </div>
-              <div class="col-12">
-                <div class="card">
-                  <div class="card-header bg-white fw-semibold"><i class="bi bi-key me-1"></i>비밀번호 변경</div>
-                  <div class="card-body">
-                    <div id="pwMsg" class="alert d-none py-2 small"></div>
-                    <div class="mb-3">
-                      <label class="form-label small fw-semibold">현재 비밀번호</label>
-                      <input type="password" class="form-control form-control-sm" id="pwCurrent">
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label small fw-semibold">새 비밀번호 (8자 이상)</label>
-                      <input type="password" class="form-control form-control-sm" id="pwNew">
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label small fw-semibold">새 비밀번호 확인</label>
-                      <input type="password" class="form-control form-control-sm" id="pwConfirm">
-                    </div>
-                    <button class="btn btn-sm btn-primary" onclick="changePassword()">변경</button>
-                  </div>
+            </div>
+          </div>
+
+          <!-- 비밀번호 -->
+          <div id="settings-password" class="settings-pane d-none" style="max-width:620px">
+            <div class="card">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-key me-1"></i>비밀번호 변경</div>
+              <div class="card-body">
+                <div id="pwMsg" class="alert d-none py-2 small"></div>
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">현재 비밀번호</label>
+                  <input type="password" class="form-control form-control-sm" id="pwCurrent">
                 </div>
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">새 비밀번호 (8자 이상)</label>
+                  <input type="password" class="form-control form-control-sm" id="pwNew">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">새 비밀번호 확인</label>
+                  <input type="password" class="form-control form-control-sm" id="pwConfirm">
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="changePassword()">변경</button>
               </div>
-              <div class="col-12">
-                <div class="card">
-                  <div class="card-header bg-white fw-semibold"><i class="bi bi-arrow-repeat me-1"></i>시스템 업데이트 (git)</div>
-                  <div class="card-body">
-                    <div id="updMsg" class="alert d-none py-2 small"></div>
-                    <dl class="row small mb-3">
-                      <dt class="col-sm-3 text-muted">브랜치</dt><dd class="col-sm-9" id="verBranch">-</dd>
-                      <dt class="col-sm-3 text-muted">현재 커밋</dt><dd class="col-sm-9" id="verCommit">-</dd>
-                      <dt class="col-sm-3 text-muted">커밋 일시</dt><dd class="col-sm-9" id="verDate">-</dd>
-                      <dt class="col-sm-3 text-muted">메시지</dt><dd class="col-sm-9" id="verSubject">-</dd>
-                      <dt class="col-sm-3 text-muted">상태</dt><dd class="col-sm-9" id="verStatus">-</dd>
-                    </dl>
-                    <button class="btn btn-sm btn-outline-secondary" id="checkUpdBtn" onclick="checkUpdate()">업데이트 확인</button>
-                    <button class="btn btn-sm btn-warning" id="runUpdBtn" onclick="runUpdate()"><i class="bi bi-download me-1"></i>지금 업데이트</button>
-                    <div class="form-text mt-2">업데이트 시 origin/main을 받아 재배포하며, 서비스가 1~2분간 재시작됩니다.</div>
-                  </div>
-                </div>
+            </div>
+          </div>
+
+          <!-- 시스템 업데이트 -->
+          <div id="settings-update" class="settings-pane d-none" style="max-width:620px">
+            <div class="card">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-arrow-repeat me-1"></i>시스템 업데이트 (git)</div>
+              <div class="card-body">
+                <div id="updMsg" class="alert d-none py-2 small"></div>
+                <dl class="row small mb-3">
+                  <dt class="col-sm-3 text-muted">브랜치</dt><dd class="col-sm-9" id="verBranch">-</dd>
+                  <dt class="col-sm-3 text-muted">현재 커밋</dt><dd class="col-sm-9" id="verCommit">-</dd>
+                  <dt class="col-sm-3 text-muted">커밋 일시</dt><dd class="col-sm-9" id="verDate">-</dd>
+                  <dt class="col-sm-3 text-muted">메시지</dt><dd class="col-sm-9" id="verSubject">-</dd>
+                  <dt class="col-sm-3 text-muted">상태</dt><dd class="col-sm-9" id="verStatus">-</dd>
+                </dl>
+                <button class="btn btn-sm btn-outline-secondary" id="checkUpdBtn" onclick="checkUpdate()">업데이트 확인</button>
+                <button class="btn btn-sm btn-warning" id="runUpdBtn" onclick="runUpdate()"><i class="bi bi-download me-1"></i>지금 업데이트</button>
+                <div class="form-text mt-2">업데이트 시 origin/main을 받아 재배포하며, 서비스가 1~2분간 재시작됩니다.</div>
               </div>
             </div>
           </div>
@@ -378,11 +382,16 @@ body { background:#f5f7fa; font-size:14px; }
         </div>
         <div class="mb-3">
           <label class="form-label small fw-semibold">유형 *</label>
-          <select class="form-select form-select-sm" id="groupType">
+          <select class="form-select form-select-sm" id="groupType" onchange="toggleGroupTelco()">
             <option value="telco">통신사 (Telco)</option>
             <option value="service">서비스 (Service)</option>
             <option value="other">기타</option>
           </select>
+        </div>
+        <div class="mb-3" id="groupTelcoWrap">
+          <label class="form-label small fw-semibold">통신사</label>
+          <select class="form-select form-select-sm" id="groupTelco"></select>
+          <div class="form-text">통신사 목록은 설정 &gt; 텔코 정보에서 추가합니다.</div>
         </div>
         <div class="mb-0">
           <label class="form-label small fw-semibold">설명</label>
@@ -483,7 +492,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
 });
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-let currentSettingsTab = 'general';
+let currentSettingsTab = 'telco';
 
 function nav(page) {
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
@@ -504,7 +513,8 @@ function settingsTab(tab) {
   document.querySelectorAll('.settings-vnav .nav-link').forEach(el => el.classList.remove('active'));
   const link = document.querySelector(`.settings-vnav [onclick="settingsTab('${tab}')"]`);
   if (link) link.classList.add('active');
-  if (tab === 'general') loadSettings();
+  if (tab === 'telco') loadTelcos();
+  if (tab === 'update') loadVersion();
   if (tab === 'devices') loadDevices();
   if (tab === 'groups') loadGroups();
 }
@@ -536,20 +546,50 @@ function renderVersion(v) {
   }
 }
 
-async function loadSettings() {
+async function loadVersion() {
   try {
-    const s = await api('GET', '/settings');
-    if (!s) return;
-    document.getElementById('telcoCarrier').value = s.telco.carrier_name || '';
-    renderVersion(s.version);
+    renderVersion(await api('GET', '/settings/version'));
   } catch (e) { settingsMsg('updMsg', 'danger', e.message); }
 }
 
-async function saveTelco() {
-  const carrier_name = document.getElementById('telcoCarrier').value.trim();
+// ── 텔코 목록 ─────────────────────────────────────────────────────────────────
+let allTelcos = [];
+async function getTelcos() {
+  allTelcos = (await api('GET', '/telcos')) || [];
+  return allTelcos;
+}
+
+async function loadTelcos() {
+  const list = document.getElementById('telcoList');
   try {
-    await api('PUT', '/settings/telco', {carrier_name});
-    settingsMsg('telcoMsg', 'success', '저장되었습니다.');
+    const telcos = await getTelcos();
+    list.innerHTML = telcos.length
+      ? telcos.map(t => `
+          <li class="list-group-item d-flex align-items-center px-0">
+            <span>${t.name}</span>
+            <button class="btn btn-xs btn-outline-danger ms-auto" onclick="deleteTelco(${t.id})"><i class="bi bi-trash"></i></button>
+          </li>`).join('')
+      : '<li class="list-group-item text-muted small px-0">등록된 통신사가 없습니다.</li>';
+  } catch (e) { settingsMsg('telcoMsg', 'danger', e.message); }
+}
+
+async function addTelco() {
+  const input = document.getElementById('telcoName');
+  const name = input.value.trim();
+  if (!name) return;
+  try {
+    await api('POST', '/telcos', {name});
+    input.value = '';
+    settingsMsg('telcoMsg', 'success', `'${name}' 추가됨`);
+    loadTelcos();
+  } catch (e) { settingsMsg('telcoMsg', 'danger', e.message); }
+}
+
+async function deleteTelco(id) {
+  if (!confirm('이 통신사를 삭제하시겠습니까?')) return;
+  try {
+    await api('DELETE', `/telcos/${id}`);
+    loadTelcos();
   } catch (e) { settingsMsg('telcoMsg', 'danger', e.message); }
 }
 
@@ -931,12 +971,13 @@ async function loadGroups() {
             <div class="fw-semibold">${g.name}</div>
             <div class="mt-1">
               <span class="badge bg-${g.group_type==='telco'?'primary':g.group_type==='service'?'success':'secondary'} me-1">${g.group_type}</span>
+              ${g.telco ? `<span class="badge bg-info text-dark me-1"><i class="bi bi-broadcast-pin me-1"></i>${g.telco}</span>` : ''}
               <span class="badge bg-light text-dark border">${g.device_count}대</span>
             </div>
             ${g.description ? `<div class="text-muted small mt-1">${g.description}</div>` : ''}
           </div>
           <div class="ms-2">
-            <button class="btn btn-xs btn-outline-primary me-1" onclick="openGroupModal(${g.id},'${g.name}','${g.group_type}','${g.description||''}')">수정</button>
+            <button class="btn btn-xs btn-outline-primary me-1" onclick="openGroupModal(${g.id},'${g.name}','${g.group_type}','${g.description||''}','${g.telco||''}')">수정</button>
             <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
           </div>
         </div>
@@ -945,21 +986,38 @@ async function loadGroups() {
   `).join('');
 }
 
-function openGroupModal(id, name, type, desc) {
+function populateGroupTelco(selected) {
+  const sel = document.getElementById('groupTelco');
+  const opts = ['<option value="">(선택 안 함)</option>']
+    .concat(allTelcos.map(t => `<option value="${t.name}"${t.name===selected?' selected':''}>${t.name}</option>`));
+  sel.innerHTML = opts.join('');
+}
+
+function toggleGroupTelco() {
+  const isTelco = document.getElementById('groupType').value === 'telco';
+  document.getElementById('groupTelcoWrap').style.display = isTelco ? '' : 'none';
+}
+
+async function openGroupModal(id, name, type, desc, telco) {
   document.getElementById('groupId').value = id || '';
   document.getElementById('groupName').value = name || '';
   document.getElementById('groupType').value = type || 'telco';
   document.getElementById('groupDesc').value = desc || '';
+  await getTelcos();
+  populateGroupTelco(telco || '');
+  toggleGroupTelco();
   document.getElementById('groupModalTitle').textContent = id ? '그룹 수정' : '그룹 추가';
   new bootstrap.Modal(document.getElementById('groupModal')).show();
 }
 
 async function saveGroup() {
   const id = document.getElementById('groupId').value;
+  const type = document.getElementById('groupType').value;
   const body = {
     name: document.getElementById('groupName').value.trim(),
-    group_type: document.getElementById('groupType').value,
+    group_type: type,
     description: document.getElementById('groupDesc').value.trim() || null,
+    telco: type === 'telco' ? (document.getElementById('groupTelco').value || null) : null,
   };
   if (!body.name) return alert('그룹명을 입력하세요.');
   try {
