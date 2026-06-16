@@ -73,8 +73,6 @@ def _load_cfg(db) -> dict:
         "email_to":      _g("notify_email_to",      settings.alert_email_to),
         "webhook_url":   _g("notify_webhook_url",   settings.alert_webhook_url),
         "hms_url":       _g("notify_hms_url",       settings.alert_hms_url),
-        "hms_telco":     settings.alert_hms_telco,
-        "hms_svc":       settings.alert_hms_svc,
     }
 
 
@@ -176,29 +174,57 @@ def _build_hms_body(alerts: list[dict]) -> str:
     )
 
 
-def _send_hms(alerts: list[dict], cfg: dict) -> bool:
-    if not cfg["hms_url"]:
-        return False
+def _device_telco(db, device_id) -> str | None:
+    """device_id → 그룹의 telco 조회. 그룹이 없거나 telco 미지정이면 None."""
+    if not device_id:
+        return None
+    row = db.execute(
+        text(
+            "SELECT g.telco FROM groups g "
+            "JOIN device_groups dg ON dg.group_id = g.id "
+            "WHERE dg.device_id = :did AND g.telco IS NOT NULL AND g.telco <> '' "
+            "LIMIT 1"
+        ),
+        {"did": device_id},
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _hms_post(url: str, telco: str, alerts: list[dict]) -> None:
     is_test = any(a.get("test") for a in alerts)
     prefix = "[테스트] " if is_test else ""
     crit = sum(1 for a in alerts if a["severity"] == "critical")
     subject = f"{prefix}[SolTrace] 서비스 영향 감지 {len(alerts)}건" + (f" (심각 {crit})" if crit else "")
     payload = {
-        "telco_name": cfg["hms_telco"] or "SolTrace",
-        "svc_list": [{"svc_name": cfg["hms_svc"] or "soltrace", "vol_list": None}],
+        "telco_name": telco,
+        "svc_list": [{"svc_name": "soltrace", "vol_list": None}],
         "alert_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "prop": {"subject": subject, "body": _build_hms_body(alerts)},
     }
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
-        cfg["hms_url"], data=data,
+        url, data=data,
         headers={"Content-Type": "application/json; charset=utf-8", "Accept": "application/json"},
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
         resp.read()
-    log.info("Alert HMS sent: %d alert(s)", len(alerts))
-    return True
+
+
+def _send_hms(alerts: list[dict], cfg: dict, db=None) -> bool:
+    if not cfg["hms_url"]:
+        return False
+    # 텔코별로 묶어 각각 발송 — telco 미지정 장비는 "SolTrace" 그룹으로 처리
+    by_telco: dict[str, list] = {}
+    for a in alerts:
+        telco = (_device_telco(db, a.get("device_id")) if db else None) or "SolTrace"
+        by_telco.setdefault(telco, []).append(a)
+    sent = False
+    for telco, group in by_telco.items():
+        _hms_post(cfg["hms_url"], telco, group)
+        log.info("Alert HMS sent: %d alert(s) → telco=%s", len(group), telco)
+        sent = True
+    return sent
 
 
 _CHANNEL_MAP = {
@@ -222,7 +248,9 @@ def dispatch(alerts: list[dict], db, channel: str = "all") -> bool:
     sent = False
     for fn in fns:
         try:
-            if fn(alerts, cfg):
+            # HMS는 텔코 조회를 위해 db 전달
+            kwargs = {"db": db} if fn is _send_hms else {}
+            if fn(alerts, cfg, **kwargs):
                 sent = True
         except Exception as e:
             log.error("Alert dispatch via %s failed: %s", fn.__name__, e)

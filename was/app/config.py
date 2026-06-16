@@ -39,8 +39,6 @@ class Settings(BaseSettings):
     alert_email_to: str = ""               # 쉼표 구분 수신자
     alert_webhook_url: str = ""            # POST(JSON) 발송 대상
     alert_hms_url: str = ""               # HMS 메일 게이트웨이 URL
-    alert_hms_telco: str = ""             # HMS telco_name
-    alert_hms_svc: str = ""              # HMS svc_list[0].svc_name
 
     @property
     def alert_email_recipients(self) -> list[str]:
