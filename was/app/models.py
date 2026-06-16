@@ -70,7 +70,9 @@ class Group(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(100), unique=True, nullable=False)
     description = Column(Text)
-    telco = Column(String(100))  # 소속 통신사 (telcos 목록에서 선택)
+    telco = Column(String(100))
+    customer = Column(String(200))
+    upload_domains = Column(Text)
     created_at = Column(DateTime(timezone=True), default=_now)
 
     devices = relationship("Device", secondary="device_groups", back_populates="groups")

@@ -248,10 +248,10 @@ body { background:#f5f7fa; font-size:14px; }
     <!-- Settings -->
     <div id="page-settings" class="page">
       <h5 class="mb-3 fw-bold">설정</h5>
-      <div class="d-flex gap-4 flex-wrap">
+      <div class="d-flex gap-4" style="overflow-x:auto; align-items:flex-start">
 
         <!-- 좌측 세로 탭 -->
-        <ul class="nav settings-vnav flex-column" style="min-width:170px">
+        <ul class="nav settings-vnav flex-column flex-shrink-0" style="min-width:170px">
           <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-broadcast-pin me-2"></i>텔코 정보</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('password')"><i class="bi bi-key me-2"></i>비밀번호</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
@@ -391,8 +391,16 @@ body { background:#f5f7fa; font-size:14px; }
           <select class="form-select form-select-sm" id="groupTelco"></select>
           <div class="form-text">통신사 목록은 설정 &gt; 텔코 정보에서 추가합니다.</div>
         </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">고객사</label>
+          <input class="form-control form-control-sm" id="groupCustomer" placeholder="예) LG CNS, SK브로드밴드">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">업로드 도메인</label>
+          <textarea class="form-control form-control-sm" id="groupUploadDomains" rows="3" placeholder="한 줄에 하나씩 입력&#10;예) vivasambackup-ftp.lgucdn.com&#10;    cjclip-ftp.lgucdn.com"></textarea>
+        </div>
         <div class="mb-0">
-          <label class="form-label small fw-semibold">설명</label>
+          <label class="form-label small fw-semibold">비고</label>
           <textarea class="form-control form-control-sm" id="groupDesc" rows="2"></textarea>
         </div>
       </div>
@@ -1008,10 +1016,12 @@ async function loadGroups() {
               ${g.telco ? `<span class="badge bg-info text-dark me-1"><i class="bi bi-broadcast-pin me-1"></i>${g.telco}</span>` : '<span class="badge bg-light text-dark border me-1">통신사 미지정</span>'}
               <span class="badge bg-light text-dark border">${g.device_count}대</span>
             </div>
+            ${g.customer ? `<div class="small mt-1"><i class="bi bi-building me-1 text-muted"></i>${g.customer}</div>` : ''}
+            ${g.upload_domains ? `<div class="text-muted small mt-1" style="white-space:pre-wrap">${g.upload_domains}</div>` : ''}
             ${g.description ? `<div class="text-muted small mt-1">${g.description}</div>` : ''}
           </div>
           <div class="ms-2 d-flex gap-1 flex-shrink-0">
-            <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id},${JSON.stringify(g.name)},${JSON.stringify(g.description||'')},${JSON.stringify(g.telco||'')})">수정</button>
+            <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
             <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
           </div>
         </div>
@@ -1027,12 +1037,15 @@ function populateGroupTelco(selected) {
   sel.innerHTML = opts.join('');
 }
 
-async function openGroupModal(id, name, desc, telco) {
+async function openGroupModal(id) {
+  const g = id ? allGroups.find(x => x.id === id) : null;
   document.getElementById('groupId').value = id || '';
-  document.getElementById('groupName').value = name || '';
-  document.getElementById('groupDesc').value = desc || '';
+  document.getElementById('groupName').value = g?.name || '';
+  document.getElementById('groupDesc').value = g?.description || '';
+  document.getElementById('groupCustomer').value = g?.customer || '';
+  document.getElementById('groupUploadDomains').value = g?.upload_domains || '';
   await getTelcos();
-  populateGroupTelco(telco || '');
+  populateGroupTelco(g?.telco || '');
   document.getElementById('groupModalTitle').textContent = id ? '그룹 수정' : '그룹 추가';
   new bootstrap.Modal(document.getElementById('groupModal')).show();
 }
@@ -1043,6 +1056,8 @@ async function saveGroup() {
     name: document.getElementById('groupName').value.trim(),
     description: document.getElementById('groupDesc').value.trim() || null,
     telco: document.getElementById('groupTelco').value || null,
+    customer: document.getElementById('groupCustomer').value.trim() || null,
+    upload_domains: document.getElementById('groupUploadDomains').value.trim() || null,
   };
   if (!body.name) return alert('그룹명을 입력하세요.');
   try {
