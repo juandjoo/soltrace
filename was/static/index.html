@@ -381,14 +381,6 @@ body { background:#f5f7fa; font-size:14px; }
           <input class="form-control form-control-sm" id="groupName">
         </div>
         <div class="mb-3">
-          <label class="form-label small fw-semibold">유형 *</label>
-          <select class="form-select form-select-sm" id="groupType" onchange="toggleGroupTelco()">
-            <option value="telco">통신사 (Telco)</option>
-            <option value="service">서비스 (Service)</option>
-            <option value="other">기타</option>
-          </select>
-        </div>
-        <div class="mb-3" id="groupTelcoWrap">
           <label class="form-label small fw-semibold">통신사</label>
           <select class="form-select form-select-sm" id="groupTelco"></select>
           <div class="form-text">통신사 목록은 설정 &gt; 텔코 정보에서 추가합니다.</div>
@@ -937,7 +929,7 @@ async function openDeviceGroups(deviceId, hostname, currentGroupIds) {
       <input class="form-check-input" type="checkbox" id="dgg${g.id}" value="${g.id}"
         ${currentGroupIds.includes(g.id)?'checked':''}>
       <label class="form-check-label" for="dgg${g.id}">
-        <span class="badge bg-${g.group_type==='telco'?'primary':'success'} me-1">${g.group_type}</span>
+        ${g.telco ? `<span class="badge bg-info text-dark me-1">${g.telco}</span>` : ''}
         ${g.name}
       </label>
     </div>
@@ -970,14 +962,13 @@ async function loadGroups() {
           <div class="flex-grow-1">
             <div class="fw-semibold">${g.name}</div>
             <div class="mt-1">
-              <span class="badge bg-${g.group_type==='telco'?'primary':g.group_type==='service'?'success':'secondary'} me-1">${g.group_type}</span>
-              ${g.telco ? `<span class="badge bg-info text-dark me-1"><i class="bi bi-broadcast-pin me-1"></i>${g.telco}</span>` : ''}
+              ${g.telco ? `<span class="badge bg-info text-dark me-1"><i class="bi bi-broadcast-pin me-1"></i>${g.telco}</span>` : '<span class="badge bg-light text-dark border me-1">통신사 미지정</span>'}
               <span class="badge bg-light text-dark border">${g.device_count}대</span>
             </div>
             ${g.description ? `<div class="text-muted small mt-1">${g.description}</div>` : ''}
           </div>
           <div class="ms-2">
-            <button class="btn btn-xs btn-outline-primary me-1" onclick="openGroupModal(${g.id},'${g.name}','${g.group_type}','${g.description||''}','${g.telco||''}')">수정</button>
+            <button class="btn btn-xs btn-outline-primary me-1" onclick="openGroupModal(${g.id},'${g.name}','${g.description||''}','${g.telco||''}')">수정</button>
             <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
           </div>
         </div>
@@ -988,36 +979,27 @@ async function loadGroups() {
 
 function populateGroupTelco(selected) {
   const sel = document.getElementById('groupTelco');
-  const opts = ['<option value="">(선택 안 함)</option>']
+  const opts = ['<option value="">(통신사 미지정)</option>']
     .concat(allTelcos.map(t => `<option value="${t.name}"${t.name===selected?' selected':''}>${t.name}</option>`));
   sel.innerHTML = opts.join('');
 }
 
-function toggleGroupTelco() {
-  const isTelco = document.getElementById('groupType').value === 'telco';
-  document.getElementById('groupTelcoWrap').style.display = isTelco ? '' : 'none';
-}
-
-async function openGroupModal(id, name, type, desc, telco) {
+async function openGroupModal(id, name, desc, telco) {
   document.getElementById('groupId').value = id || '';
   document.getElementById('groupName').value = name || '';
-  document.getElementById('groupType').value = type || 'telco';
   document.getElementById('groupDesc').value = desc || '';
   await getTelcos();
   populateGroupTelco(telco || '');
-  toggleGroupTelco();
   document.getElementById('groupModalTitle').textContent = id ? '그룹 수정' : '그룹 추가';
   new bootstrap.Modal(document.getElementById('groupModal')).show();
 }
 
 async function saveGroup() {
   const id = document.getElementById('groupId').value;
-  const type = document.getElementById('groupType').value;
   const body = {
     name: document.getElementById('groupName').value.trim(),
-    group_type: type,
     description: document.getElementById('groupDesc').value.trim() || null,
-    telco: type === 'telco' ? (document.getElementById('groupTelco').value || null) : null,
+    telco: document.getElementById('groupTelco').value || null,
   };
   if (!body.name) return alert('그룹명을 입력하세요.');
   try {

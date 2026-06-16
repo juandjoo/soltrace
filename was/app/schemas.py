@@ -58,7 +58,7 @@ class DeviceRegister(DeviceBase):
 class GroupBrief(BaseModel):
     id: int
     name: str
-    group_type: str
+    telco: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -101,20 +101,17 @@ class DeviceGroupAssign(BaseModel):
 
 class GroupCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    group_type: str = Field(pattern="^(telco|service|other)$")
     description: Optional[str] = None
     telco: Optional[str] = Field(default=None, max_length=100)
 
 class GroupUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    group_type: Optional[str] = Field(default=None, pattern="^(telco|service|other)$")
     description: Optional[str] = None
     telco: Optional[str] = Field(default=None, max_length=100)
 
 class GroupResponse(BaseModel):
     id: int
     name: str
-    group_type: str
     description: Optional[str]
     telco: Optional[str] = None
     created_at: datetime
