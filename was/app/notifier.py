@@ -117,11 +117,25 @@ def _send_email(alerts: list[dict], cfg: dict) -> bool:
     return True
 
 
-def _send_webhook(alerts: list[dict], cfg: dict) -> bool:
-    if not cfg["webhook_url"]:
-        return False
+def _slack_payload(alerts: list[dict]) -> dict:
+    """Slack Incoming Webhook 포맷 (blocks API)."""
     is_test = any(a.get("test") for a in alerts)
-    payload = {
+    crit = sum(1 for a in alerts if a["severity"] == "critical")
+    prefix = "[테스트] " if is_test else ""
+    header = f"{prefix}*[SolTrace] 서비스 영향 감지 {len(alerts)}건*" + (f"  _(심각 {crit})_" if crit else "")
+    lines = [f"• {build_summary(a)}" for a in alerts]
+    return {
+        "text": header,
+        "blocks": [
+            {"type": "section", "text": {"type": "mrkdwn", "text": header}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}},
+        ],
+    }
+
+
+def _generic_payload(alerts: list[dict]) -> dict:
+    is_test = any(a.get("test") for a in alerts)
+    return {
         "source": "soltrace",
         "type": "service_impact",
         "test": is_test,
@@ -140,14 +154,22 @@ def _send_webhook(alerts: list[dict], cfg: dict) -> bool:
             for a in alerts
         ],
     }
-    data = json.dumps(payload).encode("utf-8")
+
+
+def _send_webhook(alerts: list[dict], cfg: dict) -> bool:
+    if not cfg["webhook_url"]:
+        return False
+    url = cfg["webhook_url"]
+    is_slack = "hooks.slack.com" in url
+    payload = _slack_payload(alerts) if is_slack else _generic_payload(alerts)
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
-        cfg["webhook_url"], data=data,
+        url, data=data,
         headers={"Content-Type": "application/json"}, method="POST",
     )
     with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
         resp.read()
-    log.info("Alert webhook sent: %d alert(s)", len(alerts))
+    log.info("Alert webhook sent: %d alert(s) (slack=%s)", len(alerts), is_slack)
     return True
 
 
