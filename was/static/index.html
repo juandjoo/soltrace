@@ -374,7 +374,16 @@ body { background:#f5f7fa; font-size:14px; }
 
           <!-- 알림 설정 -->
           <div id="settings-notify" class="settings-pane d-none" style="max-width:620px">
-            <h6 class="fw-bold mb-3">알림 설정</h6>
+            <div class="d-flex align-items-center mb-3">
+              <h6 class="fw-bold mb-0">알림 설정</h6>
+              <div class="ms-auto d-flex align-items-center gap-2">
+                <span id="notifyMuteLabel" class="small text-muted">발송 중</span>
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input" type="checkbox" role="switch" id="notifyMuteToggle" onchange="toggleMute(this.checked)">
+                  <label class="form-check-label small" for="notifyMuteToggle">일시 중지</label>
+                </div>
+              </div>
+            </div>
             <!-- 웹훅 -->
             <div class="card mb-3">
               <div class="card-header py-2 fw-semibold small d-flex align-items-center">
@@ -395,19 +404,10 @@ body { background:#f5f7fa; font-size:14px; }
                 <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="testNotify('hms')"><i class="bi bi-send me-1"></i>테스트</button>
               </div>
               <div class="card-body">
-                <div class="mb-2">
+                <div class="mb-0">
                   <label class="form-label small mb-1">HMS URL</label>
                   <input class="form-control form-control-sm" id="notifyHmsUrl" placeholder="https://hms.example.com/api/mail">
-                </div>
-                <div class="row g-2">
-                  <div class="col-6">
-                    <label class="form-label small mb-1">통신사명 (telco_name)</label>
-                    <input class="form-control form-control-sm" id="notifyHmsTelco" placeholder="LGU+">
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label small mb-1">서비스명 (svc_name)</label>
-                    <input class="form-control form-control-sm" id="notifyHmsSvc" placeholder="soltrace_alert">
-                  </div>
+                  <div class="form-text">telco_name · svc_name은 .env에서 설정합니다.</div>
                 </div>
               </div>
             </div>
@@ -1125,13 +1125,26 @@ async function saveDeviceGroups() {
 }
 
 // ── Notify settings ───────────────────────────────────────────────────────────
+function _applyMuteState(muted) {
+  document.getElementById('notifyMuteToggle').checked = muted;
+  const label = document.getElementById('notifyMuteLabel');
+  if (muted) {
+    label.textContent = '알림 중지됨';
+    label.className = 'small text-danger fw-semibold';
+  } else {
+    label.textContent = '발송 중';
+    label.className = 'small text-muted';
+  }
+}
+
 async function loadNotify() {
-  const d = await api('GET', '/settings/notify');
+  const [d, m] = await Promise.all([
+    api('GET', '/settings/notify'),
+    api('GET', '/settings/notify/mute'),
+  ]);
   if (!d) return;
   document.getElementById('notifyWebhookUrl').value = d.webhook_url || '';
   document.getElementById('notifyHmsUrl').value     = d.hms_url || '';
-  document.getElementById('notifyHmsTelco').value   = d.hms_telco || '';
-  document.getElementById('notifyHmsSvc').value     = d.hms_svc || '';
   document.getElementById('notifySmtpHost').value   = d.smtp_host || '';
   document.getElementById('notifySmtpPort').value   = d.smtp_port || 587;
   document.getElementById('notifySmtpUser').value   = d.smtp_user || '';
@@ -1140,14 +1153,26 @@ async function loadNotify() {
   document.getElementById('notifyEmailTo').value    = d.email_to || '';
   document.getElementById('notifySmtpTls').checked  = d.smtp_tls !== false;
   document.getElementById('notifySmtpPassword').placeholder = d.smtp_password === '***' ? '설정됨 (변경 시 새 값 입력)' : '';
+  if (m) _applyMuteState(m.muted);
+}
+
+async function toggleMute(muted) {
+  const msg = document.getElementById('notifyMsg');
+  try {
+    await api('POST', `/settings/notify/mute?muted=${muted}`);
+    _applyMuteState(muted);
+    msg.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>알림 ${muted ? '중지' : '재개'}됨</span>`;
+  } catch(e) {
+    document.getElementById('notifyMuteToggle').checked = !muted;  // rollback
+    msg.innerHTML = `<span class="text-danger">변경 실패: ${e.message}</span>`;
+  }
+  setTimeout(() => { msg.innerHTML = ''; }, 3000);
 }
 
 async function saveNotify() {
   const body = {
     webhook_url:   document.getElementById('notifyWebhookUrl').value.trim(),
     hms_url:       document.getElementById('notifyHmsUrl').value.trim(),
-    hms_telco:     document.getElementById('notifyHmsTelco').value.trim(),
-    hms_svc:       document.getElementById('notifyHmsSvc').value.trim(),
     smtp_host:     document.getElementById('notifySmtpHost').value.trim(),
     smtp_port:     parseInt(document.getElementById('notifySmtpPort').value) || 587,
     smtp_tls:      document.getElementById('notifySmtpTls').checked,

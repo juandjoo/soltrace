@@ -94,8 +94,6 @@ def get_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
         smtp_from=_g("notify_smtp_from"),
         email_to=_g("notify_email_to"),
         hms_url=_g("notify_hms_url"),
-        hms_telco=_g("notify_hms_telco"),
-        hms_svc=_g("notify_hms_svc"),
     )
 
 
@@ -118,8 +116,6 @@ def save_notify(body: NotifySettings, db: Session = Depends(get_db), _: str = De
         "notify_smtp_from":    body.smtp_from,
         "notify_email_to":     body.email_to,
         "notify_hms_url":      body.hms_url,
-        "notify_hms_telco":    body.hms_telco,
-        "notify_hms_svc":      body.hms_svc,
     }
     for k, v in pairs.items():
         set_config(db, k, v)
@@ -152,6 +148,19 @@ def test_notify(
     ok = notifier.dispatch(dummy, db, channel=channel)
     if not ok:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="발송 실패 — 로그를 확인하세요")
+
+
+@router.get("/notify/mute", response_model=dict)
+def get_mute(db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    from app import notifier
+    return {"muted": notifier.is_muted(db)}
+
+
+@router.post("/notify/mute", status_code=status.HTTP_204_NO_CONTENT)
+def set_mute(muted: bool, db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    from app.security import set_config
+    set_config(db, "notify_muted", "true" if muted else "false")
+    log.info("Notifications %s", "muted" if muted else "unmuted")
 
 
 def _run_selfupdate():

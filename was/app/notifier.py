@@ -28,7 +28,7 @@ _NOTIFY_KEYS = [
     "notify_smtp_host", "notify_smtp_port", "notify_smtp_user",
     "notify_smtp_password", "notify_smtp_from", "notify_smtp_tls",
     "notify_email_to", "notify_webhook_url",
-    "notify_hms_url", "notify_hms_telco", "notify_hms_svc",
+    "notify_hms_url",
 ]
 _HTTP_RE = re.compile(r"^https?://", re.IGNORECASE)
 
@@ -73,8 +73,8 @@ def _load_cfg(db) -> dict:
         "email_to":      _g("notify_email_to",      settings.alert_email_to),
         "webhook_url":   _g("notify_webhook_url",   settings.alert_webhook_url),
         "hms_url":       _g("notify_hms_url",       settings.alert_hms_url),
-        "hms_telco":     _g("notify_hms_telco",     settings.alert_hms_telco),
-        "hms_svc":       _g("notify_hms_svc",       settings.alert_hms_svc),
+        "hms_telco":     settings.alert_hms_telco,
+        "hms_svc":       settings.alert_hms_svc,
     }
 
 
@@ -82,6 +82,11 @@ def validate_webhook_url(url: str) -> None:
     """http(s):// 외 스킴 차단."""
     if url and not _HTTP_RE.match(url):
         raise ValueError(f"웹훅 URL은 http:// 또는 https://로 시작해야 합니다: {url!r}")
+
+
+def is_muted(db) -> bool:
+    from app.security import get_config as _get
+    return (_get(db, "notify_muted") or "false").lower() == "true"
 
 
 def channels_configured(db) -> bool:
@@ -204,8 +209,13 @@ _CHANNEL_MAP = {
 
 
 def dispatch(alerts: list[dict], db, channel: str = "all") -> bool:
-    """메일·웹훅·HMS 발송. channel='all'이면 설정된 모든 채널, 아니면 지정 채널만."""
+    """메일·웹훅·HMS 발송. channel='all'이면 설정된 모든 채널, 아니면 지정 채널만.
+    notify_muted=true 이면 테스트 발송이 아닌 한 모두 건너뜀."""
     if not alerts:
+        return False
+    is_test = any(a.get("test") for a in alerts)
+    if not is_test and is_muted(db):
+        log.info("Notifications are muted — skipping dispatch")
         return False
     cfg = _load_cfg(db)
     fns = list(_CHANNEL_MAP.values()) if channel == "all" else [_CHANNEL_MAP[channel]] if channel in _CHANNEL_MAP else []

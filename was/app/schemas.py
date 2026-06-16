@@ -283,8 +283,6 @@ class NotifySettings(BaseModel):
     smtp_from: str = ""
     email_to: str = ""             # 쉼표 구분 수신자
     hms_url: str = ""              # HMS 메일 게이트웨이 URL
-    hms_telco: str = ""            # HMS telco_name
-    hms_svc: str = ""              # HMS svc_list[0].svc_name
 
 
 class ServiceHealthResponse(BaseModel):
