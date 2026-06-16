@@ -366,6 +366,7 @@ body { background:#f5f7fa; font-size:14px; }
                 <i class="bi bi-plus-lg me-1"></i>그룹 추가
               </button>
             </div>
+            <div id="groupFilter" class="mb-3 d-flex gap-2 flex-wrap"></div>
             <div id="groupCards">
               <div class="text-center text-muted py-4">로딩 중...</div>
             </div>
@@ -1049,7 +1050,7 @@ async function loadGroups() {
       ? `<i class="bi bi-broadcast-pin-fill me-2" style="color:#e85d04"></i><span class="fw-bold">${telco}</span>`
       : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-bold text-muted">통신사 미지정</span>`;
     return `
-    <div class="card mb-3">
+    <div class="card mb-3" data-telco="${telco || ''}">
       <div class="card-header py-2 d-flex align-items-center" style="background:#f8f9fa">
         ${header}
         <span class="ms-2 badge bg-secondary">${list.length}그룹</span>
@@ -1072,6 +1073,30 @@ async function loadGroups() {
       </div>
     </div>`;
   }).join('');
+
+  // 필터 버튼 렌더링
+  const filterEl = document.getElementById('groupFilter');
+  const filterKeys = [null, ...telcoKeys.filter(k => k !== '\x00'), '\x00'];
+  filterEl.innerHTML = filterKeys.map(key => {
+    const label = key === null ? '전체' : key === '\x00' ? '미지정' : key;
+    const icon  = key === null ? 'bi-list-ul' : key === '\x00' ? 'bi-dash-circle' : 'bi-broadcast-pin-fill';
+    const active = key === null ? 'active' : '';
+    return `<button class="btn btn-sm btn-outline-secondary ${active}" data-filter="${key ?? '__all__'}" onclick="filterGroups(this)"><i class="bi ${icon} me-1"></i>${label}</button>`;
+  }).join('');
+}
+
+function filterGroups(btn) {
+  document.querySelectorAll('#groupFilter button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const filter = btn.dataset.filter;
+  document.querySelectorAll('#groupCards [data-telco]').forEach(section => {
+    if (filter === '__all__') {
+      section.style.display = '';
+    } else {
+      section.style.display = section.dataset.telco === (filter === '\x00' ? '' : filter) ? '' : 'none';
+    }
+  });
+}
 }
 
 function populateGroupTelco(selected) {
