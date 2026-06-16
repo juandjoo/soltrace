@@ -1093,10 +1093,9 @@ function filterGroups(btn) {
     if (filter === '__all__') {
       section.style.display = '';
     } else {
-      section.style.display = section.dataset.telco === (filter === '\x00' ? '' : filter) ? '' : 'none';
+      section.style.display = section.dataset.telco === filter ? '' : 'none';
     }
   });
-}
 }
 
 function populateGroupTelco(selected) {
