@@ -249,6 +249,7 @@ body { background:#f5f7fa; font-size:14px; }
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack-fill me-2"></i>장비 관리</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3-fill me-2"></i>그룹 관리</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('notify')"><i class="bi bi-bell-fill me-2"></i>알림 설정</a></li>
         </ul>
         </div><!-- /col-auto -->
 
@@ -357,6 +358,64 @@ body { background:#f5f7fa; font-size:14px; }
             <div id="groupCards">
               <div class="text-center text-muted py-4">로딩 중...</div>
             </div>
+          </div>
+
+          <!-- 알림 설정 -->
+          <div id="settings-notify" class="settings-pane d-none" style="max-width:620px">
+            <h6 class="fw-bold mb-3">알림 설정</h6>
+            <!-- 웹훅 -->
+            <div class="card mb-3">
+              <div class="card-header py-2 fw-semibold small"><i class="bi bi-globe2 me-2"></i>웹훅</div>
+              <div class="card-body">
+                <div class="mb-2">
+                  <label class="form-label small mb-1">웹훅 URL</label>
+                  <input class="form-control form-control-sm" id="notifyWebhookUrl" placeholder="https://hooks.example.com/...">
+                </div>
+              </div>
+            </div>
+            <!-- 이메일 -->
+            <div class="card mb-3">
+              <div class="card-header py-2 fw-semibold small"><i class="bi bi-envelope-fill me-2"></i>이메일 (SMTP)</div>
+              <div class="card-body">
+                <div class="row g-2 mb-2">
+                  <div class="col-8">
+                    <label class="form-label small mb-1">SMTP 호스트</label>
+                    <input class="form-control form-control-sm" id="notifySmtpHost" placeholder="smtp.example.com">
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label small mb-1">포트</label>
+                    <input type="number" class="form-control form-control-sm" id="notifySmtpPort" value="587">
+                  </div>
+                </div>
+                <div class="row g-2 mb-2">
+                  <div class="col-6">
+                    <label class="form-label small mb-1">계정 (선택)</label>
+                    <input class="form-control form-control-sm" id="notifySmtpUser" placeholder="user@example.com">
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">비밀번호</label>
+                    <input type="password" class="form-control form-control-sm" id="notifySmtpPassword">
+                  </div>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small mb-1">발신 주소</label>
+                  <input class="form-control form-control-sm" id="notifySmtpFrom" placeholder="soltrace@example.com">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small mb-1">수신자 (쉼표 구분)</label>
+                  <input class="form-control form-control-sm" id="notifyEmailTo" placeholder="admin@example.com, ops@example.com">
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="notifySmtpTls" checked>
+                  <label class="form-check-label small" for="notifySmtpTls">STARTTLS 사용</label>
+                </div>
+              </div>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary btn-sm" onclick="saveNotify()"><i class="bi bi-save me-1"></i>저장</button>
+              <button class="btn btn-outline-secondary btn-sm" onclick="testNotify()"><i class="bi bi-send me-1"></i>테스트 발송</button>
+            </div>
+            <div id="notifyMsg" class="mt-2 small"></div>
           </div>
 
         </div>
@@ -518,6 +577,7 @@ function settingsTab(tab) {
   if (tab === 'update') loadVersion();
   if (tab === 'devices') loadDevices();
   if (tab === 'groups') loadGroups();
+  if (tab === 'notify') loadNotify();
 }
 
 function initApp() {
@@ -989,6 +1049,53 @@ async function saveDeviceGroups() {
   await api('PUT', `/devices/${id}/groups`, {group_ids: checked});
   bootstrap.Modal.getInstance(document.getElementById('deviceGroupModal')).hide();
   loadDevices();
+}
+
+// ── Notify settings ───────────────────────────────────────────────────────────
+async function loadNotify() {
+  const d = await api('GET', '/settings/notify');
+  if (!d) return;
+  document.getElementById('notifyWebhookUrl').value = d.webhook_url || '';
+  document.getElementById('notifySmtpHost').value   = d.smtp_host || '';
+  document.getElementById('notifySmtpPort').value   = d.smtp_port || 587;
+  document.getElementById('notifySmtpUser').value   = d.smtp_user || '';
+  document.getElementById('notifySmtpPassword').value = d.smtp_password || '';
+  document.getElementById('notifySmtpFrom').value   = d.smtp_from || '';
+  document.getElementById('notifyEmailTo').value    = d.email_to || '';
+  document.getElementById('notifySmtpTls').checked  = d.smtp_tls !== false;
+}
+
+async function saveNotify() {
+  const body = {
+    webhook_url:   document.getElementById('notifyWebhookUrl').value.trim(),
+    smtp_host:     document.getElementById('notifySmtpHost').value.trim(),
+    smtp_port:     parseInt(document.getElementById('notifySmtpPort').value) || 587,
+    smtp_tls:      document.getElementById('notifySmtpTls').checked,
+    smtp_user:     document.getElementById('notifySmtpUser').value.trim(),
+    smtp_password: document.getElementById('notifySmtpPassword').value,
+    smtp_from:     document.getElementById('notifySmtpFrom').value.trim(),
+    email_to:      document.getElementById('notifyEmailTo').value.trim(),
+  };
+  const msg = document.getElementById('notifyMsg');
+  try {
+    await api('PUT', '/settings/notify', body);
+    msg.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>저장되었습니다.</span>';
+  } catch(e) {
+    msg.innerHTML = `<span class="text-danger">저장 실패: ${e.message}</span>`;
+  }
+  setTimeout(() => { msg.innerHTML = ''; }, 3000);
+}
+
+async function testNotify() {
+  const msg = document.getElementById('notifyMsg');
+  msg.innerHTML = '<span class="text-muted">발송 중...</span>';
+  try {
+    await api('POST', '/settings/notify/test');
+    msg.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>테스트 발송 성공</span>';
+  } catch(e) {
+    msg.innerHTML = `<span class="text-danger">발송 실패: ${e.message}</span>`;
+  }
+  setTimeout(() => { msg.innerHTML = ''; }, 4000);
 }
 
 // ── Groups ────────────────────────────────────────────────────────────────────

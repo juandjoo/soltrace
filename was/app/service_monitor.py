@@ -262,7 +262,7 @@ class ServiceMonitor:
             return
 
         ids = [r.id for r in rows]
-        if not notifier.channels_configured():
+        if not notifier.channels_configured(db):
             # 채널 미설정 → UI에만 노출. 재시도 루프 방지 위해 발송완료로 표시.
             self._mark_notified(db, ids)
             return
@@ -273,7 +273,7 @@ class ServiceMonitor:
             "value": r.value, "baseline": r.baseline,
         } for r in rows]
 
-        if notifier.dispatch(alerts):
+        if notifier.dispatch(alerts, db):
             self._mark_notified(db, ids)
 
     @staticmethod

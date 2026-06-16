@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.config import settings as cfg
 from app.database import get_db
 from app.deps import require_admin
-from app.schemas import PasswordChangeRequest, UpdateTriggerResponse, VersionInfo
-from app.security import verify_admin_password, set_admin_password
+from app.schemas import PasswordChangeRequest, UpdateTriggerResponse, VersionInfo, NotifySettings
+from app.security import verify_admin_password, set_admin_password, get_config, set_config
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
@@ -71,6 +71,58 @@ def change_password(
 @router.post("/check-update", response_model=VersionInfo)
 def check_update(_: str = Depends(require_admin)):
     return _version_info(check_remote=True)
+
+
+@router.get("/notify", response_model=NotifySettings)
+def get_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    def _g(key, default=""):
+        return get_config(db, key) or default
+    return NotifySettings(
+        webhook_url=_g("notify_webhook_url"),
+        smtp_host=_g("notify_smtp_host"),
+        smtp_port=int(_g("notify_smtp_port", "587")),
+        smtp_tls=_g("notify_smtp_tls", "true").lower() != "false",
+        smtp_user=_g("notify_smtp_user"),
+        smtp_password=_g("notify_smtp_password"),
+        smtp_from=_g("notify_smtp_from"),
+        email_to=_g("notify_email_to"),
+    )
+
+
+@router.put("/notify", status_code=status.HTTP_204_NO_CONTENT)
+def save_notify(body: NotifySettings, db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    pairs = {
+        "notify_webhook_url":  body.webhook_url,
+        "notify_smtp_host":    body.smtp_host,
+        "notify_smtp_port":    str(body.smtp_port),
+        "notify_smtp_tls":     "true" if body.smtp_tls else "false",
+        "notify_smtp_user":    body.smtp_user,
+        "notify_smtp_password": body.smtp_password,
+        "notify_smtp_from":    body.smtp_from,
+        "notify_email_to":     body.email_to,
+    }
+    for k, v in pairs.items():
+        set_config(db, k, v)
+
+
+@router.post("/notify/test", status_code=status.HTTP_204_NO_CONTENT)
+def test_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    from datetime import datetime, timezone
+    from app import notifier
+    dummy = [{
+        "device_id": 0,
+        "device_hostname": "test-device",
+        "bucket": datetime.now(timezone.utc),
+        "metric": "fail_rate",
+        "severity": "warning",
+        "value": 0.15,
+        "baseline": 0.02,
+    }]
+    if not notifier.channels_configured(db):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="알림 채널이 설정되지 않았습니다")
+    ok = notifier.dispatch(dummy, db)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="발송 실패 — 로그를 확인하세요")
 
 
 @router.post("/update", response_model=UpdateTriggerResponse)

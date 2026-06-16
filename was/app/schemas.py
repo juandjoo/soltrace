@@ -273,6 +273,17 @@ class FailTotals(BaseModel):
     login_fails: int = 0
     cwd_fails: int = 0
 
+class NotifySettings(BaseModel):
+    webhook_url: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_tls: bool = True
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    email_to: str = ""             # 쉼표 구분 수신자
+
+
 class ServiceHealthResponse(BaseModel):
     devices: List[ServiceHealthDevice]
     alerts: List[ServiceAlertItem]
