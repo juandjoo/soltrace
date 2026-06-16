@@ -41,6 +41,7 @@ defaults = {
     "retry_max": "3",
     "retry_delay": "10",
     "http_timeout": "15",
+    "ssl_verify": "true",     # false = self-signed 인증서 허용 (보안 주의)
     "max_buffer_lines": "50000",
     "state_dir": "/var/lib/soltrace",
     "buffer_file": "/var/lib/soltrace/buffer.jsonl",
@@ -312,12 +313,13 @@ class WasClient:
     RETRY_MAX = 3
     RETRY_DELAY = 10  # 고정 10초 대기
 
-    def __init__(self, base_url: str, device_key: str, http_timeout: int = 15):
+    def __init__(self, base_url: str, device_key: str, http_timeout: int = 15, ssl_verify: bool = True):
         self.base_url = base_url.rstrip("/")
         self.device_key = device_key
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
         self.session.timeout = http_timeout
+        self.session.verify = ssl_verify
 
     def _post(self, path: str, payload: dict) -> Optional[dict]:
         url = f"{self.base_url}/api/v1{path}"
@@ -428,6 +430,7 @@ class SolTraceDaemon:
             base_url=self.cfg["was_url"],
             device_key=self.device_key,
             http_timeout=int(self.cfg["http_timeout"]),
+            ssl_verify=self.cfg["ssl_verify"].lower() not in ("false", "0", "no"),
         )
         self.buffer = DiskBuffer(self.cfg["buffer_file"], max_lines=int(self.cfg["max_buffer_lines"]))
         self.batch_size = int(self.cfg["batch_size"])
