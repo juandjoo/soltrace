@@ -23,6 +23,9 @@ body { background:#f5f7fa; font-size:14px; }
 .settings-vnav .nav-link:hover { background:#eef2f7; }
 .settings-vnav .nav-link.active { background:#0d6efd; color:#fff; }
 .settings-pane.d-none { display:none; }
+/* 대시보드 차트 카드: 마우스오버 시 강조 */
+.dash-card { transition: box-shadow .15s ease, transform .15s ease; }
+.dash-card:hover { box-shadow:0 8px 22px rgba(13,110,253,.18); transform:translateY(-3px); }
 .card { border:none; box-shadow:0 1px 3px rgba(0,0,0,.08); }
 .badge-pending { background:#ffc107; color:#000; }
 .badge-confirmed { background:#198754; }
@@ -98,59 +101,56 @@ body { background:#f5f7fa; font-size:14px; }
           <button class="btn btn-sm btn-outline-primary" onclick="loadDashboard()"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
-      <!-- 사용량: 사용자별 / 장비그룹별 -->
-      <div class="row g-3 mb-4">
-        <div class="col-xl-6">
-          <div class="card p-3">
-            <div class="fw-semibold mb-3 small">사용자별 사용량</div>
-            <div style="position:relative; height:300px"><canvas id="chartTopUsers"></canvas></div>
-          </div>
-        </div>
-        <div class="col-xl-6">
-          <div class="card p-3">
-            <div class="fw-semibold mb-3 small">장비그룹별 사용량</div>
-            <div style="position:relative; height:300px"><canvas id="chartTopGroups"></canvas></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 서비스 영향도 -->
-      <div class="d-flex align-items-center mb-2">
-        <h6 class="mb-0 fw-bold">서비스 영향도</h6>
-        <div class="ms-auto d-flex gap-2">
-          <select class="form-select form-select-sm" id="healthHours" onchange="loadServiceHealth()" style="width:130px">
-            <option value="6">최근 6시간</option>
-            <option value="24" selected>최근 24시간</option>
-            <option value="72">최근 3일</option>
-            <option value="168">최근 7일</option>
-          </select>
-          <button class="btn btn-sm btn-outline-primary" onclick="loadServiceHealth()"><i class="bi bi-arrow-clockwise"></i></button>
-        </div>
-      </div>
-      <div class="text-muted small mb-3">FTP 서버 부하로 인한 서비스 품질 저하를 장비별 평소(baseline) 대비 이탈로 감지합니다.</div>
-
-      <div class="row g-3 mb-3" id="healthCards">
-        <div class="col-12 text-muted small">불러오는 중…</div>
-      </div>
-
+      <!-- 사용량 + 영향도: 한 줄 (세부값은 마우스오버 툴팁) -->
       <div class="row g-3 mb-3">
-        <div class="col-xl-12">
-          <div class="card p-3">
-            <div class="fw-semibold mb-3 small">전송 실패율 / 로그인 실패율 추이 (%)</div>
-            <div style="position:relative; height:240px"><canvas id="chartHealthRate"></canvas></div>
+        <div class="col-lg-4">
+          <div class="card dash-card p-3 h-100">
+            <div class="fw-semibold mb-2 small">사용자별 사용량</div>
+            <div style="position:relative; height:240px"><canvas id="chartTopUsers"></canvas></div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card dash-card p-3 h-100">
+            <div class="fw-semibold mb-2 small">장비그룹별 사용량</div>
+            <div style="position:relative; height:240px"><canvas id="chartTopGroups"></canvas></div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card dash-card p-3 h-100">
+            <div class="d-flex align-items-center mb-2">
+              <span class="fw-semibold small">서비스 영향도 (상태)</span>
+              <select class="form-select form-select-sm ms-auto" id="healthHours" onchange="loadServiceHealth()" style="width:108px">
+                <option value="6">6시간</option>
+                <option value="24" selected>24시간</option>
+                <option value="72">3일</option>
+                <option value="168">7일</option>
+              </select>
+            </div>
+            <div style="position:relative; height:240px"><canvas id="chartHealthStatus"></canvas></div>
           </div>
         </div>
       </div>
 
-      <div class="card p-3">
-        <div class="fw-semibold mb-3 small">최근 이상 알림</div>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead><tr class="text-muted small">
-              <th>시각(UTC)</th><th>장비</th><th>지표</th><th>심각도</th><th>값</th><th>평소</th><th>내용</th>
-            </tr></thead>
-            <tbody id="healthAlerts"><tr><td colspan="7" class="text-muted small">-</td></tr></tbody>
-          </table>
+      <!-- 세부: 실패율 추이 + 최근 알림 -->
+      <div class="row g-3">
+        <div class="col-xl-6">
+          <div class="card dash-card p-3">
+            <div class="fw-semibold mb-2 small">전송/로그인 실패율 추이 (%)</div>
+            <div style="position:relative; height:220px"><canvas id="chartHealthRate"></canvas></div>
+          </div>
+        </div>
+        <div class="col-xl-6">
+          <div class="card dash-card p-3">
+            <div class="fw-semibold mb-2 small">최근 이상 알림</div>
+            <div class="table-responsive" style="max-height:220px; overflow:auto">
+              <table class="table table-sm align-middle mb-0">
+                <thead><tr class="text-muted small">
+                  <th>시각(UTC)</th><th>장비</th><th>지표</th><th>심각도</th><th>값</th><th>평소</th><th>내용</th>
+                </tr></thead>
+                <tbody id="healthAlerts"><tr><td colspan="7" class="text-muted small">-</td></tr></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -661,13 +661,23 @@ async function loadDashboard() {
     scales: {x: {beginAtZero: true, ticks: {callback: v => fmtBytes(v)}}},
   };
 
-  // 사용자별 사용량
+  const PALETTE = ['#0d6efd','#198754','#fd7e14','#6f42c1','#dc3545','#20c997','#0dcaf0','#ffc107'];
+  const donutBytesOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {position: 'right', labels: {boxWidth: 12, font: {size: 11}}},
+      tooltip: {callbacks: {label: c => `${c.label}: ${fmtBytes(c.parsed)}`}},
+    },
+  };
+
+  // 사용자별 사용량 (도넛 — 세부는 마우스오버, 호버 시 세그먼트 강조)
   destroyChart('topUsers');
   const tu = (data.top_users || []).slice(0, 8);
   charts.topUsers = new Chart(document.getElementById('chartTopUsers'), {
-    type: 'bar',
-    data: {labels: tu.map(u => u.label), datasets: [{label: '사용량', data: tu.map(u => u.bytes), backgroundColor: '#0d6efd88'}]},
-    options: bytesBarOpts,
+    type: 'doughnut',
+    data: {labels: tu.map(u => u.label), datasets: [{data: tu.map(u => u.bytes), backgroundColor: PALETTE, hoverOffset: 12, borderWidth: 1}]},
+    options: donutBytesOpts,
   });
 
   // 장비그룹별 사용량
@@ -710,26 +720,28 @@ async function loadServiceHealth() {
   const data = await api('GET', `/dashboard/service-health?hours=${hours}`);
   if (!data) return;
 
-  // Device status cards
-  const cards = document.getElementById('healthCards');
-  if (!data.devices.length) {
-    cards.innerHTML = '<div class="col-12 text-muted small">집계된 데이터가 없습니다.</div>';
-  } else {
-    cards.innerHTML = data.devices.map(d => {
-      const st = HEALTH_STATUS[d.status] || HEALTH_STATUS.idle;
-      return `<div class="col-sm-6 col-xl-3">
-        <div class="card p-3 border-${st.cls}" style="border-left-width:4px">
-          <div class="d-flex align-items-center mb-1">
-            <span class="fw-semibold text-truncate" title="${d.hostname}">${d.hostname}</span>
-            <span class="badge bg-${st.cls} ms-auto"><i class="bi bi-${st.icon} me-1"></i>${st.label}</span>
-          </div>
-          <div class="small text-muted">전송 실패율 <span class="fw-semibold text-dark">${fmtPct(d.fail_rate)}</span></div>
-          <div class="small text-muted">전송 속도 <span class="fw-semibold text-dark">${fmtMbps(d.throughput_mb)}</span></div>
-          <div class="small text-muted">로그인 실패율 <span class="fw-semibold text-dark">${fmtPct(d.login_fail_rate)}</span></div>
-          <div class="small text-muted mt-1">알림 ${d.open_alerts}건 · ${fmtTime(d.last_bucket)}</div>
-        </div></div>`;
-    }).join('');
-  }
+  // 상태 분포 도넛 (정상/주의/심각) — 세부값은 마우스오버, 호버 시 세그먼트 강조
+  destroyChart('healthStatus');
+  const counts = {ok: 0, warning: 0, critical: 0};
+  data.devices.forEach(d => { if (counts[d.status] != null) counts[d.status]++; });
+  charts.healthStatus = new Chart(document.getElementById('chartHealthStatus'), {
+    type: 'doughnut',
+    data: {
+      labels: ['정상', '주의', '심각'],
+      datasets: [{
+        data: [counts.ok, counts.warning, counts.critical],
+        backgroundColor: ['#198754', '#ffc107', '#dc3545'],
+        hoverOffset: 12, borderWidth: 1,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {position: 'right', labels: {boxWidth: 12, font: {size: 11}}},
+        tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed}대`}},
+      },
+    },
+  });
 
   // Trend chart
   destroyChart('healthRate');
