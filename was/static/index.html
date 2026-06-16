@@ -1013,41 +1013,65 @@ async function loadGroups() {
     container.innerHTML = '<div class="text-center text-muted py-4">그룹이 없습니다. 추가해주세요.</div>';
     return;
   }
-  container.innerHTML = `
-    <div class="card">
+  // 텔코별로 묶기 (미지정은 마지막)
+  const byTelco = {};
+  groups.forEach(g => {
+    const key = g.telco || '\x00';
+    if (!byTelco[key]) byTelco[key] = [];
+    byTelco[key].push(g);
+  });
+  const telcoKeys = Object.keys(byTelco).sort((a, b) => {
+    if (a === '\x00') return 1;
+    if (b === '\x00') return -1;
+    return a.localeCompare(b);
+  });
+
+  const groupRows = g => `
+    <tr>
+      <td class="fw-semibold">${g.name}</td>
+      <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
+      <td class="small" style="white-space:pre-wrap">${g.customer || '<span class="text-muted">-</span>'}</td>
+      <td class="small text-muted" style="white-space:pre-wrap">${g.upload_domains || '-'}</td>
+      <td class="small text-muted">${g.description || '-'}</td>
+      <td>
+        <div class="d-flex gap-1 justify-content-end">
+          <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
+          <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
+        </div>
+      </td>
+    </tr>`;
+
+  container.innerHTML = telcoKeys.map(key => {
+    const telco = key === '\x00' ? null : key;
+    const list  = byTelco[key];
+    const total = list.reduce((s, g) => s + g.device_count, 0);
+    const header = telco
+      ? `<i class="bi bi-broadcast-pin-fill me-2" style="color:#e85d04"></i><span class="fw-bold">${telco}</span>`
+      : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-bold text-muted">통신사 미지정</span>`;
+    return `
+    <div class="card mb-3">
+      <div class="card-header py-2 d-flex align-items-center" style="background:#f8f9fa">
+        ${header}
+        <span class="ms-2 badge bg-secondary">${list.length}그룹</span>
+        <span class="ms-1 badge bg-light text-dark border">${total}대</span>
+      </div>
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
           <thead class="table-light">
             <tr>
-              <th style="min-width:130px">그룹명</th>
-              <th style="min-width:100px">통신사</th>
+              <th style="min-width:140px">그룹명</th>
               <th style="min-width:60px" class="text-center">장비</th>
-              <th style="min-width:160px">고객사</th>
-              <th style="min-width:220px">업로드 도메인</th>
+              <th style="min-width:180px">고객사</th>
+              <th style="min-width:240px">업로드 도메인</th>
               <th style="min-width:140px">비고</th>
-              <th style="width:90px"></th>
+              <th style="width:100px"></th>
             </tr>
           </thead>
-          <tbody>
-            ${groups.map(g => `
-            <tr>
-              <td class="fw-semibold">${g.name}</td>
-              <td>${g.telco ? `<span class="badge bg-info text-dark"><i class="bi bi-broadcast-pin me-1"></i>${g.telco}</span>` : '<span class="text-muted small">-</span>'}</td>
-              <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
-              <td class="small" style="white-space:pre-wrap">${g.customer || '<span class="text-muted">-</span>'}</td>
-              <td class="small text-muted" style="white-space:pre-wrap">${g.upload_domains || '-'}</td>
-              <td class="small text-muted">${g.description || '-'}</td>
-              <td>
-                <div class="d-flex gap-1">
-                  <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
-                  <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
-                </div>
-              </td>
-            </tr>`).join('')}
-          </tbody>
+          <tbody>${list.map(groupRows).join('')}</tbody>
         </table>
       </div>
     </div>`;
+  }).join('');
 }
 
 function populateGroupTelco(selected) {
