@@ -71,7 +71,7 @@ class Group(Base):
     name = Column(String(100), unique=True, nullable=False)
     description = Column(Text)
     telco = Column(String(100))
-    customer = Column(String(200))
+    customer = Column(Text)
     upload_domains = Column(Text)
     created_at = Column(DateTime(timezone=True), default=_now)
 

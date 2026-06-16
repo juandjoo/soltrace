@@ -380,7 +380,7 @@ body { background:#f5f7fa; font-size:14px; }
 
 <!-- Group Modal -->
 <div class="modal fade" id="groupModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
         <h6 class="modal-title" id="groupModalTitle">그룹 추가</h6>
@@ -388,22 +388,23 @@ body { background:#f5f7fa; font-size:14px; }
       </div>
       <div class="modal-body">
         <input type="hidden" id="groupId">
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">그룹명 *</label>
-          <input class="form-control form-control-sm" id="groupName">
-        </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">통신사</label>
-          <select class="form-select form-select-sm" id="groupTelco"></select>
-          <div class="form-text">통신사 목록은 설정 &gt; 텔코 정보에서 추가합니다.</div>
+        <div class="row g-3 mb-3">
+          <div class="col-sm-7">
+            <label class="form-label small fw-semibold">그룹명 *</label>
+            <input class="form-control form-control-sm" id="groupName">
+          </div>
+          <div class="col-sm-5">
+            <label class="form-label small fw-semibold">통신사</label>
+            <select class="form-select form-select-sm" id="groupTelco"></select>
+          </div>
         </div>
         <div class="mb-3">
           <label class="form-label small fw-semibold">고객사</label>
-          <input class="form-control form-control-sm" id="groupCustomer" placeholder="예) LG CNS, SK브로드밴드">
+          <textarea class="form-control form-control-sm" id="groupCustomer" rows="3" placeholder="예) LG CNS&#10;SK브로드밴드"></textarea>
         </div>
         <div class="mb-3">
           <label class="form-label small fw-semibold">업로드 도메인</label>
-          <textarea class="form-control form-control-sm" id="groupUploadDomains" rows="3" placeholder="한 줄에 하나씩 입력&#10;예) vivasambackup-ftp.lgucdn.com&#10;    cjclip-ftp.lgucdn.com"></textarea>
+          <textarea class="form-control form-control-sm" id="groupUploadDomains" rows="6" placeholder="한 줄에 하나씩 입력&#10;예) vivasambackup-ftp.lgucdn.com&#10;    cjclip-ftp.lgucdn.com"></textarea>
         </div>
         <div class="mb-0">
           <label class="form-label small fw-semibold">비고</label>
