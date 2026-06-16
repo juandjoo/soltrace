@@ -366,8 +366,8 @@ body { background:#f5f7fa; font-size:14px; }
                 <i class="bi bi-plus-lg me-1"></i>그룹 추가
               </button>
             </div>
-            <div class="row g-3" id="groupCards">
-              <div class="col-12 text-center text-muted py-4">로딩 중...</div>
+            <div id="groupCards">
+              <div class="text-center text-muted py-4">로딩 중...</div>
             </div>
           </div>
 
@@ -1010,31 +1010,44 @@ async function loadGroups() {
   allGroups = groups;
   const container = document.getElementById('groupCards');
   if (!groups.length) {
-    container.innerHTML = '<div class="col-12 text-center text-muted py-4">그룹이 없습니다. 추가해주세요.</div>';
+    container.innerHTML = '<div class="text-center text-muted py-4">그룹이 없습니다. 추가해주세요.</div>';
     return;
   }
-  container.innerHTML = groups.map(g => `
-    <div class="col-sm-6 col-xl-4">
-      <div class="card p-3">
-        <div class="d-flex align-items-start">
-          <div class="flex-grow-1 min-w-0">
-            <div class="fw-semibold">${g.name}</div>
-            <div class="mt-1">
-              ${g.telco ? `<span class="badge bg-info text-dark me-1"><i class="bi bi-broadcast-pin me-1"></i>${g.telco}</span>` : '<span class="badge bg-light text-dark border me-1">통신사 미지정</span>'}
-              <span class="badge bg-light text-dark border">${g.device_count}대</span>
-            </div>
-            ${g.customer ? `<div class="small mt-1"><i class="bi bi-building me-1 text-muted"></i>${g.customer}</div>` : ''}
-            ${g.upload_domains ? `<div class="text-muted small mt-1" style="white-space:pre-wrap">${g.upload_domains}</div>` : ''}
-            ${g.description ? `<div class="text-muted small mt-1">${g.description}</div>` : ''}
-          </div>
-          <div class="ms-2 d-flex gap-1 flex-shrink-0">
-            <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
-            <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
-          </div>
-        </div>
+  container.innerHTML = `
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width:130px">그룹명</th>
+              <th style="min-width:100px">통신사</th>
+              <th style="min-width:60px" class="text-center">장비</th>
+              <th style="min-width:160px">고객사</th>
+              <th style="min-width:220px">업로드 도메인</th>
+              <th style="min-width:140px">비고</th>
+              <th style="width:90px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${groups.map(g => `
+            <tr>
+              <td class="fw-semibold">${g.name}</td>
+              <td>${g.telco ? `<span class="badge bg-info text-dark"><i class="bi bi-broadcast-pin me-1"></i>${g.telco}</span>` : '<span class="text-muted small">-</span>'}</td>
+              <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
+              <td class="small" style="white-space:pre-wrap">${g.customer || '<span class="text-muted">-</span>'}</td>
+              <td class="small text-muted" style="white-space:pre-wrap">${g.upload_domains || '-'}</td>
+              <td class="small text-muted">${g.description || '-'}</td>
+              <td>
+                <div class="d-flex gap-1">
+                  <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
+                  <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
+                </div>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
       </div>
-    </div>
-  `).join('');
+    </div>`;
 }
 
 function populateGroupTelco(selected) {
