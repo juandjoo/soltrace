@@ -37,6 +37,7 @@ class VersionInfo(BaseModel):
     behind: Optional[int] = None          # 원격 대비 뒤처진 커밋 수 (확인 시)
     update_available: bool = False
     checked: bool = False                 # 원격 fetch 수행 여부
+    error: Optional[str] = None           # 원격 확인 실패 사유
 
 class UpdateTriggerResponse(BaseModel):
     started: bool

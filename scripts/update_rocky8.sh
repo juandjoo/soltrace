@@ -18,6 +18,9 @@ git config --system --add safe.directory "$APP_DIR" 2>/dev/null || true
 git fetch origin
 git checkout "$BRANCH"
 git reset --hard "origin/$BRANCH"
+# root 로 git 을 돌리면 .git 객체가 root 소유가 되어 WAS(soltrace)의 git fetch
+# (설정>업데이트 확인)가 실패한다. 저장소 전체를 다시 soltrace 소유로 되돌린다.
+chown -R soltrace:soltrace "$APP_DIR"
 
 log ">> 앱 파일 배포"
 cp -r was/app "$DEPLOY_DIR/"

@@ -534,7 +534,9 @@ function renderVersion(v) {
   document.getElementById('verDate').textContent = v.commit_date || '-';
   document.getElementById('verSubject').textContent = v.subject || '-';
   const st = document.getElementById('verStatus');
-  if (!v.checked) {
+  if (v.error) {
+    st.innerHTML = `<span class="text-danger">원격 확인 실패: ${v.error}</span>`;
+  } else if (!v.checked) {
     st.innerHTML = '<span class="text-muted">미확인 — "업데이트 확인"을 눌러주세요</span>';
   } else if (v.update_available) {
     st.innerHTML = `<span class="text-warning fw-semibold">업데이트 가능 (원격이 ${v.behind} 커밋 앞섬)</span>`;

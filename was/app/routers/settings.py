@@ -12,15 +12,20 @@ from app.security import verify_admin_password, set_admin_password
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
 
-def _git(*args: str, timeout: int = 10) -> str | None:
+def _git_run(*args: str, timeout: int = 10):
+    # safe.directory: WAS(soltrace)가 root 소유로 바뀐 .git 에서도 git 실행 가능하게
     try:
-        out = subprocess.run(
-            ["git", "-C", cfg.repo_dir, *args],
+        return subprocess.run(
+            ["git", "-c", f"safe.directory={cfg.repo_dir}", "-C", cfg.repo_dir, *args],
             capture_output=True, text=True, timeout=timeout,
         )
-        return out.stdout.strip() if out.returncode == 0 else None
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+def _git(*args: str, timeout: int = 10) -> str | None:
+    r = _git_run(*args, timeout=timeout)
+    return r.stdout.strip() if (r and r.returncode == 0) else None
 
 
 def _version_info(check_remote: bool = False) -> VersionInfo:
@@ -31,8 +36,12 @@ def _version_info(check_remote: bool = False) -> VersionInfo:
     info = VersionInfo(branch=branch, commit=commit, commit_date=commit_date, subject=subject)
 
     if check_remote and branch:
-        # 원격 fetch 는 네트워크 작업 → 넉넉한 타임아웃
-        _git("fetch", "--quiet", "origin", branch, timeout=30)
+        # 원격 fetch 는 네트워크 작업 → 넉넉한 타임아웃. 실패하면 '최신'으로 오인하지
+        # 않도록 에러를 표면화한다 (소유권/인증/네트워크 문제 가시화).
+        r = _git_run("fetch", "--quiet", "origin", branch, timeout=30)
+        if r is None or r.returncode != 0:
+            info.error = ((r.stderr.strip() if r else "") or "git fetch 실패")[:300]
+            return info
         behind = _git("rev-list", "--count", f"HEAD..origin/{branch}")
         if behind is not None and behind.isdigit():
             info.behind = int(behind)

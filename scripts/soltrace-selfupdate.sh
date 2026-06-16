@@ -40,6 +40,8 @@ GIT="git -c safe.directory=$REPO_DIR"
 $GIT fetch origin
 $GIT checkout "$BRANCH"
 $GIT reset --hard "origin/$BRANCH"
+# root git 으로 root 소유가 된 .git 을 다시 soltrace 로 — WAS 의 git fetch(업데이트 확인)용
+chown -R soltrace:soltrace "$REPO_DIR"
 
 cp -r was/app "$DEPLOY_DIR/"
 cp -r was/static "$DEPLOY_DIR/"
