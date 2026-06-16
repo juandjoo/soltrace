@@ -130,37 +130,28 @@ def _send_email(alerts: list[dict], cfg: dict) -> bool:
     return True
 
 
-def _slack_alert_block(a: dict) -> dict:
-    sev = _SEVERITY_LABEL.get(a["severity"], a["severity"])
-    icon = ":rotating_light:" if a["severity"] == "critical" else ":warning:"
-    metric = _METRIC_LABEL.get(a["metric"], a["metric"])
-    base = a.get("baseline")
-    base_str = f"  |  평소 {_fmt_metric(a['metric'], base)}" if base is not None else ""
-    kst = a["bucket"] + _KST
-    label = _alert_label(a)
-    text = (
-        f"{icon} *[{sev}] {label}*\n"
-        f"> *지표:* {metric}  |  *현재:* {_fmt_metric(a['metric'], a['value'])}{base_str}\n"
-        f"> *시각:* {kst:%Y-%m-%d %H:%M} KST"
-    )
-    return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
-
-
 def _slack_payload(alerts: list[dict]) -> dict:
-    """Slack Incoming Webhook 포맷 (Block Kit)."""
+    """Slack Incoming Webhook 포맷."""
     is_test = any(a.get("test") for a in alerts)
     crit = sum(1 for a in alerts if a["severity"] == "critical")
-    prefix = "[테스트] " if is_test else ""
-    title = f"{prefix}*[SolTrace] 서비스 영향 감지 {len(alerts)}건*"
-    if crit:
-        title += f"  _(심각 {crit}건)_"
-    blocks = [
-        {"type": "header", "text": {"type": "plain_text", "text": f"{'[테스트] ' if is_test else ''}SolTrace 서비스 알림"}},
-        {"type": "section", "text": {"type": "mrkdwn", "text": title}},
-        {"type": "divider"},
-        *[_slack_alert_block(a) for a in alerts],
-    ]
-    return {"text": title, "blocks": blocks}
+    test_tag = " _[테스트]_" if is_test else ""
+    crit_tag = f"  :rotating_light: 심각 {crit}건" if crit else ""
+    header = f":bell: *SolTrace 서비스 영향 감지 {len(alerts)}건*{crit_tag}{test_tag}"
+    lines = []
+    for a in alerts:
+        icon = ":rotating_light:" if a["severity"] == "critical" else ":warning:"
+        sev = _SEVERITY_LABEL.get(a["severity"], a["severity"])
+        metric = _METRIC_LABEL.get(a["metric"], a["metric"])
+        val = _fmt_metric(a["metric"], a["value"])
+        base = a.get("baseline")
+        base_str = f" (평소 {_fmt_metric(a['metric'], base)})" if base is not None else ""
+        kst = (a["bucket"] + _KST).strftime("%m/%d %H:%M")
+        lines.append(f"{icon} [{sev}] *{_alert_label(a)}* — {metric} {val}{base_str} · {kst} KST")
+    text = header + "\n" + "\n".join(lines)
+    return {
+        "text": f"[SolTrace] 서비스 영향 감지 {len(alerts)}건",
+        "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}}],
+    }
 
 
 def _generic_payload(alerts: list[dict]) -> dict:
