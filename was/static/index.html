@@ -1002,7 +1002,7 @@ async function loadGroups() {
     <div class="col-sm-6 col-xl-4">
       <div class="card p-3">
         <div class="d-flex align-items-start">
-          <div class="flex-grow-1">
+          <div class="flex-grow-1 min-w-0">
             <div class="fw-semibold">${g.name}</div>
             <div class="mt-1">
               ${g.telco ? `<span class="badge bg-info text-dark me-1"><i class="bi bi-broadcast-pin me-1"></i>${g.telco}</span>` : '<span class="badge bg-light text-dark border me-1">통신사 미지정</span>'}
@@ -1010,8 +1010,8 @@ async function loadGroups() {
             </div>
             ${g.description ? `<div class="text-muted small mt-1">${g.description}</div>` : ''}
           </div>
-          <div class="ms-2">
-            <button class="btn btn-xs btn-outline-primary me-1" onclick="openGroupModal(${g.id},'${g.name}','${g.description||''}','${g.telco||''}')">수정</button>
+          <div class="ms-2 d-flex gap-1 flex-shrink-0">
+            <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id},${JSON.stringify(g.name)},${JSON.stringify(g.description||'')},${JSON.stringify(g.telco||'')})">수정</button>
             <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
           </div>
         </div>
