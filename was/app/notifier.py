@@ -226,7 +226,11 @@ def _hms_post(url: str, telco: str, alerts: list[dict]) -> None:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         url, data=data,
-        headers={"Content-Type": "application/json; charset=utf-8", "Accept": "application/json"},
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "Accept": "application/json",
+            "X-reqsite": "hermesweb",
+        },
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
