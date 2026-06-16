@@ -7,7 +7,9 @@ import logging
 import re
 import smtplib
 import urllib.request
+from datetime import datetime, timezone
 from email.message import EmailMessage
+from html import escape as _esc
 
 from sqlalchemy import text
 
@@ -26,6 +28,7 @@ _NOTIFY_KEYS = [
     "notify_smtp_host", "notify_smtp_port", "notify_smtp_user",
     "notify_smtp_password", "notify_smtp_from", "notify_smtp_tls",
     "notify_email_to", "notify_webhook_url",
+    "notify_hms_url", "notify_hms_telco", "notify_hms_svc",
 ]
 _HTTP_RE = re.compile(r"^https?://", re.IGNORECASE)
 
@@ -69,6 +72,9 @@ def _load_cfg(db) -> dict:
         "smtp_tls":      _g("notify_smtp_tls", "true" if settings.smtp_tls else "false").lower() != "false",
         "email_to":      _g("notify_email_to",      settings.alert_email_to),
         "webhook_url":   _g("notify_webhook_url",   settings.alert_webhook_url),
+        "hms_url":       _g("notify_hms_url",       settings.alert_hms_url),
+        "hms_telco":     _g("notify_hms_telco",     settings.alert_hms_telco),
+        "hms_svc":       _g("notify_hms_svc",       settings.alert_hms_svc),
     }
 
 
@@ -82,7 +88,7 @@ def channels_configured(db) -> bool:
     cfg = _load_cfg(db)
     recipients = [a.strip() for a in cfg["email_to"].split(",") if a.strip()]
     email_ok = bool(cfg["smtp_host"] and cfg["smtp_from"] and recipients)
-    return email_ok or bool(cfg["webhook_url"])
+    return email_ok or bool(cfg["webhook_url"]) or bool(cfg["hms_url"])
 
 
 def _send_email(alerts: list[dict], cfg: dict) -> bool:
@@ -142,13 +148,61 @@ def _send_webhook(alerts: list[dict], cfg: dict) -> bool:
     return True
 
 
+def _build_hms_body(alerts: list[dict]) -> str:
+    rows = "".join(
+        f"<tr><td style='padding:4px 8px'>{_esc(a['device_hostname'])}</td>"
+        f"<td style='padding:4px 8px'>{_esc(_METRIC_LABEL.get(a['metric'], a['metric']))}</td>"
+        f"<td style='padding:4px 8px'>{_esc(_SEVERITY_LABEL.get(a['severity'], a['severity']))}</td>"
+        f"<td style='padding:4px 8px'>{_esc(_fmt_metric(a['metric'], a['value']))}</td>"
+        f"<td style='padding:4px 8px'>{a['bucket']:%Y-%m-%d %H:%M} UTC</td></tr>"
+        for a in alerts
+    )
+    return (
+        "<html><body style='font-family:sans-serif;font-size:13px'>"
+        "<p>FTP 서버 서비스 이상이 감지되었습니다.</p>"
+        "<table border='1' cellspacing='0' cellpadding='0' style='border-collapse:collapse'>"
+        "<thead><tr style='background:#f0f0f0'>"
+        "<th style='padding:4px 8px'>장비</th><th style='padding:4px 8px'>지표</th>"
+        "<th style='padding:4px 8px'>등급</th><th style='padding:4px 8px'>값</th>"
+        "<th style='padding:4px 8px'>시각</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table>"
+        "<p style='color:#888;font-size:11px'>이 메일은 SolTrace에서 자동 발송되었습니다.</p>"
+        "</body></html>"
+    )
+
+
+def _send_hms(alerts: list[dict], cfg: dict) -> bool:
+    if not cfg["hms_url"]:
+        return False
+    is_test = any(a.get("test") for a in alerts)
+    prefix = "[테스트] " if is_test else ""
+    crit = sum(1 for a in alerts if a["severity"] == "critical")
+    subject = f"{prefix}[SolTrace] 서비스 영향 감지 {len(alerts)}건" + (f" (심각 {crit})" if crit else "")
+    payload = {
+        "telco_name": cfg["hms_telco"] or "SolTrace",
+        "svc_list": [{"svc_name": cfg["hms_svc"] or "soltrace", "vol_list": None}],
+        "alert_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "prop": {"subject": subject, "body": _build_hms_body(alerts)},
+    }
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        cfg["hms_url"], data=data,
+        headers={"Content-Type": "application/json; charset=utf-8", "Accept": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+        resp.read()
+    log.info("Alert HMS sent: %d alert(s)", len(alerts))
+    return True
+
+
 def dispatch(alerts: list[dict], db) -> bool:
     """메일·웹훅 발송. 한 채널이라도 실제 발송하면 True."""
     if not alerts:
         return False
     cfg = _load_cfg(db)
     sent = False
-    for fn in (_send_email, _send_webhook):
+    for fn in (_send_email, _send_webhook, _send_hms):
         try:
             if fn(alerts, cfg):
                 sent = True

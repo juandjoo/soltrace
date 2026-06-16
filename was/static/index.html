@@ -354,10 +354,22 @@ body { background:#f5f7fa; font-size:14px; }
                 <i class="bi bi-plus-lg me-1"></i>그룹 추가
               </button>
             </div>
-            <div id="groupFilter" class="mb-3 d-flex gap-2 flex-wrap"></div>
+            <div class="d-flex align-items-center mb-2 gap-2 flex-wrap">
+              <div id="groupFilter" class="d-flex gap-2 flex-wrap"></div>
+              <div class="ms-auto d-flex align-items-center gap-1">
+                <label class="form-label mb-0 small text-muted">페이지당</label>
+                <select class="form-select form-select-sm" style="width:72px" id="groupPageSize" onchange="renderGroupPage(1)">
+                  <option value="10">10</option>
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                  <option value="0">전체</option>
+                </select>
+              </div>
+            </div>
             <div id="groupCards">
               <div class="text-center text-muted py-4">로딩 중...</div>
             </div>
+            <div id="groupPager" class="d-flex justify-content-center mt-2"></div>
           </div>
 
           <!-- 알림 설정 -->
@@ -370,6 +382,26 @@ body { background:#f5f7fa; font-size:14px; }
                 <div class="mb-2">
                   <label class="form-label small mb-1">웹훅 URL</label>
                   <input class="form-control form-control-sm" id="notifyWebhookUrl" placeholder="https://hooks.example.com/...">
+                </div>
+              </div>
+            </div>
+            <!-- HMS 메일 게이트웨이 -->
+            <div class="card mb-3">
+              <div class="card-header py-2 fw-semibold small"><i class="bi bi-envelope-arrow-up-fill me-2"></i>HMS 메일 게이트웨이</div>
+              <div class="card-body">
+                <div class="mb-2">
+                  <label class="form-label small mb-1">HMS URL</label>
+                  <input class="form-control form-control-sm" id="notifyHmsUrl" placeholder="https://hms.example.com/api/mail">
+                </div>
+                <div class="row g-2">
+                  <div class="col-6">
+                    <label class="form-label small mb-1">통신사명 (telco_name)</label>
+                    <input class="form-control form-control-sm" id="notifyHmsTelco" placeholder="LGU+">
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">서비스명 (svc_name)</label>
+                    <input class="form-control form-control-sm" id="notifyHmsSvc" placeholder="soltrace_alert">
+                  </div>
                 </div>
               </div>
             </div>
@@ -1089,10 +1121,13 @@ async function loadNotify() {
   const d = await api('GET', '/settings/notify');
   if (!d) return;
   document.getElementById('notifyWebhookUrl').value = d.webhook_url || '';
+  document.getElementById('notifyHmsUrl').value     = d.hms_url || '';
+  document.getElementById('notifyHmsTelco').value   = d.hms_telco || '';
+  document.getElementById('notifyHmsSvc').value     = d.hms_svc || '';
   document.getElementById('notifySmtpHost').value   = d.smtp_host || '';
   document.getElementById('notifySmtpPort').value   = d.smtp_port || 587;
   document.getElementById('notifySmtpUser').value   = d.smtp_user || '';
-  document.getElementById('notifySmtpPassword').value = d.smtp_password || '';  // 서버가 '***' 반환 시 그대로 표시
+  document.getElementById('notifySmtpPassword').value = d.smtp_password || '';
   document.getElementById('notifySmtpFrom').value   = d.smtp_from || '';
   document.getElementById('notifyEmailTo').value    = d.email_to || '';
   document.getElementById('notifySmtpTls').checked  = d.smtp_tls !== false;
@@ -1102,6 +1137,9 @@ async function loadNotify() {
 async function saveNotify() {
   const body = {
     webhook_url:   document.getElementById('notifyWebhookUrl').value.trim(),
+    hms_url:       document.getElementById('notifyHmsUrl').value.trim(),
+    hms_telco:     document.getElementById('notifyHmsTelco').value.trim(),
+    hms_svc:       document.getElementById('notifyHmsSvc').value.trim(),
     smtp_host:     document.getElementById('notifySmtpHost').value.trim(),
     smtp_port:     parseInt(document.getElementById('notifySmtpPort').value) || 587,
     smtp_tls:      document.getElementById('notifySmtpTls').checked,
@@ -1133,6 +1171,8 @@ async function testNotify() {
 }
 
 // ── Groups ────────────────────────────────────────────────────────────────────
+let _groupFilter = '__all__';  // 현재 필터 상태 유지
+
 async function loadGroups() {
   const groups = await api('GET', '/groups');
   if (!groups) return;
@@ -1140,8 +1180,10 @@ async function loadGroups() {
   const container = document.getElementById('groupCards');
   if (!groups.length) {
     container.innerHTML = '<div class="text-center text-muted py-4">그룹이 없습니다. 추가해주세요.</div>';
+    document.getElementById('groupPager').innerHTML = '';
     return;
   }
+
   // 텔코별로 묶기 (미지정은 마지막)
   const byTelco = {};
   groups.forEach(g => {
@@ -1150,68 +1192,9 @@ async function loadGroups() {
     byTelco[key].push(g);
   });
   const telcoKeys = Object.keys(byTelco).sort((a, b) => {
-    if (a === '\x00') return 1;
-    if (b === '\x00') return -1;
+    if (a === '\x00') return 1; if (b === '\x00') return -1;
     return a.localeCompare(b);
   });
-
-  const groupRows = g => `
-      <td class="fw-semibold" style="word-break:break-word">${g.name}</td>
-      <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
-      <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer || '<span class="text-muted">-</span>'}</td>
-      <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains || '-'}</td>
-      <td class="small text-muted" style="word-break:break-word">${g.description || '-'}</td>
-      <td>
-        <div class="d-flex gap-1 justify-content-end">
-          <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
-          <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
-        </div>
-      </td>`;
-
-  const sectionRows = telcoKeys.map(key => {
-    const telco = key === '\x00' ? null : key;
-    const list  = byTelco[key];
-    const total = list.reduce((s, g) => s + g.device_count, 0);
-    const headerLabel = telco
-      ? `<i class="bi bi-broadcast-pin-fill me-2" style="color:#e85d04"></i><span class="fw-semibold">${telco}</span>`
-      : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-semibold text-muted">통신사 미지정</span>`;
-    return `
-      <tr class="table-secondary" data-telco="${telco || ''}" data-section-header>
-        <td colspan="6" class="py-2">
-          ${headerLabel}
-          <span class="ms-2 badge bg-secondary">${list.length}그룹</span>
-          <span class="ms-1 badge bg-light text-dark border">${total}대</span>
-        </td>
-      </tr>
-      ${list.map(g => `<tr data-telco="${telco || ''}">${groupRows(g)}</tr>`).join('')}`;
-  }).join('');
-
-  container.innerHTML = `
-    <div class="card">
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
-          <colgroup>
-            <col style="width:16%">
-            <col style="width:7%">
-            <col style="width:18%">
-            <col style="width:28%">
-            <col style="width:20%">
-            <col style="width:11%">
-          </colgroup>
-          <thead class="table-light">
-            <tr>
-              <th>그룹명</th>
-              <th class="text-center">장비</th>
-              <th>고객사</th>
-              <th>업로드 도메인</th>
-              <th>비고</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>${sectionRows}</tbody>
-        </table>
-      </div>
-    </div>`;
 
   // 필터 버튼 렌더링
   const filterEl = document.getElementById('groupFilter');
@@ -1219,18 +1202,121 @@ async function loadGroups() {
   filterEl.innerHTML = filterKeys.map(key => {
     const label = key === null ? '전체' : key === '\x00' ? '미지정' : key;
     const icon  = key === null ? 'bi-list-ul' : key === '\x00' ? 'bi-dash-circle' : 'bi-broadcast-pin-fill';
-    const active = key === null ? 'active' : '';
+    const active = (_groupFilter === (key ?? '__all__')) ? 'active' : '';
     return `<button class="btn btn-sm btn-outline-secondary ${active}" data-filter="${key ?? '__all__'}" onclick="filterGroups(this)"><i class="bi ${icon} me-1"></i>${label}</button>`;
   }).join('');
+
+  // 전역에 구조 저장 후 페이지 렌더
+  window._groupByTelco = byTelco;
+  window._groupTelcoKeys = telcoKeys;
+  renderGroupPage(1);
+}
+
+function _filteredGroups() {
+  const byTelco = window._groupByTelco || {};
+  const telcoKeys = window._groupTelcoKeys || [];
+  if (_groupFilter === '__all__') return allGroups;
+  const key = _groupFilter === '' ? '\x00' : _groupFilter;
+  return byTelco[key] || [];
+}
+
+function renderGroupPage(page) {
+  const container = document.getElementById('groupCards');
+  const pager = document.getElementById('groupPager');
+  const psEl = document.getElementById('groupPageSize');
+  const pageSize = psEl ? parseInt(psEl.value) : 20;
+  const byTelco = window._groupByTelco || {};
+  const telcoKeys = window._groupTelcoKeys || [];
+
+  const filtered = _filteredGroups();
+  const total = filtered.length;
+
+  // 전체 보기이거나 pageSize=0이면 페이징 없음
+  const useAll = pageSize === 0 || total <= pageSize;
+  const totalPages = useAll ? 1 : Math.ceil(total / pageSize);
+  page = Math.max(1, Math.min(page, totalPages));
+  const start = useAll ? 0 : (page - 1) * pageSize;
+  const end   = useAll ? total : Math.min(start + pageSize, total);
+  const pageItems = filtered.slice(start, end);
+  const pageIds = new Set(pageItems.map(g => g.id));
+
+  const groupRowHtml = g => `
+      <td class="fw-semibold" style="word-break:break-word">${g.name}</td>
+      <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
+      <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer || '<span class="text-muted">-</span>'}</td>
+      <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains || '-'}</td>
+      <td class="small text-muted" style="word-break:break-word">${g.description || '-'}</td>
+      <td><div class="d-flex gap-1 justify-content-end">
+        <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
+        <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
+      </div></td>`;
+
+  // 텔코 섹션별 렌더 — 페이지에 해당 그룹이 있는 섹션만 표시
+  // 첫 번째 섹션 이외에는 상단에 구분선 간격 추가
+  let isFirst = true;
+  const sectionRows = telcoKeys.map(key => {
+    const telco = key === '\x00' ? null : key;
+    const list  = (byTelco[key] || []).filter(g => pageIds.has(g.id));
+    if (!list.length) return '';
+    const total = list.reduce((s, g) => s + g.device_count, 0);
+    const headerLabel = telco
+      ? `<i class="bi bi-broadcast-pin-fill me-2" style="color:#e85d04"></i><span class="fw-semibold">${telco}</span>`
+      : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-semibold text-muted">통신사 미지정</span>`;
+    const spacer = isFirst ? '' : `<tr><td colspan="6" style="height:10px;padding:0;background:#f5f7fa;border-top:2px solid #dee2e6"></td></tr>`;
+    isFirst = false;
+    return `${spacer}
+      <tr class="table-secondary" data-telco="${telco || ''}">
+        <td colspan="6" class="py-2">
+          ${headerLabel}
+          <span class="ms-2 badge bg-secondary">${list.length}그룹</span>
+          <span class="ms-1 badge bg-light text-dark border">${total}대</span>
+        </td>
+      </tr>
+      ${list.map(g => `<tr data-telco="${telco || ''}">${groupRowHtml(g)}</tr>`).join('')}`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
+          <colgroup>
+            <col style="width:16%"><col style="width:7%"><col style="width:18%">
+            <col style="width:28%"><col style="width:20%"><col style="width:11%">
+          </colgroup>
+          <thead class="table-light">
+            <tr><th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
+            <th>업로드 도메인</th><th>비고</th><th></th></tr>
+          </thead>
+          <tbody>${sectionRows || '<tr><td colspan="6" class="text-center text-muted py-3">해당 항목이 없습니다.</td></tr>'}</tbody>
+        </table>
+      </div>
+      ${total > 0 ? `<div class="px-3 py-1 border-top small text-muted">${start+1}–${end} / ${total}그룹</div>` : ''}
+    </div>`;
+
+  // 페이저
+  if (totalPages <= 1) { pager.innerHTML = ''; return; }
+  const pages = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - page) <= 2)
+      pages.push(i);
+    else if (pages[pages.length-1] !== '…')
+      pages.push('…');
+  }
+  pager.innerHTML = `<ul class="pagination pagination-sm mb-0">
+    <li class="page-item${page===1?' disabled':''}"><a class="page-link" onclick="renderGroupPage(${page-1})">‹</a></li>
+    ${pages.map(p => p === '…'
+      ? `<li class="page-item disabled"><span class="page-link">…</span></li>`
+      : `<li class="page-item${p===page?' active':''}"><a class="page-link" onclick="renderGroupPage(${p})">${p}</a></li>`
+    ).join('')}
+    <li class="page-item${page===totalPages?' disabled':''}"><a class="page-link" onclick="renderGroupPage(${page+1})">›</a></li>
+  </ul>`;
 }
 
 function filterGroups(btn) {
   document.querySelectorAll('#groupFilter button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  const filter = btn.dataset.filter;
-  document.querySelectorAll('#groupCards [data-telco]').forEach(row => {
-    row.style.display = (filter === '__all__' || row.dataset.telco === filter) ? '' : 'none';
-  });
+  _groupFilter = btn.dataset.filter;
+  renderGroupPage(1);
 }
 
 function populateGroupTelco(selected) {

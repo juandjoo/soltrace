@@ -93,17 +93,21 @@ def get_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
         smtp_password=_PW_MASK if pw_stored else "",   # 평문 미노출
         smtp_from=_g("notify_smtp_from"),
         email_to=_g("notify_email_to"),
+        hms_url=_g("notify_hms_url"),
+        hms_telco=_g("notify_hms_telco"),
+        hms_svc=_g("notify_hms_svc"),
     )
 
 
 @router.put("/notify", status_code=status.HTTP_204_NO_CONTENT)
 def save_notify(body: NotifySettings, db: Session = Depends(get_db), _: str = Depends(require_admin)):
     from app.notifier import validate_webhook_url
-    if body.webhook_url:
-        try:
-            validate_webhook_url(body.webhook_url)
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    for url_field, label in ((body.webhook_url, "웹훅"), (body.hms_url, "HMS")):
+        if url_field:
+            try:
+                validate_webhook_url(url_field)
+            except ValueError as e:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{label} {e}")
 
     pairs = {
         "notify_webhook_url":  body.webhook_url,
@@ -113,6 +117,9 @@ def save_notify(body: NotifySettings, db: Session = Depends(get_db), _: str = De
         "notify_smtp_user":    body.smtp_user,
         "notify_smtp_from":    body.smtp_from,
         "notify_email_to":     body.email_to,
+        "notify_hms_url":      body.hms_url,
+        "notify_hms_telco":    body.hms_telco,
+        "notify_hms_svc":      body.hms_svc,
     }
     for k, v in pairs.items():
         set_config(db, k, v)
