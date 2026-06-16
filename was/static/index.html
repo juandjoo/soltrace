@@ -10,7 +10,8 @@
 <style>
 body { background:#f5f7fa; font-size:14px; }
 #topbar { background:#fff; border-bottom:1px solid #e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.04); position:sticky; top:0; z-index:1020; }
-#topbar .navbar-brand { font-weight:700; }
+#topbar .navbar-brand { font-weight:700; background:none; border:none; padding:0; cursor:pointer; }
+#topbar .navbar-brand:hover { opacity:.8; }
 #topbar .nav-link { color:#475569; font-weight:500; border-radius:8px; padding:6px 14px; }
 #topbar .nav-link:hover { color:#0d6efd; background:#f1f5f9; }
 #topbar .nav-link.active { color:#0d6efd; background:#e7f1ff; }
@@ -74,7 +75,7 @@ body { background:#f5f7fa; font-size:14px; }
 <div id="appLayout" style="display:none!important">
   <!-- Top navbar -->
   <nav id="topbar" class="navbar navbar-expand px-4 py-2">
-    <span class="navbar-brand text-primary me-4"><i class="bi bi-hdd-network me-2"></i>SolTrace</span>
+    <button class="navbar-brand me-4" onclick="nav('dashboard')"><i class="bi bi-hdd-network me-2" style="color:#fd7e14"></i><span style="color:#fd7e14">Sol</span><span style="color:#212529">Trace</span></button>
     <ul class="nav nav-pills gap-1">
       <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2 me-1"></i>대시보드</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul me-1"></i>로그 조회</a></li>
