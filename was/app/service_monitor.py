@@ -96,7 +96,7 @@ class ServiceMonitor:
         db.execute(text(f"""
             INSERT INTO service_metrics AS m
                 (device_id, bucket, transfers, transfer_fails, bytes,
-                 transfer_secs, login_attempts, login_fails)
+                 transfer_secs, login_attempts, login_fails, cwd_fails)
             SELECT
                 device_id,
                 date_bin(:iv, log_time, TIMESTAMPTZ '{_EPOCH}') AS bucket,
@@ -105,7 +105,8 @@ class ServiceMonitor:
                 COALESCE(SUM(file_size) FILTER (WHERE action IN ('upload','download')), 0),
                 COALESCE(SUM(transfer_time) FILTER (WHERE action IN ('upload','download')), 0),
                 COUNT(*) FILTER (WHERE action='login'),
-                COUNT(*) FILTER (WHERE action='login' AND status='fail')
+                COUNT(*) FILTER (WHERE action='login' AND status='fail'),
+                COUNT(*) FILTER (WHERE action='cwd_fail')
             FROM ftp_logs
             WHERE log_time >= :win_start
             GROUP BY device_id, bucket
@@ -116,6 +117,7 @@ class ServiceMonitor:
                 transfer_secs  = EXCLUDED.transfer_secs,
                 login_attempts = EXCLUDED.login_attempts,
                 login_fails    = EXCLUDED.login_fails,
+                cwd_fails      = EXCLUDED.cwd_fails,
                 updated_at     = NOW()
         """), {"iv": self._bucket, "win_start": win_start})
         db.commit()
@@ -133,7 +135,7 @@ class ServiceMonitor:
 
         rows = db.execute(text("""
             SELECT device_id, bucket, transfers, transfer_fails, bytes,
-                   transfer_secs, login_attempts, login_fails
+                   transfer_secs, login_attempts, login_fails, cwd_fails
             FROM service_metrics
             WHERE bucket >= :base_start
             ORDER BY device_id, bucket
@@ -218,6 +220,22 @@ class ServiceMonitor:
                 out.append(self._mk(device_id, cand, "login_fail_rate", sev, value, med, thr,
                                      cand.login_attempts,
                                      f"로그인 실패율 {value*100:.1f}% (임계 {thr*100:.1f}%)"))
+
+        # CWD 실패 급증 (절대 건수 기준 — 오탐 방지를 위해 높은 하한 적용)
+        if cand.cwd_fails >= settings.alert_min_cwd_samples:
+            value = float(cand.cwd_fails)
+            base = [float(r.cwd_fails) for r in baseline
+                    if r.cwd_fails >= settings.alert_min_cwd_samples]
+            med = _median(base)
+            floor = float(settings.alert_cwd_fail_floor)
+            thr = floor
+            if med is not None:
+                thr = max(med + k * _mad(base, med), floor)
+            if value > thr:
+                sev = "critical" if value >= 2 * thr else "warning"
+                out.append(self._mk(device_id, cand, "cwd_fail_spike", sev, value,
+                                     med, thr, int(value),
+                                     f"CWD 실패 {int(value)}건 급증 (임계 {thr:.0f}건)"))
         return out
 
     @staticmethod

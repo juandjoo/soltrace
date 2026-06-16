@@ -23,8 +23,10 @@ class Settings(BaseSettings):
     alert_mad_k: float = 4.0               # median + k·MAD 이탈 임계
     alert_min_samples: int = 20            # 전송 지표 평가 최소 건수 (소표본 오탐 방지)
     alert_min_login_samples: int = 10      # 로그인 지표 평가 최소 시도수
+    alert_min_cwd_samples: int = 5         # CWD fail 평가 최소 건수
     alert_fail_rate_floor: float = 0.05    # 전송 실패율 절대 하한 (5%)
     alert_login_fail_rate_floor: float = 0.30   # 로그인 실패율 절대 하한 (30%)
+    alert_cwd_fail_floor: int = 20         # CWD fail 절대 하한 (건수 기준, 소량 정상탐색 무시)
     alert_throughput_drop: float = 0.5     # baseline 대비 throughput 하락 비율 (50%↓)
 
     # 알림 채널 (미설정 시 해당 채널 비활성)

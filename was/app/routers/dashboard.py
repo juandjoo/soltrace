@@ -208,7 +208,7 @@ def get_service_health(
         SELECT DISTINCT ON (m.device_id)
             m.device_id, d.hostname, m.bucket,
             m.transfers, m.transfer_fails, m.bytes, m.transfer_secs,
-            m.login_attempts, m.login_fails
+            m.login_attempts, m.login_fails, m.cwd_fails
         FROM service_metrics m JOIN devices d ON d.id = m.device_id
         WHERE m.bucket >= :since {dev_f}
         ORDER BY m.device_id, m.bucket DESC
@@ -242,9 +242,10 @@ def get_service_health(
     # 추이 (전체 또는 선택 장비)
     trend_rows = db.execute(text(f"""
         SELECT m.bucket,
-               SUM(m.transfer_fails)::float / NULLIF(SUM(m.transfers), 0)   AS fail_rate,
-               SUM(m.bytes)::float        / NULLIF(SUM(m.transfer_secs), 0) AS tp,
-               SUM(m.login_fails)::float  / NULLIF(SUM(m.login_attempts), 0) AS login_fail_rate
+               SUM(m.transfer_fails)::float / NULLIF(SUM(m.transfers), 0)    AS fail_rate,
+               SUM(m.bytes)::float        / NULLIF(SUM(m.transfer_secs), 0)  AS tp,
+               SUM(m.login_fails)::float  / NULLIF(SUM(m.login_attempts), 0) AS login_fail_rate,
+               SUM(m.cwd_fails)::int                                          AS cwd_fails
         FROM service_metrics m
         WHERE m.bucket >= :since {dev_f}
         GROUP BY m.bucket
@@ -254,17 +255,20 @@ def get_service_health(
         bucket=r.bucket, fail_rate=r.fail_rate,
         throughput_mb=(r.tp / _MB) if r.tp is not None else None,
         login_fail_rate=r.login_fail_rate,
+        cwd_fails=r.cwd_fails,
     ) for r in trend_rows]
 
     totals_row = db.execute(text(f"""
         SELECT COALESCE(SUM(m.transfer_fails), 0)::int AS transfer_fails,
-               COALESCE(SUM(m.login_fails), 0)::int    AS login_fails
+               COALESCE(SUM(m.login_fails), 0)::int    AS login_fails,
+               COALESCE(SUM(m.cwd_fails), 0)::int      AS cwd_fails
         FROM service_metrics m
         WHERE m.bucket >= :since {dev_f}
     """), params).fetchone()
     fail_totals = FailTotals(
         transfer_fails=totals_row.transfer_fails,
         login_fails=totals_row.login_fails,
+        cwd_fails=totals_row.cwd_fails,
     )
 
     return ServiceHealthResponse(devices=devices, alerts=alerts, trend=trend, fail_totals=fail_totals)

@@ -208,6 +208,11 @@ def parse_extended_log(line: str) -> Optional[dict]:
         entry["action"] = "rmdir"
         entry["file_path"] = path
         return entry
+    if command == "CWD" and status_code == 550:
+        entry["action"] = "cwd_fail"
+        entry["status"] = "fail"
+        entry["file_path"] = path
+        return entry
 
     return None
 

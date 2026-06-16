@@ -13,7 +13,7 @@ from app import write_buffer as wb
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 
-VALID_ACTIONS = {"upload", "download", "delete", "rename", "login", "logout", "mkdir", "rmdir"}
+VALID_ACTIONS = {"upload", "download", "delete", "rename", "login", "logout", "mkdir", "rmdir", "cwd_fail"}
 
 # id, created_at 제외 — GENERATED ALWAYS AS IDENTITY 컬럼을 INSERT에 포함하면 오류 발생
 _LOG_COLS = (

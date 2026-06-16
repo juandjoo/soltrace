@@ -193,41 +193,28 @@ body { background:#f5f7fa; font-size:14px; }
         </div>
       </div>
       <!-- Filters -->
-      <div class="card mb-3 p-3">
-        <div class="row g-2">
-          <div class="col-sm-2">
-            <select class="form-select form-select-sm" id="logGroupFilter" onchange="searchLogs(1)">
-              <option value="">전체 그룹</option>
-            </select>
-          </div>
-          <div class="col-sm-2">
-            <select class="form-select form-select-sm" id="logDeviceFilter">
-              <option value="">전체 장비</option>
-            </select>
-          </div>
-          <div class="col-sm-2">
-            <input class="form-control form-control-sm" id="logUserFilter" placeholder="사용자명">
-          </div>
-          <div class="col-sm-2">
-            <select class="form-select form-select-sm" id="logActionFilter">
-              <option value="">전체 작업</option>
-              <option value="upload">업로드</option>
-              <option value="download">다운로드</option>
-              <option value="delete">삭제</option>
-              <option value="rename">이름변경</option>
-              <option value="login">로그인</option>
-              <option value="logout">로그아웃</option>
-            </select>
-          </div>
-          <div class="col-sm-2">
-            <input type="datetime-local" class="form-control form-control-sm" id="logStartTime">
-          </div>
-          <div class="col-sm-2">
-            <input type="datetime-local" class="form-control form-control-sm" id="logEndTime">
-          </div>
-          <div class="col-sm-1">
-            <button class="btn btn-primary btn-sm w-100" onclick="searchLogs(1)"><i class="bi bi-search"></i></button>
-          </div>
+      <div class="card mb-3 p-2">
+        <div class="d-flex gap-2 flex-nowrap align-items-center">
+          <select class="form-select form-select-sm flex-shrink-0" style="width:120px" id="logGroupFilter" onchange="searchLogs(1)">
+            <option value="">전체 그룹</option>
+          </select>
+          <select class="form-select form-select-sm flex-shrink-0" style="width:120px" id="logDeviceFilter">
+            <option value="">전체 장비</option>
+          </select>
+          <input class="form-control form-control-sm flex-shrink-0" style="width:100px" id="logUserFilter" placeholder="사용자명">
+          <input class="form-control form-control-sm flex-shrink-0" style="width:115px" id="logIpFilter" placeholder="IP">
+          <select class="form-select form-select-sm flex-shrink-0" style="width:110px" id="logActionFilter">
+            <option value="">전체 작업</option>
+            <option value="upload">업로드</option>
+            <option value="download">다운로드</option>
+            <option value="delete">삭제</option>
+            <option value="rename">이름변경</option>
+            <option value="login">로그인</option>
+            <option value="logout">로그아웃</option>
+          </select>
+          <input type="datetime-local" class="form-control form-control-sm flex-shrink-0" style="width:158px" id="logStartTime">
+          <input type="datetime-local" class="form-control form-control-sm flex-shrink-0" style="width:158px" id="logEndTime">
+          <button class="btn btn-primary btn-sm flex-shrink-0" onclick="searchLogs(1)"><i class="bi bi-search"></i></button>
         </div>
       </div>
       <div class="card">
@@ -235,11 +222,11 @@ body { background:#f5f7fa; font-size:14px; }
           <table class="table table-hover mb-0 table-sm">
             <thead class="table-light">
               <tr>
-                <th>시간</th><th>장비</th><th>사용자</th><th>작업</th>
+                <th>시간</th><th>장비</th><th>사용자</th><th>IP</th><th>작업</th>
                 <th>파일 경로</th><th>크기</th><th>전송시간</th><th>상태</th>
               </tr>
             </thead>
-            <tbody id="logTable"><tr><td colspan="8" class="text-center text-muted py-4">검색 조건을 입력하고 조회하세요.</td></tr></tbody>
+            <tbody id="logTable"><tr><td colspan="9" class="text-center text-muted py-4">검색 조건을 입력하고 조회하세요.</td></tr></tbody>
           </table>
         </div>
         <div class="d-flex align-items-center px-3 py-2 border-top">
@@ -725,7 +712,7 @@ const HEALTH_STATUS = {
   critical: {label:'심각', cls:'danger',  icon:'exclamation-octagon'},
   idle:     {label:'유휴', cls:'secondary', icon:'dash-circle'},
 };
-const METRIC_LABEL = {fail_rate:'전송 실패율', throughput:'전송 속도', login_fail_rate:'로그인 실패율'};
+const METRIC_LABEL = {fail_rate:'전송 실패율', throughput:'전송 속도', login_fail_rate:'로그인 실패율', cwd_fail_spike:'CWD 실패 급증'};
 
 function fmtPct(v) { return v == null ? '-' : (v*100).toFixed(1) + '%'; }
 function fmtMbps(v) { return v == null ? '-' : v.toFixed(2) + ' MB/s'; }
@@ -766,10 +753,10 @@ async function loadServiceHealth() {
   charts.healthRate = new Chart(document.getElementById('chartHealthRate'), {
     type: 'doughnut',
     data: {
-      labels: ['전송 실패', '로그인 실패'],
+      labels: ['전송 실패', '로그인 실패', 'CWD 실패'],
       datasets: [{
-        data: [ft.transfer_fails || 0, ft.login_fails || 0],
-        backgroundColor: ['#dc3545', '#fd7e14'],
+        data: [ft.transfer_fails || 0, ft.login_fails || 0, ft.cwd_fails || 0],
+        backgroundColor: ['#dc3545', '#fd7e14', '#6f42c1'],
         hoverOffset: 12, borderWidth: 1,
       }],
     },
@@ -1172,12 +1159,14 @@ function _logParams() {
   const grp = document.getElementById('logGroupFilter').value;
   const dev = document.getElementById('logDeviceFilter').value;
   const user = document.getElementById('logUserFilter').value.trim();
+  const ip = document.getElementById('logIpFilter').value.trim();
   const action = document.getElementById('logActionFilter').value;
   const start = document.getElementById('logStartTime').value;
   const end = document.getElementById('logEndTime').value;
   if (grp) params.set('group_id', grp);
   if (dev) params.set('device_id', dev);
   if (user) params.set('username', user);
+  if (ip) params.set('client_ip', ip);
   if (action) params.set('action', action);
   if (start) params.set('start_time', new Date(start).toISOString());
   if (end) params.set('end_time', new Date(end).toISOString());
@@ -1201,7 +1190,7 @@ async function searchLogs(page) {
 
   const tbody = document.getElementById('logTable');
   if (!data.items.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">결과가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">결과가 없습니다.</td></tr>';
     document.getElementById('logPager').innerHTML = '';
     return;
   }
@@ -1214,6 +1203,7 @@ async function searchLogs(page) {
       <td class="small">${dt}</td>
       <td class="small">${l.device_hostname||'-'}</td>
       <td>${l.username||'-'}</td>
+      <td class="small text-muted">${l.client_ip||'-'}</td>
       <td>${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
       <td class="small text-truncate" style="max-width:240px" title="${l.file_path||''}">${l.file_path||'-'}</td>
       <td class="size-val small">${fmtBytes(l.file_size)}</td>

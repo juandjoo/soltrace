@@ -266,10 +266,12 @@ class ServiceTrendPoint(BaseModel):
     fail_rate: Optional[float] = None
     throughput_mb: Optional[float] = None
     login_fail_rate: Optional[float] = None
+    cwd_fails: Optional[int] = None
 
 class FailTotals(BaseModel):
     transfer_fails: int = 0
     login_fails: int = 0
+    cwd_fails: int = 0
 
 class ServiceHealthResponse(BaseModel):
     devices: List[ServiceHealthDevice]

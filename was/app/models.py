@@ -129,6 +129,7 @@ class ServiceMetric(Base):
     transfer_secs = Column(Float, nullable=False, default=0)
     login_attempts = Column(Integer, nullable=False, default=0)
     login_fails = Column(Integer, nullable=False, default=0)
+    cwd_fails = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     __table_args__ = (

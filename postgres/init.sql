@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS ftp_logs (
     log_time TIMESTAMPTZ NOT NULL,
     client_ip VARCHAR(45),
     username VARCHAR(255),
-    action VARCHAR(20) NOT NULL CHECK (action IN ('upload', 'download', 'delete', 'rename', 'login', 'logout', 'mkdir', 'rmdir')),
+    action VARCHAR(20) NOT NULL CHECK (action IN ('upload', 'download', 'delete', 'rename', 'login', 'logout', 'mkdir', 'rmdir', 'cwd_fail')),
     file_path TEXT,
     file_size BIGINT DEFAULT 0,
     transfer_time FLOAT DEFAULT 0,
@@ -173,9 +173,11 @@ CREATE TABLE IF NOT EXISTS service_metrics (
     transfer_secs   DOUBLE PRECISION NOT NULL DEFAULT 0,  -- Σtransfer_time (throughput 계산용)
     login_attempts  INT    NOT NULL DEFAULT 0,       -- 식별된 계정 로그인 시도(성공+실패)
     login_fails     INT    NOT NULL DEFAULT 0,
+    cwd_fails       INT    NOT NULL DEFAULT 0,       -- CWD 550 (디렉터리 없음) 건수
     updated_at      TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (device_id, bucket)
 );
+ALTER TABLE service_metrics ADD COLUMN IF NOT EXISTS cwd_fails INT NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_service_metrics_bucket ON service_metrics(bucket DESC);
 
 -- baseline 이탈로 판정된 서비스 이상 이벤트.
@@ -196,6 +198,16 @@ CREATE TABLE IF NOT EXISTS service_alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_service_alerts_created ON service_alerts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_service_alerts_unnotified ON service_alerts(notified) WHERE notified = FALSE;
+
+-- ftp_logs action CHECK constraint 마이그레이션 (cwd_fail 추가)
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.table_constraints
+               WHERE table_name='ftp_logs' AND constraint_name='ftp_logs_action_check') THEN
+        ALTER TABLE ftp_logs DROP CONSTRAINT ftp_logs_action_check;
+        ALTER TABLE ftp_logs ADD CONSTRAINT ftp_logs_action_check
+            CHECK (action IN ('upload','download','delete','rename','login','logout','mkdir','rmdir','cwd_fail'));
+    END IF;
+END $$;
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- Trigger
