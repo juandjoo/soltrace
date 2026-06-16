@@ -1,7 +1,10 @@
+import logging
 import subprocess
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+
+log = logging.getLogger("soltrace.settings")
 
 from app.config import settings as cfg
 from app.database import get_db
@@ -139,22 +142,22 @@ def test_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="발송 실패 — 로그를 확인하세요")
 
 
-@router.post("/update", response_model=UpdateTriggerResponse)
-def trigger_update(_: str = Depends(require_admin)):
-    # soltrace 가 sudo NOPASSWD 로 root 소유 래퍼만 실행. 래퍼는 systemd-run 으로
-    # 분리 유닛에서 배포를 돌려 WAS 재시작에도 끝까지 진행된다 (여기선 즉시 반환).
+def _run_selfupdate():
+    """응답 전송 후 백그라운드에서 실행 — WAS 재시작과 HTTP 응답 경쟁 방지."""
     try:
         out = subprocess.run(
             ["sudo", "-n", cfg.selfupdate_cmd],
             capture_output=True, text=True, timeout=30,
         )
+        if out.returncode != 0:
+            log.error("selfupdate failed: %s", (out.stderr or out.stdout).strip())
     except (OSError, subprocess.SubprocessError) as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"업데이트 실행 실패: {e}")
-    if out.returncode != 0:
-        detail = (out.stderr or out.stdout or "알 수 없는 오류").strip()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"업데이트 시작 실패: {detail}")
+        log.error("selfupdate error: %s", e)
+
+
+@router.post("/update", response_model=UpdateTriggerResponse)
+def trigger_update(background_tasks: BackgroundTasks, _: str = Depends(require_admin)):
+    background_tasks.add_task(_run_selfupdate)
     return UpdateTriggerResponse(
         started=True,
         message="업데이트를 시작했습니다. 잠시 후 서비스가 재시작되며 완료까지 1~2분 걸립니다.",

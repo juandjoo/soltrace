@@ -83,4 +83,7 @@ def spa(full_path: str = ""):
     if full_path.startswith("api/"):
         from fastapi import HTTPException
         raise HTTPException(status_code=404)
-    return FileResponse("static/index.html")
+    return FileResponse(
+        "static/index.html",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
+    )
