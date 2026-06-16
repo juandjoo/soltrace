@@ -1028,51 +1028,62 @@ async function loadGroups() {
   });
 
   const groupRows = g => `
-    <tr>
-      <td class="fw-semibold">${g.name}</td>
+      <td class="fw-semibold" style="word-break:break-word">${g.name}</td>
       <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
-      <td class="small" style="white-space:pre-wrap">${g.customer || '<span class="text-muted">-</span>'}</td>
-      <td class="small text-muted" style="white-space:pre-wrap">${g.upload_domains || '-'}</td>
-      <td class="small text-muted">${g.description || '-'}</td>
+      <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer || '<span class="text-muted">-</span>'}</td>
+      <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains || '-'}</td>
+      <td class="small text-muted" style="word-break:break-word">${g.description || '-'}</td>
       <td>
         <div class="d-flex gap-1 justify-content-end">
           <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
           <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
         </div>
-      </td>
-    </tr>`;
+      </td>`;
 
-  container.innerHTML = telcoKeys.map(key => {
+  const sectionRows = telcoKeys.map(key => {
     const telco = key === '\x00' ? null : key;
     const list  = byTelco[key];
     const total = list.reduce((s, g) => s + g.device_count, 0);
-    const header = telco
-      ? `<i class="bi bi-broadcast-pin-fill me-2" style="color:#e85d04"></i><span class="fw-bold">${telco}</span>`
-      : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-bold text-muted">통신사 미지정</span>`;
+    const headerLabel = telco
+      ? `<i class="bi bi-broadcast-pin-fill me-2" style="color:#e85d04"></i><span class="fw-semibold">${telco}</span>`
+      : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-semibold text-muted">통신사 미지정</span>`;
     return `
-    <div class="card mb-3" data-telco="${telco || ''}">
-      <div class="card-header py-2 d-flex align-items-center" style="background:#f8f9fa">
-        ${header}
-        <span class="ms-2 badge bg-secondary">${list.length}그룹</span>
-        <span class="ms-1 badge bg-light text-dark border">${total}대</span>
-      </div>
+      <tr class="table-secondary" data-telco="${telco || ''}" data-section-header>
+        <td colspan="6" class="py-2">
+          ${headerLabel}
+          <span class="ms-2 badge bg-secondary">${list.length}그룹</span>
+          <span class="ms-1 badge bg-light text-dark border">${total}대</span>
+        </td>
+      </tr>
+      ${list.map(g => `<tr data-telco="${telco || ''}">${groupRows(g)}</tr>`).join('')}`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="card">
       <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
+        <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
+          <colgroup>
+            <col style="width:16%">
+            <col style="width:7%">
+            <col style="width:18%">
+            <col style="width:28%">
+            <col style="width:20%">
+            <col style="width:11%">
+          </colgroup>
           <thead class="table-light">
             <tr>
-              <th style="min-width:140px">그룹명</th>
-              <th style="min-width:60px" class="text-center">장비</th>
-              <th style="min-width:180px">고객사</th>
-              <th style="min-width:240px">업로드 도메인</th>
-              <th style="min-width:140px">비고</th>
-              <th style="width:100px"></th>
+              <th>그룹명</th>
+              <th class="text-center">장비</th>
+              <th>고객사</th>
+              <th>업로드 도메인</th>
+              <th>비고</th>
+              <th></th>
             </tr>
           </thead>
-          <tbody>${list.map(groupRows).join('')}</tbody>
+          <tbody>${sectionRows}</tbody>
         </table>
       </div>
     </div>`;
-  }).join('');
 
   // 필터 버튼 렌더링
   const filterEl = document.getElementById('groupFilter');
@@ -1089,12 +1100,8 @@ function filterGroups(btn) {
   document.querySelectorAll('#groupFilter button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const filter = btn.dataset.filter;
-  document.querySelectorAll('#groupCards [data-telco]').forEach(section => {
-    if (filter === '__all__') {
-      section.style.display = '';
-    } else {
-      section.style.display = section.dataset.telco === filter ? '' : 'none';
-    }
+  document.querySelectorAll('#groupCards [data-telco]').forEach(row => {
+    row.style.display = (filter === '__all__' || row.dataset.telco === filter) ? '' : 'none';
   });
 }
 
