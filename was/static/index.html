@@ -377,9 +377,12 @@ body { background:#f5f7fa; font-size:14px; }
             <h6 class="fw-bold mb-3">알림 설정</h6>
             <!-- 웹훅 -->
             <div class="card mb-3">
-              <div class="card-header py-2 fw-semibold small"><i class="bi bi-globe2 me-2"></i>웹훅</div>
+              <div class="card-header py-2 fw-semibold small d-flex align-items-center">
+                <span><i class="bi bi-globe2 me-2"></i>웹훅</span>
+                <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="testNotify('webhook')"><i class="bi bi-send me-1"></i>테스트</button>
+              </div>
               <div class="card-body">
-                <div class="mb-2">
+                <div class="mb-0">
                   <label class="form-label small mb-1">웹훅 URL</label>
                   <input class="form-control form-control-sm" id="notifyWebhookUrl" placeholder="https://hooks.example.com/...">
                 </div>
@@ -387,7 +390,10 @@ body { background:#f5f7fa; font-size:14px; }
             </div>
             <!-- HMS 메일 게이트웨이 -->
             <div class="card mb-3">
-              <div class="card-header py-2 fw-semibold small"><i class="bi bi-envelope-arrow-up-fill me-2"></i>HMS 메일 게이트웨이</div>
+              <div class="card-header py-2 fw-semibold small d-flex align-items-center">
+                <span><i class="bi bi-envelope-arrow-up-fill me-2"></i>HMS 메일 게이트웨이</span>
+                <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="testNotify('hms')"><i class="bi bi-send me-1"></i>테스트</button>
+              </div>
               <div class="card-body">
                 <div class="mb-2">
                   <label class="form-label small mb-1">HMS URL</label>
@@ -407,7 +413,10 @@ body { background:#f5f7fa; font-size:14px; }
             </div>
             <!-- 이메일 -->
             <div class="card mb-3">
-              <div class="card-header py-2 fw-semibold small"><i class="bi bi-envelope-fill me-2"></i>이메일 (SMTP)</div>
+              <div class="card-header py-2 fw-semibold small d-flex align-items-center">
+                <span><i class="bi bi-envelope-fill me-2"></i>이메일 (SMTP)</span>
+                <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="testNotify('email')"><i class="bi bi-send me-1"></i>테스트</button>
+              </div>
               <div class="card-body">
                 <div class="row g-2 mb-2">
                   <div class="col-8">
@@ -445,7 +454,6 @@ body { background:#f5f7fa; font-size:14px; }
             </div>
             <div class="d-flex gap-2">
               <button class="btn btn-primary btn-sm" onclick="saveNotify()"><i class="bi bi-save me-1"></i>저장</button>
-              <button class="btn btn-outline-secondary btn-sm" onclick="testNotify()"><i class="bi bi-send me-1"></i>테스트 발송</button>
             </div>
             <div id="notifyMsg" class="mt-2 small"></div>
           </div>
@@ -1158,12 +1166,13 @@ async function saveNotify() {
   setTimeout(() => { msg.innerHTML = ''; }, 3000);
 }
 
-async function testNotify() {
+async function testNotify(channel = 'all') {
+  const label = {webhook:'웹훅', hms:'HMS', email:'이메일', all:'전체'}[channel] || channel;
   const msg = document.getElementById('notifyMsg');
-  msg.innerHTML = '<span class="text-muted">발송 중...</span>';
+  msg.innerHTML = `<span class="text-muted">${label} 테스트 발송 중...</span>`;
   try {
-    await api('POST', '/settings/notify/test');
-    msg.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>테스트 발송 성공</span>';
+    await api('POST', `/settings/notify/test?channel=${channel}`);
+    msg.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${label} 테스트 발송 성공</span>`;
   } catch(e) {
     msg.innerHTML = `<span class="text-danger">발송 실패: ${e.message}</span>`;
   }

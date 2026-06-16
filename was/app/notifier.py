@@ -196,13 +196,21 @@ def _send_hms(alerts: list[dict], cfg: dict) -> bool:
     return True
 
 
-def dispatch(alerts: list[dict], db) -> bool:
-    """메일·웹훅 발송. 한 채널이라도 실제 발송하면 True."""
+_CHANNEL_MAP = {
+    "email":   _send_email,
+    "webhook": _send_webhook,
+    "hms":     _send_hms,
+}
+
+
+def dispatch(alerts: list[dict], db, channel: str = "all") -> bool:
+    """메일·웹훅·HMS 발송. channel='all'이면 설정된 모든 채널, 아니면 지정 채널만."""
     if not alerts:
         return False
     cfg = _load_cfg(db)
+    fns = list(_CHANNEL_MAP.values()) if channel == "all" else [_CHANNEL_MAP[channel]] if channel in _CHANNEL_MAP else []
     sent = False
-    for fn in (_send_email, _send_webhook, _send_hms):
+    for fn in fns:
         try:
             if fn(alerts, cfg):
                 sent = True

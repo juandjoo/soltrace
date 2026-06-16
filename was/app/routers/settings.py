@@ -129,7 +129,12 @@ def save_notify(body: NotifySettings, db: Session = Depends(get_db), _: str = De
 
 
 @router.post("/notify/test", status_code=status.HTTP_204_NO_CONTENT)
-def test_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
+def test_notify(
+    channel: str = "all",
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """channel: 'all' | 'webhook' | 'hms' | 'email'"""
     from datetime import datetime, timezone
     from app import notifier
     dummy = [{
@@ -144,7 +149,7 @@ def test_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
     }]
     if not notifier.channels_configured(db):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="알림 채널이 설정되지 않았습니다")
-    ok = notifier.dispatch(dummy, db)
+    ok = notifier.dispatch(dummy, db, channel=channel)
     if not ok:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="발송 실패 — 로그를 확인하세요")
 
