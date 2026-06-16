@@ -12,17 +12,21 @@ body { background:#f5f7fa; font-size:14px; }
 #topbar { background:#fff; border-bottom:1px solid #e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.04); position:sticky; top:0; z-index:1020; }
 #topbar .navbar-brand { font-weight:700; background:none; border:none; padding:0; cursor:pointer; }
 #topbar .navbar-brand:hover { opacity:.8; }
-#topbar .nav-link { color:#475569; font-weight:500; border-radius:8px; padding:6px 14px; }
-#topbar .nav-link:hover { color:#0d6efd; background:#f1f5f9; }
-#topbar .nav-link.active { color:#0d6efd; background:#e7f1ff; }
-#topbar #btnSettings.active { background:#e7f1ff; color:#0d6efd; }
+#topbar .nav-link { color:#475569; font-weight:500; border-radius:10px; padding:6px 16px; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:11px; line-height:1.2; }
+#topbar .nav-link i { font-size:1.25rem; }
+#topbar .nav-link:hover { color:#e85d04; background:#fff5ee; }
+#topbar .nav-link.active { color:#e85d04; background:#fff5ee; font-weight:600; }
+#topbar #btnSettings { border:none; background:none; padding:8px 10px; border-radius:10px; color:#475569; }
+#topbar #btnSettings:hover, #topbar #btnSettings.active { background:#fff5ee; color:#e85d04; }
+#topbar #btnSettings i { font-size:1.25rem; }
 #main { overflow:auto; }
 .page { display:none; }
 .page.active { display:block; }
 /* 설정: 좌측 세로 탭 */
-.settings-vnav .nav-link { color:#475569; border-radius:8px; padding:8px 14px; margin-bottom:3px; }
-.settings-vnav .nav-link:hover { background:#eef2f7; }
-.settings-vnav .nav-link.active { background:#0d6efd; color:#fff; }
+.settings-vnav .nav-link { color:#475569; border-radius:8px; padding:8px 14px; margin-bottom:3px; font-size:13.5px; }
+.settings-vnav .nav-link i { font-size:1.1rem; width:1.5rem; }
+.settings-vnav .nav-link:hover { background:#fff5ee; color:#e85d04; }
+.settings-vnav .nav-link.active { background:#e85d04; color:#fff; }
 .settings-pane.d-none { display:none; }
 /* 대시보드 차트 카드: 마우스오버 시 강조 */
 .dash-card { transition: box-shadow .15s ease, transform .15s ease; }
@@ -76,13 +80,13 @@ body { background:#f5f7fa; font-size:14px; }
   <!-- Top navbar -->
   <nav id="topbar" class="navbar navbar-expand px-4 py-2">
     <button class="navbar-brand me-4" onclick="nav('dashboard')"><i class="bi bi-hdd-network me-2" style="color:#e85d04"></i><span style="color:#e85d04">Sol</span><span style="color:#212529">Trace</span></button>
-    <ul class="nav nav-pills gap-1">
-      <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2 me-1"></i>대시보드</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul me-1"></i>로그 조회</a></li>
+    <ul class="nav gap-1">
+      <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i>대시보드</a></li>
+      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
     </ul>
-    <div class="ms-auto d-flex align-items-center gap-2">
-      <button class="btn btn-light btn-sm" id="btnSettings" title="설정" onclick="nav('settings')"><i class="bi bi-gear fs-6"></i></button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="logout()" title="로그아웃"><i class="bi bi-box-arrow-right"></i></button>
+    <div class="ms-auto d-flex align-items-center gap-1">
+      <button class="btn" id="btnSettings" title="설정" onclick="nav('settings')"><i class="bi bi-gear-fill"></i></button>
+      <button class="btn btn-sm" onclick="logout()" title="로그아웃" style="padding:8px 10px; border-radius:10px; color:#475569;"><i class="bi bi-box-arrow-right" style="font-size:1.25rem;"></i></button>
     </div>
   </nav>
 
@@ -92,7 +96,7 @@ body { background:#f5f7fa; font-size:14px; }
     <!-- Dashboard -->
     <div id="page-dashboard" class="page active">
       <div class="d-flex align-items-center mb-4">
-        <h5 class="mb-0 fw-bold">대시보드</h5>
+        <h5 class="mb-0 fw-bold"><i class="bi bi-speedometer2 me-2" style="color:#e85d04"></i>대시보드</h5>
         <div class="ms-auto d-flex gap-2">
           <select class="form-select form-select-sm" id="dashDays" onchange="loadDashboard()" style="width:130px">
             <option value="7">최근 7일</option>
@@ -172,7 +176,7 @@ body { background:#f5f7fa; font-size:14px; }
     <!-- Logs -->
     <div id="page-logs" class="page">
       <div class="d-flex align-items-center mb-3">
-        <h5 class="mb-0 fw-bold">로그 조회</h5>
+        <h5 class="mb-0 fw-bold"><i class="bi bi-list-ul me-2" style="color:#e85d04"></i>로그 조회</h5>
         <div class="ms-auto d-flex gap-2 align-items-center">
           <select class="form-select form-select-sm" id="logPageSize" onchange="searchLogs(1)" style="width:90px">
             <option value="25">25건</option>
@@ -247,20 +251,22 @@ body { background:#f5f7fa; font-size:14px; }
 
     <!-- Settings -->
     <div id="page-settings" class="page">
-      <h5 class="mb-3 fw-bold">설정</h5>
-      <div class="d-flex gap-4" style="overflow-x:auto; align-items:flex-start">
+      <h5 class="mb-3 fw-bold"><i class="bi bi-gear-fill me-2" style="color:#e85d04"></i>설정</h5>
+      <div class="row g-4 align-items-start">
+        <div class="col-auto">
 
         <!-- 좌측 세로 탭 -->
-        <ul class="nav settings-vnav flex-column flex-shrink-0" style="min-width:170px">
-          <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-broadcast-pin me-2"></i>텔코 정보</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('password')"><i class="bi bi-key me-2"></i>비밀번호</a></li>
+        <ul class="nav settings-vnav flex-column" style="min-width:170px">
+          <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-broadcast-pin-fill me-2"></i>텔코 정보</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('password')"><i class="bi bi-key-fill me-2"></i>비밀번호</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack me-2"></i>장비 관리</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3 me-2"></i>그룹 관리</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack-fill me-2"></i>장비 관리</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3-fill me-2"></i>그룹 관리</a></li>
         </ul>
+        </div><!-- /col-auto -->
 
         <!-- 우측 내용 -->
-        <div class="flex-grow-1" style="min-width:0">
+        <div class="col" style="min-width:0">
 
           <!-- 텔코 정보 -->
           <div id="settings-telco" class="settings-pane" style="max-width:620px">
