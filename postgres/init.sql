@@ -142,6 +142,10 @@ CREATE INDEX IF NOT EXISTS idx_ftp_logs_device_time
 CREATE INDEX IF NOT EXISTS idx_ftp_logs_username_trgm
     ON ftp_logs USING GIN (username gin_trgm_ops);
 
+-- [4] client_ip ILIKE '%...%' 검색 (IP 부분 일치)
+CREATE INDEX IF NOT EXISTS idx_ftp_logs_client_ip_trgm
+    ON ftp_logs USING GIN (client_ip gin_trgm_ops);
+
 -- ────────────────────────────────────────────────────────────────────────────
 -- device_groups 인덱스
 -- ────────────────────────────────────────────────────────────────────────────
@@ -200,14 +204,20 @@ CREATE INDEX IF NOT EXISTS idx_service_alerts_created ON service_alerts(created_
 CREATE INDEX IF NOT EXISTS idx_service_alerts_unnotified ON service_alerts(notified) WHERE notified = FALSE;
 
 -- ftp_logs action CHECK constraint 마이그레이션 (cwd_fail 추가)
+-- pg_constraint 사용 (파티션 테이블 포함 신뢰성 높음)
 DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.table_constraints
-               WHERE table_name='ftp_logs' AND constraint_name='ftp_logs_action_check') THEN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'ftp_logs_action_check'
+          AND conrelid = 'ftp_logs'::regclass
+    ) THEN
         ALTER TABLE ftp_logs DROP CONSTRAINT ftp_logs_action_check;
-        ALTER TABLE ftp_logs ADD CONSTRAINT ftp_logs_action_check
-            CHECK (action IN ('upload','download','delete','rename','login','logout','mkdir','rmdir','cwd_fail'));
     END IF;
 END $$;
+-- NOT VALID: 기존 행 재검증 스킵 → 락 최소화 (기존 action 값은 모두 새 제약 충족)
+ALTER TABLE ftp_logs ADD CONSTRAINT ftp_logs_action_check
+    CHECK (action IN ('upload','download','delete','rename','login','logout','mkdir','rmdir','cwd_fail'))
+    NOT VALID;
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- Trigger

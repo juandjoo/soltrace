@@ -1059,10 +1059,11 @@ async function loadNotify() {
   document.getElementById('notifySmtpHost').value   = d.smtp_host || '';
   document.getElementById('notifySmtpPort').value   = d.smtp_port || 587;
   document.getElementById('notifySmtpUser').value   = d.smtp_user || '';
-  document.getElementById('notifySmtpPassword').value = d.smtp_password || '';
+  document.getElementById('notifySmtpPassword').value = d.smtp_password || '';  // 서버가 '***' 반환 시 그대로 표시
   document.getElementById('notifySmtpFrom').value   = d.smtp_from || '';
   document.getElementById('notifyEmailTo').value    = d.email_to || '';
   document.getElementById('notifySmtpTls').checked  = d.smtp_tls !== false;
+  document.getElementById('notifySmtpPassword').placeholder = d.smtp_password === '***' ? '설정됨 (변경 시 새 값 입력)' : '';
 }
 
 async function saveNotify() {

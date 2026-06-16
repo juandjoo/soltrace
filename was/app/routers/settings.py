@@ -73,17 +73,21 @@ def check_update(_: str = Depends(require_admin)):
     return _version_info(check_remote=True)
 
 
+_PW_MASK = "***"
+
+
 @router.get("/notify", response_model=NotifySettings)
 def get_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
     def _g(key, default=""):
         return get_config(db, key) or default
+    pw_stored = bool(get_config(db, "notify_smtp_password"))
     return NotifySettings(
         webhook_url=_g("notify_webhook_url"),
         smtp_host=_g("notify_smtp_host"),
         smtp_port=int(_g("notify_smtp_port", "587")),
         smtp_tls=_g("notify_smtp_tls", "true").lower() != "false",
         smtp_user=_g("notify_smtp_user"),
-        smtp_password=_g("notify_smtp_password"),
+        smtp_password=_PW_MASK if pw_stored else "",   # 평문 미노출
         smtp_from=_g("notify_smtp_from"),
         email_to=_g("notify_email_to"),
     )
@@ -91,18 +95,27 @@ def get_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
 
 @router.put("/notify", status_code=status.HTTP_204_NO_CONTENT)
 def save_notify(body: NotifySettings, db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    from app.notifier import validate_webhook_url
+    if body.webhook_url:
+        try:
+            validate_webhook_url(body.webhook_url)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+
     pairs = {
         "notify_webhook_url":  body.webhook_url,
         "notify_smtp_host":    body.smtp_host,
         "notify_smtp_port":    str(body.smtp_port),
         "notify_smtp_tls":     "true" if body.smtp_tls else "false",
         "notify_smtp_user":    body.smtp_user,
-        "notify_smtp_password": body.smtp_password,
         "notify_smtp_from":    body.smtp_from,
         "notify_email_to":     body.email_to,
     }
     for k, v in pairs.items():
         set_config(db, k, v)
+    # 마스크값이면 기존 비밀번호 유지, 변경된 경우만 저장
+    if body.smtp_password and body.smtp_password != _PW_MASK:
+        set_config(db, "notify_smtp_password", body.smtp_password)
 
 
 @router.post("/notify/test", status_code=status.HTTP_204_NO_CONTENT)
@@ -110,13 +123,14 @@ def test_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
     from datetime import datetime, timezone
     from app import notifier
     dummy = [{
-        "device_id": 0,
-        "device_hostname": "test-device",
+        "device_id": None,
+        "device_hostname": "SolTrace-Test",
         "bucket": datetime.now(timezone.utc),
         "metric": "fail_rate",
         "severity": "warning",
         "value": 0.15,
         "baseline": 0.02,
+        "test": True,
     }]
     if not notifier.channels_configured(db):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="알림 채널이 설정되지 않았습니다")

@@ -4,9 +4,12 @@
 """
 import json
 import logging
+import re
 import smtplib
 import urllib.request
 from email.message import EmailMessage
+
+from sqlalchemy import text
 
 from app.config import settings
 
@@ -19,6 +22,12 @@ _METRIC_LABEL = {
     "login_fail_rate": "로그인 실패율",
     "cwd_fail_spike": "CWD 실패 급증",
 }
+_NOTIFY_KEYS = [
+    "notify_smtp_host", "notify_smtp_port", "notify_smtp_user",
+    "notify_smtp_password", "notify_smtp_from", "notify_smtp_tls",
+    "notify_email_to", "notify_webhook_url",
+]
+_HTTP_RE = re.compile(r"^https?://", re.IGNORECASE)
 
 
 def _fmt_metric(metric: str, value: float) -> str:
@@ -42,20 +51,31 @@ def build_summary(alert: dict) -> str:
 
 
 def _load_cfg(db) -> dict:
-    """app_config에서 알림 설정 로드. DB 값이 우선, 없으면 .env 기본값."""
-    from app.security import get_config
+    """app_config 배치 조회 (1 query). DB 값 우선, 없으면 .env 기본값."""
+    rows = {r[0]: r[1] for r in db.execute(
+        text("SELECT key, value FROM app_config WHERE key = ANY(:keys)"),
+        {"keys": _NOTIFY_KEYS},
+    ).fetchall()}
+
     def _g(key, default=""):
-        return get_config(db, key) or default
+        return rows.get(key) or default
+
     return {
         "smtp_host":     _g("notify_smtp_host",     settings.smtp_host),
         "smtp_port":     int(_g("notify_smtp_port", str(settings.smtp_port))),
         "smtp_user":     _g("notify_smtp_user",     settings.smtp_user),
         "smtp_password": _g("notify_smtp_password", settings.smtp_password),
         "smtp_from":     _g("notify_smtp_from",     settings.smtp_from),
-        "smtp_tls":      _g("notify_smtp_tls",      "true" if settings.smtp_tls else "false").lower() != "false",
+        "smtp_tls":      _g("notify_smtp_tls", "true" if settings.smtp_tls else "false").lower() != "false",
         "email_to":      _g("notify_email_to",      settings.alert_email_to),
         "webhook_url":   _g("notify_webhook_url",   settings.alert_webhook_url),
     }
+
+
+def validate_webhook_url(url: str) -> None:
+    """http(s):// 외 스킴 차단."""
+    if url and not _HTTP_RE.match(url):
+        raise ValueError(f"웹훅 URL은 http:// 또는 https://로 시작해야 합니다: {url!r}")
 
 
 def channels_configured(db) -> bool:
@@ -65,14 +85,16 @@ def channels_configured(db) -> bool:
     return email_ok or bool(cfg["webhook_url"])
 
 
-def _send_email(alerts: list[dict], cfg: dict) -> None:
+def _send_email(alerts: list[dict], cfg: dict) -> bool:
     recipients = [a.strip() for a in cfg["email_to"].split(",") if a.strip()]
     if not (cfg["smtp_host"] and cfg["smtp_from"] and recipients):
-        return
+        return False
     lines = [build_summary(a) for a in alerts]
     msg = EmailMessage()
+    is_test = any(a.get("test") for a in alerts)
     crit = sum(1 for a in alerts if a["severity"] == "critical")
-    msg["Subject"] = f"[SolTrace] 서비스 영향 감지 {len(alerts)}건" + (f" (심각 {crit})" if crit else "")
+    prefix = "[테스트] " if is_test else ""
+    msg["Subject"] = f"{prefix}[SolTrace] 서비스 영향 감지 {len(alerts)}건" + (f" (심각 {crit})" if crit else "")
     msg["From"] = cfg["smtp_from"]
     msg["To"] = ", ".join(recipients)
     msg.set_content("FTP 서버 부하로 인한 서비스 영향이 감지되었습니다.\n\n" + "\n".join(lines))
@@ -83,14 +105,17 @@ def _send_email(alerts: list[dict], cfg: dict) -> None:
             srv.login(cfg["smtp_user"], cfg["smtp_password"])
         srv.send_message(msg)
     log.info("Alert email sent: %d alert(s) → %s", len(alerts), msg["To"])
+    return True
 
 
-def _send_webhook(alerts: list[dict], cfg: dict) -> None:
+def _send_webhook(alerts: list[dict], cfg: dict) -> bool:
     if not cfg["webhook_url"]:
-        return
+        return False
+    is_test = any(a.get("test") for a in alerts)
     payload = {
         "source": "soltrace",
         "type": "service_impact",
+        "test": is_test,
         "count": len(alerts),
         "alerts": [
             {
@@ -114,18 +139,19 @@ def _send_webhook(alerts: list[dict], cfg: dict) -> None:
     with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
         resp.read()
     log.info("Alert webhook sent: %d alert(s)", len(alerts))
+    return True
 
 
 def dispatch(alerts: list[dict], db) -> bool:
-    """메일·웹훅 발송. 한 채널이라도 보내면 True."""
+    """메일·웹훅 발송. 한 채널이라도 실제 발송하면 True."""
     if not alerts:
         return False
     cfg = _load_cfg(db)
     sent = False
     for fn in (_send_email, _send_webhook):
         try:
-            fn(alerts, cfg)
-            sent = True
+            if fn(alerts, cfg):
+                sent = True
         except Exception as e:
             log.error("Alert dispatch via %s failed: %s", fn.__name__, e)
     return sent
