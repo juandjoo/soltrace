@@ -135,7 +135,7 @@ body { background:#f5f7fa; font-size:14px; }
       <div class="row g-3">
         <div class="col-xl-6">
           <div class="card dash-card p-3">
-            <div class="fw-semibold mb-2 small">전송/로그인 실패율 추이 (%)</div>
+            <div class="fw-semibold mb-2 small">전송/로그인 실패 건수</div>
             <div style="position:relative; height:220px"><canvas id="chartHealthRate"></canvas></div>
           </div>
         </div>
@@ -743,19 +743,40 @@ async function loadServiceHealth() {
     },
   });
 
-  // Trend chart
+  // 실패 건수 도넛
   destroyChart('healthRate');
-  const tr = data.trend;
+  const ft = data.fail_totals || {};
   charts.healthRate = new Chart(document.getElementById('chartHealthRate'), {
-    type: 'line',
+    type: 'doughnut',
     data: {
-      labels: tr.map(t => fmtTime(t.bucket).slice(5)),
-      datasets: [
-        {label:'전송 실패율', data: tr.map(t=> t.fail_rate==null?null:+(t.fail_rate*100).toFixed(2)), borderColor:'#dc3545', backgroundColor:'rgba(220,53,69,.08)', fill:true, tension:.3, spanGaps:true},
-        {label:'로그인 실패율', data: tr.map(t=> t.login_fail_rate==null?null:+(t.login_fail_rate*100).toFixed(2)), borderColor:'#fd7e14', backgroundColor:'rgba(253,126,20,.08)', fill:true, tension:.3, spanGaps:true},
-      ]
+      labels: ['전송 실패', '로그인 실패'],
+      datasets: [{
+        data: [ft.transfer_fails || 0, ft.login_fails || 0],
+        backgroundColor: ['#dc3545', '#fd7e14'],
+        hoverOffset: 12, borderWidth: 1,
+      }],
     },
-    options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top'}}, scales:{y:{beginAtZero:true}}}
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            boxWidth: 12, font: {size: 11},
+            generateLabels: chart => {
+              const ds = chart.data.datasets[0];
+              return chart.data.labels.map((label, i) => ({
+                text: `${label}: ${ds.data[i].toLocaleString()}건`,
+                fillStyle: ds.backgroundColor[i],
+                strokeStyle: ds.backgroundColor[i],
+                hidden: false, index: i,
+              }));
+            },
+          },
+        },
+        tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed.toLocaleString()}건`}},
+      },
+    },
   });
 
   // Alerts table

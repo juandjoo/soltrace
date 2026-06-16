@@ -10,7 +10,7 @@ from app.deps import require_admin
 from app.models import Device, DeviceGroup, FtpLog, Group
 from app.schemas import (
     DashboardDetail, DashboardStats, TimeSeriesPoint, TopItem,
-    ServiceHealthResponse, ServiceHealthDevice, ServiceAlertItem, ServiceTrendPoint,
+    ServiceHealthResponse, ServiceHealthDevice, ServiceAlertItem, ServiceTrendPoint, FailTotals,
 )
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
@@ -256,4 +256,15 @@ def get_service_health(
         login_fail_rate=r.login_fail_rate,
     ) for r in trend_rows]
 
-    return ServiceHealthResponse(devices=devices, alerts=alerts, trend=trend)
+    totals_row = db.execute(text(f"""
+        SELECT COALESCE(SUM(m.transfer_fails), 0)::int AS transfer_fails,
+               COALESCE(SUM(m.login_fails), 0)::int    AS login_fails
+        FROM service_metrics m
+        WHERE m.bucket >= :since {dev_f}
+    """), params).fetchone()
+    fail_totals = FailTotals(
+        transfer_fails=totals_row.transfer_fails,
+        login_fails=totals_row.login_fails,
+    )
+
+    return ServiceHealthResponse(devices=devices, alerts=alerts, trend=trend, fail_totals=fail_totals)

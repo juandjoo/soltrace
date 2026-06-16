@@ -76,7 +76,7 @@ soltrace/
 PostgreSQL 16, Python 3.11, nginx를 직접 설치하고 systemd 서비스로 등록한다.
 
 ```bash
-git clone https://gitlab.solbox.com/ts-group/soltrace.git
+git clone https://github.com/juandjoo/soltrace.git
 cd soltrace
 sudo bash scripts/install_was_rocky8.sh
 ```
@@ -87,7 +87,8 @@ sudo bash scripts/install_was_rocky8.sh
 ### FTP 서버 데몬 (Rocky Linux 8)
 
 ```bash
-git clone https://gitlab.solbox.com/ts-group/soltrace.git
+git clone https://github.com/juandjoo/soltrace.git
+cd soltrace
 sudo bash scripts/install_daemon_rocky8.sh
 ```
 
