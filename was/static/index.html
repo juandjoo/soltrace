@@ -50,10 +50,12 @@ body { background:#f5f7fa; font-size:14px; }
 .action-rename { color:#fd7e14; }
 .action-login, .action-logout { color:#6c757d; }
 .size-val { font-family:monospace; }
-/* 로그 테이블 컬럼 리사이즈 핸들 */
+/* 로그 테이블 */
 #logPage table thead th { position:relative; }
-.col-resize-handle { position:absolute; right:0; top:0; bottom:0; width:5px; cursor:col-resize; user-select:none; z-index:1; }
-.col-resize-handle:hover, .col-resize-handle.dragging { background:rgba(232,93,4,.35); }
+#logPage table td, #logPage table th { padding:5px 10px; }
+.col-resize-handle { position:absolute; right:0; top:0; bottom:0; width:6px; cursor:col-resize; user-select:none; z-index:1; }
+.col-resize-handle::after { content:''; position:absolute; right:2px; top:15%; bottom:15%; width:1px; background:#dee2e6; }
+.col-resize-handle:hover::after, .col-resize-handle.dragging::after { background:#e85d04; width:2px; }
 </style>
 </head>
 <body>
@@ -200,17 +202,16 @@ body { background:#f5f7fa; font-size:14px; }
       </div>
       <!-- Filters -->
       <div class="card mb-3 px-3 py-2">
-        <!-- 1행: 조건 필터 -->
-        <div class="d-flex gap-2 align-items-center mb-2">
-          <select class="form-select form-select-sm" id="logGroupFilter" onchange="searchLogs(1)">
+        <div class="d-flex gap-2 align-items-center">
+          <select class="form-select form-select-sm" style="flex:1;min-width:100px" id="logGroupFilter" onchange="searchLogs(1)">
             <option value="">전체 그룹</option>
           </select>
-          <select class="form-select form-select-sm" id="logDeviceFilter">
+          <select class="form-select form-select-sm" style="flex:1.5;min-width:115px" id="logDeviceFilter">
             <option value="">전체 장비</option>
           </select>
-          <input class="form-control form-control-sm" id="logUserFilter" placeholder="사용자명">
-          <input class="form-control form-control-sm" id="logIpFilter" placeholder="IP" style="max-width:150px">
-          <select class="form-select form-select-sm" id="logActionFilter" style="max-width:140px">
+          <input class="form-control form-control-sm" style="flex:1;min-width:80px" id="logUserFilter" placeholder="사용자명">
+          <input class="form-control form-control-sm" style="flex:1;min-width:110px" id="logIpFilter" placeholder="IP">
+          <select class="form-select form-select-sm" style="flex:1;min-width:105px" id="logActionFilter">
             <option value="">전체 작업</option>
             <option value="upload">업로드</option>
             <option value="download">다운로드</option>
@@ -221,18 +222,14 @@ body { background:#f5f7fa; font-size:14px; }
             <option value="mkdir">폴더생성</option>
             <option value="rmdir">폴더삭제</option>
           </select>
-        </div>
-        <!-- 2행: 날짜 필터 + 조회 -->
-        <div class="d-flex gap-2 align-items-center">
           <div class="d-flex gap-1 flex-shrink-0">
             <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(0)">오늘</button>
             <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(-1)">어제</button>
             <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(-7)">7일</button>
           </div>
-          <input type="datetime-local" class="form-control form-control-sm" id="logStartTime">
-          <span class="text-muted flex-shrink-0">~</span>
-          <input type="datetime-local" class="form-control form-control-sm" id="logEndTime">
-          <button class="btn btn-primary btn-sm flex-shrink-0 ms-auto px-4" onclick="searchLogs(1)"><i class="bi bi-search me-1"></i>조회</button>
+          <input type="datetime-local" class="form-control form-control-sm" style="flex:1.5;min-width:150px" id="logStartTime">
+          <input type="datetime-local" class="form-control form-control-sm" style="flex:1.5;min-width:150px" id="logEndTime">
+          <button class="btn btn-primary btn-sm flex-shrink-0" onclick="searchLogs(1)"><i class="bi bi-search"></i></button>
         </div>
       </div>
       <div class="card">
@@ -251,8 +248,8 @@ body { background:#f5f7fa; font-size:14px; }
             </colgroup>
             <thead class="table-light">
               <tr>
-                <th>시간</th><th>장비</th><th>사용자</th><th>IP</th><th>작업</th>
-                <th>파일 경로</th><th>크기</th><th>전송시간</th><th>상태</th>
+                <th class="text-center">시간</th><th class="text-center">장비</th><th class="text-center">사용자</th><th class="text-center">IP</th><th class="text-center">작업</th>
+                <th>파일 경로</th><th class="text-center">크기</th><th class="text-center">전송시간</th><th class="text-center">상태</th>
               </tr>
             </thead>
             <tbody id="logTable"><tr><td colspan="9" class="text-center text-muted py-4">검색 조건을 입력하고 조회하세요.</td></tr></tbody>

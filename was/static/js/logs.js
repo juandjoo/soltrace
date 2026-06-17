@@ -102,22 +102,22 @@ async function searchLogs(page) {
     const icon = {upload:'<i class="bi bi-upload action-upload"></i>', download:'<i class="bi bi-download action-download"></i>', delete:'<i class="bi bi-trash action-delete"></i>', rename:'<i class="bi bi-pencil action-rename"></i>', login:'<i class="bi bi-box-arrow-in-right action-login"></i>', logout:'<i class="bi bi-box-arrow-right action-logout"></i>'}[action] || action;
     const filePath = l.file_path || '';
     const fileDisplay = action === 'rename'
-      ? filePath.replace(' -> ', '\n→ ')
+      ? filePath.replace(' -> ', ' → ')
       : filePath;
     const hostname = l.device_hostname || '-';
     const isTransfer = action === 'upload' || action === 'download';
     const sizeDisplay = isTransfer && l.file_size ? fmtBytes(l.file_size) : '-';
     const timeDisplay = l.transfer_time && l.transfer_time > 0 ? l.transfer_time.toFixed(1)+'s' : '-';
     return `<tr>
-      <td class="small text-nowrap">${dt}</td>
-      <td class="small text-truncate" style="overflow:hidden" title="${hostname}${l.device_ip ? '\n'+l.device_ip : ''}">${hostname}</td>
-      <td class="small text-truncate" style="overflow:hidden">${l.username||'-'}</td>
-      <td class="small text-muted text-nowrap">${l.client_ip||'-'}</td>
-      <td class="text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
-      <td class="small" style="word-break:break-all;white-space:pre-wrap;overflow:hidden" title="${filePath.replace(/"/g,'&quot;')}">${fileDisplay||'-'}</td>
-      <td class="size-val small text-nowrap">${sizeDisplay}</td>
-      <td class="small text-nowrap">${timeDisplay}</td>
-      <td><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>
+      <td class="small text-center text-nowrap">${dt}</td>
+      <td class="small text-center text-truncate" style="overflow:hidden" title="${hostname}${l.device_ip ? '\n'+l.device_ip : ''}">${hostname}</td>
+      <td class="small text-center text-truncate" style="overflow:hidden">${l.username||'-'}</td>
+      <td class="small text-center text-muted text-nowrap">${l.client_ip||'-'}</td>
+      <td class="text-center text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
+      <td class="small" style="word-break:break-all;overflow:hidden" title="${filePath.replace(/"/g,'&quot;')}">${fileDisplay||'-'}</td>
+      <td class="size-val small text-center text-nowrap">${sizeDisplay}</td>
+      <td class="small text-center text-nowrap">${timeDisplay}</td>
+      <td class="text-center"><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>
     </tr>`;
   }).join('');
 
