@@ -302,3 +302,58 @@ systemctl status soltrace-daemon
 systemctl restart soltrace-daemon
 journalctl -u soltrace-daemon -f
 ```
+
+---
+
+## 삭제
+
+### FTP 서버 데몬 제거
+
+```bash
+# 서비스 중지 및 비활성화
+systemctl stop soltrace-daemon
+systemctl disable soltrace-daemon
+
+# 서비스 파일 삭제
+rm -f /etc/systemd/system/soltrace-daemon.service
+systemctl daemon-reload
+
+# 설치 파일 삭제
+rm -rf /opt/soltrace-daemon
+
+# 상태·버퍼 파일 삭제
+rm -rf /var/lib/soltrace
+
+# 로그 파일 삭제
+rm -f /var/log/soltrace-daemon.log
+
+# 전용 계정 삭제
+userdel soltrace
+
+# FTP 로그 ACL 제거 (설정한 경우)
+setfacl -x u:soltrace /usr/service /usr/service/logs /usr/service/logs/proftpd 2>/dev/null || true
+setfacl -R -x u:soltrace /usr/service/logs/proftpd 2>/dev/null || true
+```
+
+### WAS 서버 제거
+
+```bash
+# 서비스 중지 및 비활성화
+systemctl stop soltrace-was
+systemctl disable soltrace-was
+
+# 서비스 파일 삭제
+rm -f /etc/systemd/system/soltrace-was.service
+systemctl daemon-reload
+
+# 설치 파일 삭제
+rm -rf /opt/soltrace
+
+# DB 삭제 (데이터 포함 — 복구 불가)
+sudo -u postgres psql -c "DROP DATABASE IF EXISTS soltrace;"
+sudo -u postgres psql -c "DROP USER IF EXISTS soltrace;"
+
+# nginx 설정 제거 (soltrace 전용 설정만 삭제)
+rm -f /etc/nginx/conf.d/soltrace.conf
+systemctl reload nginx
+```
