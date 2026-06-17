@@ -40,7 +40,7 @@ cd "$INSTALL_DIR"
 
 # ── 파일 다운로드 ────────────────────────────────────────────────
 echo "[INFO] 파일 다운로드 중..."
-for f in soltrace_daemon.py requirements.txt soltrace-daemon.service config.ini.example; do
+for f in soltrace_daemon.py soltrace_bulk.py requirements.txt soltrace-daemon.service config.ini.example; do
     curl -fsSL "$REPO_RAW/$f" -o "$f"
 done
 
