@@ -24,8 +24,7 @@ TimeoutStopSec=15
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
-ProtectSystem=full
-ReadWritePaths=/var/lib/soltrace /var/log /opt/soltrace-daemon
+# ProtectSystem 미사용: /usr/service가 별도 마운트일 경우 /usr bind mount가 submount를 숨김
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
