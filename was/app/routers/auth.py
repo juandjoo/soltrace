@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import create_access_token
+from app.deps import create_access_token, require_admin
 from app.schemas import LoginRequest, TokenResponse
 from app.security import check_ip_allowed, verify_admin_credentials
 
@@ -19,4 +19,9 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         )
     if not verify_admin_credentials(db, req.username, req.password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect credentials")
+    return TokenResponse(access_token=create_access_token())
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh(_: str = Depends(require_admin)):
     return TokenResponse(access_token=create_access_token())

@@ -85,6 +85,20 @@ function showLogin() {
   bootstrap.Modal.getOrCreateInstance(document.getElementById('loginModal')).show();
 }
 
+async function extendSession() {
+  try {
+    const r = await fetch(API + '/auth/refresh', {
+      method: 'POST',
+      headers: {'Authorization': `Bearer ${token}`},
+    });
+    if (!r.ok) { showLogin(); return; }
+    const data = await r.json();
+    token = data.access_token;
+    localStorage.setItem('soltrace_token', token);
+    startSessionTimers(token);
+  } catch { showLogin(); }
+}
+
 function logout() {
   showLogin();
 }
