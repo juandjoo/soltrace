@@ -127,7 +127,7 @@ function _logParams() {
   const grp = document.getElementById('logGroupFilter').value;
   const user = document.getElementById('logUserFilter').value.trim();
   const ip = document.getElementById('logIpFilter').value.trim();
-  const filePath = document.getElementById('logFileFilter').value.trim();
+  const filePath = (document.getElementById('logFileFilter')?.value || '').trim();
   const action = document.getElementById('logActionFilter').value;
   const start = document.getElementById('logStartTime').value;
   const end = document.getElementById('logEndTime').value;
@@ -143,6 +143,13 @@ function _logParams() {
 }
 
 async function searchLogs(page) {
+  const _fail = msg => {
+    document.getElementById('logTable').innerHTML =
+      `<tr><td colspan="9" class="text-center text-danger py-4">${msg}</td></tr>`;
+    document.getElementById('logTotal').textContent = '';
+    document.getElementById('logPager').innerHTML = '';
+  };
+  try {
   logPage = page || 1;
   logPageSize = parseInt(document.getElementById('logPageSize').value) || 50;
   const params = _logParams();
@@ -193,6 +200,9 @@ async function searchLogs(page) {
   }).join('');
 
   renderPager(Math.ceil(data.total / logPageSize), logPage);
+  } catch(e) {
+    _fail(`조회 실패: ${e.message}`);
+  }
 }
 
 function renderPager(total, current) {
