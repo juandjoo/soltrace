@@ -1,11 +1,8 @@
 [Unit]
 Description=SolTrace FTP Log Daemon
-# 네트워크와 proftpd 기동 후 시작 (proftpd 없어도 시작은 허용)
 After=network-online.target proftpd.service
 Wants=network-online.target
-# proftpd 재시작 시 데몬도 함께 재시작
 PartOf=proftpd.service
-# 재시작 폭발 제한 (systemd 219+ 호환 위치)
 StartLimitIntervalSec=300
 StartLimitBurst=3
 
@@ -16,26 +13,30 @@ Group=soltrace
 WorkingDirectory=/opt/soltrace-daemon
 ExecStart=/opt/soltrace-daemon/venv/bin/python3 soltrace_daemon.py
 
-# ── 재시작 정책 ──────────────────────────────────────────────────
 Restart=on-failure
 RestartSec=10
 RestartPreventExitStatus=1
 
-# ── 타임아웃 ────────────────────────────────────────────────────
 TimeoutStartSec=30
 TimeoutStopSec=15
 
-# ── 보안 하드닝 (systemd 219+ / CentOS 7 호환) ──────────────────
+# ── 보안 하드닝 (Rocky 8 / systemd 239+) ────────────────────────
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/soltrace /var/log /opt/soltrace-daemon
+# /usr/service 상위 경로도 포함해야 ProtectSystem=strict 하에서 접근 가능
+ReadOnlyPaths=/usr/service
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
 
-# ── 로그 ────────────────────────────────────────────────────────
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=soltrace-daemon
 
-# ── 리소스 제한 (FTP 서버 영향 최소화) ───────────────────────────
 MemoryMax=64M
 CPUQuota=10%
 LimitNOFILE=1024
