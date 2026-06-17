@@ -84,7 +84,7 @@ body { background:#f5f7fa; font-size:14px; }
   <!-- Top navbar -->
   <nav id="topbar" class="navbar navbar-expand px-4 py-2" style="position:relative">
     <button class="navbar-brand" onclick="nav('dashboard')"><i class="bi bi-hdd-network me-2" style="color:#e85d04"></i><span style="color:#e85d04">Sol</span><span style="color:#212529">Trace</span></button>
-    <ul class="nav gap-1" style="position:absolute;left:50%;transform:translateX(-50%)">
+    <ul class="nav gap-1 flex-nowrap" style="position:absolute;left:50%;transform:translateX(-50%)">
       <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i>대시보드</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
     </ul>
@@ -267,7 +267,7 @@ body { background:#f5f7fa; font-size:14px; }
 
         <!-- 좌측 세로 탭 -->
         <ul class="nav settings-vnav flex-column" style="min-width:170px">
-          <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-broadcast-pin-fill me-2"></i>텔코 정보</a></li>
+          <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-telephone-fill me-2"></i>텔코 정보</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('password')"><i class="bi bi-key-fill me-2"></i>비밀번호</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack-fill me-2"></i>장비 관리</a></li>

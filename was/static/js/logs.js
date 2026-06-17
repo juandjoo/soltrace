@@ -45,13 +45,21 @@ function _initLogColResize() {
     const i = hitCol(e.clientX);
     if (i < 0) return;
     e.preventDefault();
-    const startX = e.clientX;
-    const startW = ths[i].getBoundingClientRect().width;
+    const startX    = e.clientX;
+    const startW    = ths[i].getBoundingClientRect().width;
+    const nextStartW = i + 1 < ths.length ? ths[i + 1].getBoundingClientRect().width : 0;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
     const onMove = e => {
-      cols[i].style.width = Math.max(40, startW + e.clientX - startX) + 'px';
+      const delta  = e.clientX - startX;
+      const w      = Math.max(40, startW + delta);
+      const actual = w - startW; // min 클램핑 후 실제 변화량
+      cols[i].style.width = w + 'px';
+      // 인접 컬럼을 반대 방향으로 조정 → 테이블 전체 폭 유지
+      if (cols[i + 1] && nextStartW > 0) {
+        cols[i + 1].style.width = Math.max(40, nextStartW - actual) + 'px';
+      }
     };
     const onUp = () => {
       document.body.style.cursor = '';
