@@ -87,7 +87,11 @@ def check_update(_: str = Depends(require_admin)):
 
 @router.get("/security")
 def get_security(request: Request, db: Session = Depends(get_db), _: str = Depends(require_admin)):
-    my_ip = request.client.host if request.client else None
+    # 리버스 프록시(nginx) 뒤에서는 client.host가 127.0.0.1이므로 헤더 우선 참조
+    xff = request.headers.get("x-forwarded-for")
+    my_ip = xff.split(",")[0].strip() if xff else (
+        request.headers.get("x-real-ip") or (request.client.host if request.client else None)
+    )
     return {
         "username": get_admin_username(db),
         "allowed_ips": get_office_ips(db),
