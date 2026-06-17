@@ -14,6 +14,7 @@ from html import escape as _esc
 from sqlalchemy import text
 
 from app.config import settings
+from app.security import get_config as _sec_get
 
 log = logging.getLogger("soltrace.notify")
 
@@ -96,8 +97,7 @@ def validate_webhook_url(url: str) -> None:
 
 
 def is_muted(db) -> bool:
-    from app.security import get_config as _get
-    return (_get(db, "notify_muted") or "false").lower() == "true"
+    return (_sec_get(db, "notify_muted") or "false").lower() == "true"
 
 
 def channels_configured(db) -> bool:
@@ -107,7 +107,7 @@ def channels_configured(db) -> bool:
     return email_ok or bool(cfg["webhook_url"]) or bool(cfg["hms_url"])
 
 
-def _send_email(alerts: list[dict], cfg: dict) -> bool:
+def _send_email(alerts: list[dict], cfg: dict, db=None) -> bool:
     recipients = [a.strip() for a in cfg["email_to"].split(",") if a.strip()]
     if not (cfg["smtp_host"] and cfg["smtp_from"] and recipients):
         return False
@@ -177,7 +177,7 @@ def _generic_payload(alerts: list[dict]) -> dict:
     }
 
 
-def _send_webhook(alerts: list[dict], cfg: dict) -> bool:
+def _send_webhook(alerts: list[dict], cfg: dict, db=None) -> bool:
     if not cfg["webhook_url"]:
         return False
     url = cfg["webhook_url"]
@@ -217,22 +217,6 @@ def _build_hms_body(alerts: list[dict]) -> str:
     )
 
 
-def _device_telco(db, device_id) -> str | None:
-    """device_id → 그룹의 telco 조회. 그룹이 없거나 telco 미지정이면 None."""
-    if not device_id:
-        return None
-    row = db.execute(
-        text(
-            "SELECT g.telco FROM groups g "
-            "JOIN device_groups dg ON dg.group_id = g.id "
-            "WHERE dg.device_id = :did AND g.telco IS NOT NULL AND g.telco <> '' "
-            "LIMIT 1"
-        ),
-        {"did": device_id},
-    ).fetchone()
-    return row[0] if row else None
-
-
 def _hms_post(url: str, telco: str, alerts: list[dict]) -> None:
     is_test = any(a.get("test") for a in alerts)
     prefix = "[테스트] " if is_test else ""
@@ -261,10 +245,10 @@ def _hms_post(url: str, telco: str, alerts: list[dict]) -> None:
 def _send_hms(alerts: list[dict], cfg: dict, db=None) -> bool:
     if not cfg["hms_url"]:
         return False
-    # 텔코별로 묶어 각각 발송 — telco 미지정 장비는 "SolTrace" 그룹으로 처리
+    # _enrich_alerts()가 이미 telco를 주입 — 미지정은 "SolTrace" 처리
     by_telco: dict[str, list] = {}
     for a in alerts:
-        telco = (_device_telco(db, a.get("device_id")) if db else None) or "SolTrace"
+        telco = a.get("telco") or "SolTrace"
         by_telco.setdefault(telco, []).append(a)
     sent = False
     for telco, group in by_telco.items():
@@ -320,8 +304,7 @@ def dispatch(alerts: list[dict], db, channel: str = "all") -> bool:
     sent = False
     for fn in fns:
         try:
-            kwargs = {"db": db} if fn is _send_hms else {}
-            if fn(alerts, cfg, **kwargs):
+            if fn(alerts, cfg, db=db):
                 sent = True
         except Exception as e:
             log.error("Alert dispatch via %s failed: %s", fn.__name__, e)

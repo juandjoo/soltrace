@@ -133,6 +133,8 @@ def test_notify(
     """channel: 'all' | 'webhook' | 'hms' | 'email'"""
     from datetime import datetime, timezone
     from app import notifier
+    if channel not in ("all", "webhook", "hms", "email"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"알 수 없는 채널: {channel!r}")
     dummy = [{
         "device_id": None,
         "device_hostname": "SolTrace-Test",

@@ -27,7 +27,7 @@ function showLogin() {
   token = null;
   localStorage.removeItem('soltrace_token');
   document.getElementById('appLayout').style.display = 'none';
-  loginModal.show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('loginModal')).show();
 }
 
 function logout() {
