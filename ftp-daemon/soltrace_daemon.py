@@ -132,7 +132,7 @@ def parse_transfer_log(line: str) -> Optional[dict]:
         transfer_time = float(parts[5])
         client_ip = parts[6]
         file_size = int(parts[7])
-        filename = parts[8]
+        filename = parts[8].strip('"')
         transfer_type_code = parts[9]
         direction = parts[11]   # i=upload, o=download, d=delete
         username = parts[13]
@@ -176,6 +176,7 @@ def parse_extended_log(line: str) -> Optional[dict]:
     dt_str, client_ip, username, pid, status_code, command, path, _, _, _, _ = m.groups()
     status_code = int(status_code)
     username = None if username == "-" else username
+    path = path.strip('"')  # proftpd가 경로를 따옴표로 감싸는 경우 제거
 
     try:
         log_time = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc)

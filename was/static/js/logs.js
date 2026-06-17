@@ -63,7 +63,7 @@ async function searchLogs(page) {
       <td>${l.username||'-'}</td>
       <td class="small text-muted">${l.client_ip||'-'}</td>
       <td>${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
-      <td class="small text-truncate" style="max-width:240px" title="${l.file_path||''}">${l.file_path||'-'}</td>
+      <td class="small" style="max-width:260px;word-break:break-all;white-space:pre-wrap" title="${(l.file_path||'').replace(/"/g,'&quot;')}">${l.file_path ? (action==='rename' ? l.file_path.replace(' -> ','\n→ ') : l.file_path) : '-'}</td>
       <td class="size-val small">${fmtBytes(l.file_size)}</td>
       <td class="small">${l.transfer_time ? l.transfer_time.toFixed(2)+'s' : '-'}</td>
       <td><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>
