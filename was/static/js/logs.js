@@ -14,7 +14,7 @@ async function initLogsPage() {
 }
 
 function _initLogColResize() {
-  const table = document.querySelector('#logPage table');
+  const table = document.querySelector('#page-logs table');
   if (!table || table.dataset.resizeReady) return;
   table.dataset.resizeReady = '1';
 
