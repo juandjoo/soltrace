@@ -1,4 +1,5 @@
 let _groupFilter = '__all__';
+const GROUP_COLS = 7;
 
 async function loadGroups() {
   const groups = await api('GET', '/groups');
@@ -83,11 +84,11 @@ function renderGroupPage(page) {
     const headerLabel = telco
       ? `<i class="bi bi-broadcast-pin-fill me-2" style="color:#e85d04"></i><span class="fw-semibold">${telco}</span>`
       : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-semibold text-muted">통신사 미지정</span>`;
-    const spacer = isFirst ? '' : `<tr><td colspan="7" style="height:10px;padding:0;background:#f5f7fa;border-top:2px solid #dee2e6"></td></tr>`;
+    const spacer = isFirst ? '' : `<tr><td colspan="${GROUP_COLS}" style="height:10px;padding:0;background:#f5f7fa;border-top:2px solid #dee2e6"></td></tr>`;
     isFirst = false;
     return `${spacer}
       <tr class="table-secondary" data-telco="${telco || ''}">
-        <td colspan="7" class="py-2">
+        <td colspan="${GROUP_COLS}" class="py-2">
           ${headerLabel}
           <span class="ms-2 badge bg-secondary">${list.length}그룹</span>
           <span class="ms-1 badge bg-light text-dark border">${total}대</span>
@@ -108,7 +109,7 @@ function renderGroupPage(page) {
             <tr><th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
             <th>업로드 도메인</th><th>서비스</th><th>비고</th><th></th></tr>
           </thead>
-          <tbody>${sectionRows || '<tr><td colspan="7" class="text-center text-muted py-3">해당 항목이 없습니다.</td></tr>'}</tbody>
+          <tbody>${sectionRows || `<tr><td colspan="${GROUP_COLS}" class="text-center text-muted py-3">해당 항목이 없습니다.</td></tr>`}</tbody>
         </table>
       </div>
       ${total > 0 ? `<div class="px-3 py-1 border-top small text-muted">${start+1}–${end} / ${total}그룹</div>` : ''}

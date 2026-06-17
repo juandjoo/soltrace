@@ -1,0 +1,97 @@
+/* ── CSS 변수 ─────────────────────────────────────────────────── */
+:root {
+  --st-brand:    #e85d04;
+  --st-brand-bg: #fff5ee;
+  --st-text:     #475569;
+}
+
+/* ── 레이아웃 ──────────────────────────────────────────────────── */
+body        { background: #f5f7fa; font-size: 14px; }
+#main       { overflow: auto; }
+.page       { display: none; }
+.page.active { display: block; }
+.app-hidden { display: none !important; }
+.text-brand { color: var(--st-brand); }
+
+/* ── 상단 탭바 ─────────────────────────────────────────────────── */
+#topbar {
+  background: #fff;
+  border-bottom: 1px solid #d1d5db;
+  box-shadow: 0 2px 4px rgba(0,0,0,.06);
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+}
+#topbar .navbar-brand {
+  font-weight: 700;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+#topbar .navbar-brand:hover { opacity: .8; }
+#topbar .nav-link {
+  color: var(--st-text);
+  font-weight: 500;
+  border-radius: 10px;
+  padding: 6px 14px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+#topbar .nav-link i          { font-size: 1.1rem; }
+#topbar .nav-link:hover      { color: var(--st-brand); background: var(--st-brand-bg); }
+#topbar .nav-link.active     { color: var(--st-brand); background: var(--st-brand-bg); font-weight: 600; }
+
+/* 세션 타이머 · 연장 버튼 · 로그아웃 버튼 */
+.session-timer             { color: #6c757d; }
+.session-timer--warn       { color: #fd7e14; }
+.session-timer--danger     { color: #dc3545; }
+.btn-extend {
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid #ced4da;
+  color: var(--st-text);
+  line-height: 1.8;
+}
+.btn-extend:hover  { background: var(--st-brand-bg); border-color: var(--st-brand); color: var(--st-brand); }
+.btn-topbar-icon   { padding: 8px 10px; border-radius: 10px; color: var(--st-text); }
+.btn-topbar-icon:hover { background: var(--st-brand-bg); color: var(--st-brand); }
+
+/* ── 설정 좌측 세로 탭 ─────────────────────────────────────────── */
+.settings-pane.d-none           { display: none; }
+.settings-vnav .nav-link        { color: var(--st-text); border-radius: 8px; padding: 8px 14px; margin-bottom: 3px; font-size: 13.5px; }
+.settings-vnav .nav-link i      { font-size: 1.1rem; width: 1.5rem; }
+.settings-vnav .nav-link:hover  { background: var(--st-brand-bg); color: var(--st-brand); }
+.settings-vnav .nav-link.active { background: var(--st-brand); color: #fff; }
+
+/* ── 공통 컴포넌트 ─────────────────────────────────────────────── */
+.card                    { border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.btn-xs                  { padding: 2px 8px; font-size: 12px; }
+.badge-pending           { background: #ffc107; color: #000; }
+.badge-confirmed         { background: #198754; }
+.badge-disabled          { background: #6c757d; }
+.table th                { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #6c757d; }
+#loginModal .modal-dialog { max-width: 380px; margin-top: 15vh; }
+
+/* ── 대시보드 ──────────────────────────────────────────────────── */
+.dash-card       { transition: box-shadow .15s ease, transform .15s ease; }
+.dash-card:hover { box-shadow: 0 8px 22px rgba(13,110,253,.18); transform: translateY(-3px); }
+.stat-card              { border-left: 4px solid; }
+.stat-card.upload       { border-color: #0d6efd; }
+.stat-card.download     { border-color: #198754; }
+.stat-card.delete       { border-color: #dc3545; }
+.stat-card.device       { border-color: #6f42c1; }
+
+/* ── 로그 테이블 ───────────────────────────────────────────────── */
+#page-logs table td, #page-logs table th { padding: 5px 10px; }
+#page-logs table thead th:not(:last-child) { border-right: 2px solid #ced4da; }
+.action-upload            { color: #0d6efd; }
+.action-download          { color: #198754; }
+.action-delete            { color: #dc3545; }
+.action-rename            { color: #fd7e14; }
+.action-login,
+.action-logout            { color: #6c757d; }
+.size-val                 { font-family: monospace; }

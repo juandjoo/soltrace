@@ -62,7 +62,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     localStorage.setItem('soltrace_token', token);
     startSessionTimers(token);
     loginModal.hide();
-    document.getElementById('appLayout').style.removeProperty('display');
+    document.getElementById('appLayout').classList.remove('app-hidden');
     initApp();
   } catch(err) {
     errEl.textContent = err.message;
@@ -79,7 +79,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
 (function init() {
   if (token) {
     startSessionTimers(token);
-    document.getElementById('appLayout').style.removeProperty('display');
+    document.getElementById('appLayout').classList.remove('app-hidden');
     initApp();
   } else {
     loginModal.show();

@@ -7,50 +7,8 @@
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="/static/css/app.css?v=__VER__" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<style>
-body { background:#f5f7fa; font-size:14px; }
-#topbar { background:#fff; border-bottom:1px solid #d1d5db; box-shadow:0 2px 4px rgba(0,0,0,.06); position:sticky; top:0; z-index:1020; }
-#topbar .navbar-brand { font-weight:700; background:none; border:none; padding:0; cursor:pointer; }
-#topbar .navbar-brand:hover { opacity:.8; }
-#topbar .nav-link { color:#475569; font-weight:500; border-radius:10px; padding:6px 14px; display:flex; flex-direction:row; align-items:center; gap:6px; font-size:13px; }
-#topbar .nav-link i { font-size:1.1rem; }
-#topbar .nav-link:hover { color:#e85d04; background:#fff5ee; }
-#topbar .nav-link.active { color:#e85d04; background:#fff5ee; font-weight:600; }
-#main { overflow:auto; }
-.page { display:none; }
-.page.active { display:block; }
-/* 설정: 좌측 세로 탭 */
-.settings-vnav .nav-link { color:#475569; border-radius:8px; padding:8px 14px; margin-bottom:3px; font-size:13.5px; }
-.settings-vnav .nav-link i { font-size:1.1rem; width:1.5rem; }
-.settings-vnav .nav-link:hover { background:#fff5ee; color:#e85d04; }
-.settings-vnav .nav-link.active { background:#e85d04; color:#fff; }
-.settings-pane.d-none { display:none; }
-/* 대시보드 차트 카드: 마우스오버 시 강조 */
-.dash-card { transition: box-shadow .15s ease, transform .15s ease; }
-.dash-card:hover { box-shadow:0 8px 22px rgba(13,110,253,.18); transform:translateY(-3px); }
-.card { border:none; box-shadow:0 1px 3px rgba(0,0,0,.08); }
-.badge-pending { background:#ffc107; color:#000; }
-.badge-confirmed { background:#198754; }
-.badge-disabled { background:#6c757d; }
-.stat-card { border-left:4px solid; }
-.stat-card.upload { border-color:#0d6efd; }
-.stat-card.download { border-color:#198754; }
-.stat-card.delete { border-color:#dc3545; }
-.stat-card.device { border-color:#6f42c1; }
-.btn-xs { padding:2px 8px; font-size:12px; }
-#loginModal .modal-dialog { max-width:380px; margin-top:15vh; }
-.table th { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#6c757d; }
-.action-upload { color:#0d6efd; }
-.action-download { color:#198754; }
-.action-delete { color:#dc3545; }
-.action-rename { color:#fd7e14; }
-.action-login, .action-logout { color:#6c757d; }
-.size-val { font-family:monospace; }
-/* 로그 테이블 */
-#page-logs table td, #page-logs table th { padding:5px 10px; }
-#page-logs table thead th:not(:last-child) { border-right:2px solid #ced4da; }
-</style>
 </head>
 <body>
 
@@ -85,32 +43,37 @@ body { background:#f5f7fa; font-size:14px; }
 </div>
 
 <!-- Main Layout -->
-<div id="appLayout" style="display:none!important">
-  <!-- Top navbar -->
+<div id="appLayout" class="app-hidden">
+
+  <!-- 상단 탭바 -->
   <nav id="topbar" class="navbar navbar-expand px-4 py-2">
-    <button class="navbar-brand" onclick="nav('dashboard')"><i class="bi bi-hdd-network me-2" style="color:#e85d04"></i><span style="color:#e85d04">Sol</span><span style="color:#212529">Trace</span></button>
+    <button class="navbar-brand" onclick="nav('dashboard')">
+      <i class="bi bi-hdd-network me-2 text-brand"></i><span class="text-brand">Sol</span><span>Trace</span>
+    </button>
     <ul class="nav gap-1 flex-nowrap" style="position:absolute;left:50%;transform:translateX(-50%)">
       <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i>대시보드</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear-fill"></i>설정</a></li>
     </ul>
     <div class="ms-auto d-flex align-items-center gap-2">
-      <span id="sessionTimerDisplay" class="d-flex align-items-center gap-1 small" style="color:#6c757d">
+      <span id="sessionTimerDisplay" class="session-timer d-flex align-items-center gap-1 small">
         <i class="bi bi-clock" style="font-size:.85rem"></i>
         <span id="sessionTimerText" style="font-variant-numeric:tabular-nums;min-width:2.6rem;font-weight:500">--:--</span>
       </span>
-      <button class="btn btn-sm py-0 px-2" onclick="extendSession()" style="font-size:12px;border-radius:8px;border:1px solid #ced4da;color:#475569;line-height:1.8">연장</button>
-      <button class="btn btn-sm" onclick="logout()" title="로그아웃" style="padding:8px 10px;border-radius:10px;color:#475569"><i class="bi bi-box-arrow-right" style="font-size:1.25rem"></i></button>
+      <button class="btn btn-sm btn-extend py-0 px-2" onclick="extendSession()">연장</button>
+      <button class="btn btn-sm btn-topbar-icon" onclick="logout()" title="로그아웃">
+        <i class="bi bi-box-arrow-right" style="font-size:1.25rem"></i>
+      </button>
     </div>
   </nav>
 
-  <!-- Content -->
+  <!-- 콘텐츠 -->
   <div id="main" class="p-4">
 
-    <!-- Dashboard -->
+    <!-- 대시보드 -->
     <div id="page-dashboard" class="page active">
       <div class="d-flex align-items-center gap-2 mb-4 flex-wrap">
-        <h5 class="mb-0 fw-bold"><i class="bi bi-speedometer2 me-2" style="color:#e85d04"></i>대시보드</h5>
+        <h5 class="mb-0 fw-bold"><i class="bi bi-speedometer2 me-2 text-brand"></i>대시보드</h5>
         <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
           <div class="btn-group btn-group-sm">
             <button class="btn btn-outline-secondary dash-quick" data-days="1" onclick="dashQuick(1)">일</button>
@@ -130,7 +93,7 @@ body { background:#f5f7fa; font-size:14px; }
           <div class="card dash-card p-3 h-100">
             <div class="fw-semibold mb-2 small">사용자별 사용량</div>
             <div class="d-flex align-items-center gap-3">
-              <div style="position:relative; height:220px; min-width:220px; flex:0 0 220px"><canvas id="chartTopUsers"></canvas></div>
+              <div style="position:relative;height:220px;min-width:220px;flex:0 0 220px"><canvas id="chartTopUsers"></canvas></div>
               <ol id="topUsersLegend" class="list-unstyled mb-0 small w-100" style="overflow:hidden"></ol>
             </div>
           </div>
@@ -138,33 +101,31 @@ body { background:#f5f7fa; font-size:14px; }
         <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
             <div class="fw-semibold mb-2 small">장비그룹별 사용량</div>
-            <div style="position:relative; height:240px"><canvas id="chartTopGroups"></canvas></div>
+            <div style="position:relative;height:240px"><canvas id="chartTopGroups"></canvas></div>
           </div>
         </div>
       </div>
-
       <!-- 2행: 영향도 + 실패건수 -->
       <div class="row g-3 mb-3">
         <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
             <div class="fw-semibold mb-2 small">서비스 영향도 (상태)</div>
-            <div style="position:relative; height:220px"><canvas id="chartHealthStatus"></canvas></div>
+            <div style="position:relative;height:220px"><canvas id="chartHealthStatus"></canvas></div>
           </div>
         </div>
         <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
             <div class="fw-semibold mb-2 small">전송/로그인 실패 건수</div>
-            <div style="position:relative; height:220px"><canvas id="chartHealthRate"></canvas></div>
+            <div style="position:relative;height:220px"><canvas id="chartHealthRate"></canvas></div>
           </div>
         </div>
       </div>
-
       <!-- 3행: 이상 알림 -->
       <div class="row g-3">
         <div class="col-12">
           <div class="card dash-card p-3">
             <div class="fw-semibold mb-2 small">최근 이상 알림</div>
-            <div class="table-responsive" style="max-height:260px; overflow:auto">
+            <div class="table-responsive" style="max-height:260px;overflow:auto">
               <table class="table table-sm align-middle mb-0">
                 <thead><tr class="text-muted small">
                   <th>시각(UTC)</th><th>장비</th><th>지표</th><th>심각도</th><th>값</th><th>평소</th><th>내용</th>
@@ -190,10 +151,10 @@ body { background:#f5f7fa; font-size:14px; }
       </div>
     </div>
 
-    <!-- Logs -->
+    <!-- 로그 조회 -->
     <div id="page-logs" class="page">
       <div class="d-flex align-items-center mb-3">
-        <h5 class="mb-0 fw-bold"><i class="bi bi-list-ul me-2" style="color:#e85d04"></i>로그 조회</h5>
+        <h5 class="mb-0 fw-bold"><i class="bi bi-list-ul me-2 text-brand"></i>로그 조회</h5>
         <div class="ms-auto d-flex gap-2 align-items-center">
           <select class="form-select form-select-sm" id="logPageSize" onchange="searchLogs(1)" style="width:90px">
             <option value="25">25건</option>
@@ -209,7 +170,7 @@ body { background:#f5f7fa; font-size:14px; }
           </button>
         </div>
       </div>
-      <!-- Filters -->
+      <!-- 검색 필터 -->
       <div class="card mb-3 px-3 py-2">
         <div class="d-flex gap-1 align-items-center flex-wrap">
           <select class="form-select form-select-sm" style="flex:0.8;min-width:80px" id="logTelcoFilter" onchange="onTelcoFilter()">
@@ -257,7 +218,7 @@ body { background:#f5f7fa; font-size:14px; }
               <col data-idx="2" style="width:120px"> <!-- 사용자 -->
               <col data-idx="3" style="width:130px"> <!-- IP -->
               <col data-idx="4" style="width:90px">  <!-- 작업 -->
-              <col data-idx="5">                     <!-- 파일 경로 (나머지) -->
+              <col data-idx="5">                     <!-- 파일 경로 -->
               <col data-idx="6" style="width:90px">  <!-- 크기 -->
               <col data-idx="7" style="width:90px">  <!-- 전송시간 -->
               <col data-idx="8" style="width:70px">  <!-- 상태 -->
@@ -278,22 +239,21 @@ body { background:#f5f7fa; font-size:14px; }
       </div>
     </div>
 
-    <!-- Settings -->
+    <!-- 설정 -->
     <div id="page-settings" class="page">
-      <h5 class="mb-3 fw-bold"><i class="bi bi-gear-fill me-2" style="color:#e85d04"></i>설정</h5>
+      <h5 class="mb-3 fw-bold"><i class="bi bi-gear-fill me-2 text-brand"></i>설정</h5>
       <div class="row g-4 align-items-start">
         <div class="col-auto">
-
-        <!-- 좌측 세로 탭 -->
-        <ul class="nav settings-vnav flex-column" style="min-width:170px">
-          <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-telephone-fill me-2"></i>텔코 정보</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('security')"><i class="bi bi-shield-lock-fill me-2"></i>계정 보안</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack-fill me-2"></i>장비 관리</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3-fill me-2"></i>그룹 관리</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('notify')"><i class="bi bi-bell-fill me-2"></i>알림 설정</a></li>
-        </ul>
-        </div><!-- /col-auto -->
+          <!-- 좌측 세로 탭 -->
+          <ul class="nav settings-vnav flex-column" style="min-width:170px">
+            <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-telephone-fill me-2"></i>텔코 정보</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('security')"><i class="bi bi-shield-lock-fill me-2"></i>계정 보안</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack-fill me-2"></i>장비 관리</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3-fill me-2"></i>그룹 관리</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('notify')"><i class="bi bi-bell-fill me-2"></i>알림 설정</a></li>
+          </ul>
+        </div>
 
         <!-- 우측 내용 -->
         <div class="col" style="min-width:0">
@@ -343,7 +303,6 @@ body { background:#f5f7fa; font-size:14px; }
                 <div class="card-header bg-white fw-semibold"><i class="bi bi-shield-lock me-1"></i>접속 허용 IP</div>
                 <div class="card-body">
                   <div id="ipMsg" class="alert d-none py-2 small"></div>
-                  <!-- 현재 접속 IP -->
                   <div class="d-flex align-items-center gap-2 mb-3 p-2 bg-light rounded">
                     <span class="small text-muted">현재 접속 IP:</span>
                     <code id="myIpDisplay" class="small fw-semibold">-</code>
@@ -453,10 +412,8 @@ body { background:#f5f7fa; font-size:14px; }
                 <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="testNotify('webhook')"><i class="bi bi-send me-1"></i>테스트</button>
               </div>
               <div class="card-body">
-                <div class="mb-0">
-                  <label class="form-label small mb-1">웹훅 URL</label>
-                  <input class="form-control form-control-sm" id="notifyWebhookUrl" placeholder="https://hooks.example.com/...">
-                </div>
+                <label class="form-label small mb-1">웹훅 URL</label>
+                <input class="form-control form-control-sm" id="notifyWebhookUrl" placeholder="https://hooks.example.com/...">
               </div>
             </div>
             <!-- HMS 메일 게이트웨이 -->
@@ -466,10 +423,8 @@ body { background:#f5f7fa; font-size:14px; }
                 <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="testNotify('hms')"><i class="bi bi-send me-1"></i>테스트</button>
               </div>
               <div class="card-body">
-                <div class="mb-0">
-                  <label class="form-label small mb-1">HMS URL</label>
-                  <input class="form-control form-control-sm" id="notifyHmsUrl" placeholder="https://hms.example.com/api/mail">
-                </div>
+                <label class="form-label small mb-1">HMS URL</label>
+                <input class="form-control form-control-sm" id="notifyHmsUrl" placeholder="https://hms.example.com/api/mail">
               </div>
             </div>
             <!-- 이메일 -->
@@ -519,14 +474,14 @@ body { background:#f5f7fa; font-size:14px; }
             <div id="notifyMsg" class="mt-2 small"></div>
           </div>
 
-        </div>
-      </div>
-    </div>
+        </div><!-- /col -->
+      </div><!-- /row -->
+    </div><!-- /page-settings -->
 
   </div><!-- /main -->
 </div><!-- /appLayout -->
 
-<!-- Group Modal -->
+<!-- 그룹 모달 -->
 <div class="modal fade" id="groupModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -571,7 +526,7 @@ body { background:#f5f7fa; font-size:14px; }
   </div>
 </div>
 
-<!-- Device Group Modal -->
+<!-- 장비 그룹 배정 모달 -->
 <div class="modal fade" id="deviceGroupModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">

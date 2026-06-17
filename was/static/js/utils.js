@@ -25,8 +25,8 @@ function _updateTopbarTimer(expiresAt) {
   const disp = document.getElementById('sessionTimerDisplay');
   if (!txt || !disp) return;
   txt.textContent = `${m}:${s}`;
-  const color = left <= 300 ? '#dc3545' : left <= 600 ? '#fd7e14' : '#6c757d';
-  disp.style.color = color;
+  disp.classList.toggle('session-timer--warn',   left <= 600 && left > 300);
+  disp.classList.toggle('session-timer--danger', left <= 300);
 }
 
 function _clearSessionTimers() {
@@ -69,11 +69,11 @@ function showLogin() {
   _clearSessionTimers();
   token = null;
   localStorage.removeItem('soltrace_token');
-  document.getElementById('appLayout').style.display = 'none';
+  document.getElementById('appLayout').classList.add('app-hidden');
   bootstrap.Modal.getOrCreateInstance(document.getElementById('loginModal')).show();
 }
 
-async function extendSession() {
+async function extendSession(retry = 1) {
   try {
     const r = await fetch(API + '/auth/refresh', {
       method: 'POST',
@@ -84,7 +84,10 @@ async function extendSession() {
     token = data.access_token;
     localStorage.setItem('soltrace_token', token);
     startSessionTimers(token);
-  } catch { showLogin(); }
+  } catch {
+    if (retry > 0) setTimeout(() => extendSession(retry - 1), 2000);
+    else showLogin();
+  }
 }
 
 function logout() {
