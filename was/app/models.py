@@ -107,6 +107,7 @@ class FtpLog(Base):
     transfer_type = Column(String(10))
     status = Column(String(10), default="success")
     session_id = Column(String(50))
+    row_hash = Column(String(32))  # md5 of identifying fields — dedup key for re-import
     created_at = Column(DateTime(timezone=True), default=_now)
 
     device = relationship("Device", back_populates="logs")

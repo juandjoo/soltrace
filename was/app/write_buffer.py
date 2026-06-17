@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 
-from sqlalchemy import insert as _sa_insert
+from sqlalchemy.dialects.postgresql import insert as _pg_insert
 
 log = logging.getLogger("soltrace.wbuf")
 
@@ -79,7 +79,7 @@ class WriteBuffer:
                     if c.key not in _SKIP_COLS
                 ]
                 mappings = [{c: getattr(obj, c) for c in cols} for obj in batch]
-                db.execute(_sa_insert(mapper), mappings)
+                db.execute(_pg_insert(mapper).on_conflict_do_nothing(), mappings)
                 db.commit()
                 log.debug("Flushed %d rows to DB", len(batch))
             finally:

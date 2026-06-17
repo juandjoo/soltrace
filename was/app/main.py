@@ -95,6 +95,36 @@ def _run_migrations(conn):
           THEN CREATE INDEX idx_service_alerts_notified ON service_alerts (notified) WHERE notified = FALSE; END IF;
         END $$
     """))
+    # ftp_logs.row_hash 컬럼 — 재전송 중복 방지용 MD5 식별키
+    conn.execute(text("""
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name='ftp_logs' AND column_name='row_hash')
+          THEN ALTER TABLE ftp_logs ADD COLUMN row_hash VARCHAR(32); END IF;
+        END $$
+    """))
+    # (device_id, log_time, row_hash) 유니크 인덱스 — 파티셔닝 테이블 호환 (partition key 포함)
+    # row_hash IS NULL인 기존 행은 NULL≠NULL 규칙으로 충돌 없음
+    conn.execute(text("""
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_ftp_logs_dedup')
+          THEN CREATE UNIQUE INDEX idx_ftp_logs_dedup ON ftp_logs (device_id, log_time, row_hash); END IF;
+        END $$
+    """))
+    # 최근 90일 기존 로그 백필 — Python _row_hash()와 동일한 필드 순서로 MD5 계산
+    conn.execute(text("""
+        UPDATE ftp_logs
+        SET row_hash = md5(
+          device_id::text || '|' ||
+          to_char(log_time AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || '|' ||
+          coalesce(username, '') || '|' || action || '|' ||
+          coalesce(file_path, '') || '|' ||
+          coalesce(file_size::text, '0') || '|' ||
+          coalesce(session_id, '') || '|' ||
+          coalesce(client_ip, '')
+        )
+        WHERE row_hash IS NULL AND log_time >= now() - interval '90 days'
+    """))
 
 
 @asynccontextmanager

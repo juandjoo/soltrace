@@ -1,7 +1,8 @@
+import hashlib
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import insert as sa_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,7 +20,26 @@ VALID_ACTIONS = {"upload", "download", "delete", "rename", "login", "logout", "m
 _LOG_COLS = (
     "device_id", "log_time", "client_ip", "username", "action",
     "file_path", "file_size", "transfer_time", "transfer_type", "status", "session_id",
+    "row_hash",
 )
+
+
+def _row_hash(entry: FtpLog) -> str:
+    """row_hash — SQL backfill 수식 (main.py _run_migrations)과 동일한 필드·순서."""
+    lt = entry.log_time
+    if lt and lt.tzinfo is None:
+        lt = lt.replace(tzinfo=timezone.utc)
+    key = "|".join([
+        str(entry.device_id),
+        lt.strftime("%Y-%m-%d %H:%M:%S") if lt else "",
+        entry.username or "",
+        entry.action or "",
+        entry.file_path or "",
+        str(entry.file_size or 0),
+        entry.session_id or "",
+        entry.client_ip or "",
+    ])
+    return hashlib.md5(key.encode()).hexdigest()
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
@@ -104,7 +124,7 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
         if entry.action not in VALID_ACTIONS:
             rejected += 1
             continue
-        entries.append(FtpLog(
+        obj = FtpLog(
             device_id=device.id,
             log_time=entry.log_time,
             client_ip=entry.client_ip,
@@ -116,7 +136,9 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
             transfer_type=entry.transfer_type,
             status=entry.status,
             session_id=entry.session_id,
-        ))
+        )
+        obj.row_hash = _row_hash(obj)
+        entries.append(obj)
         accepted += 1
 
     if entries:
@@ -126,7 +148,7 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
         if buf:
             buf.add(entries)
         else:
-            db.execute(sa_insert(FtpLog), [{c: getattr(e, c) for c in _LOG_COLS} for e in entries])
+            db.execute(pg_insert(FtpLog).on_conflict_do_nothing(), [{c: getattr(e, c) for c in _LOG_COLS} for e in entries])
             db.commit()
 
     return IngestResponse(accepted=accepted, rejected=rejected)
