@@ -10,6 +10,48 @@ async function initLogsPage() {
     document.getElementById('logGroupFilter').innerHTML =
       '<option value="">전체 그룹</option>' + groups.map(g=>`<option value="${g.id}">${g.telco?g.telco+' · ':''}${g.name}</option>`).join('');
   }
+  _initLogColResize();
+}
+
+function _initLogColResize() {
+  const colGroup = document.getElementById('logColGroup');
+  if (!colGroup) return;
+  const cols = colGroup.querySelectorAll('col');
+  const ths = document.querySelectorAll('#logPage table thead th');
+
+  // Restore saved widths from localStorage
+  const saved = JSON.parse(localStorage.getItem('logColWidths') || 'null');
+  if (saved) {
+    cols.forEach((col, i) => { if (saved[i]) col.style.width = saved[i] + 'px'; });
+  }
+
+  ths.forEach((th, i) => {
+    // Skip last resizable if it's the flex column (no fixed width)
+    const handle = document.createElement('div');
+    handle.className = 'col-resize-handle';
+    th.appendChild(handle);
+
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      handle.classList.add('dragging');
+      const startX = e.clientX;
+      const startW = cols[i].offsetWidth || th.offsetWidth || 80;
+
+      const onMove = e => {
+        const w = Math.max(36, startW + e.clientX - startX);
+        cols[i].style.width = w + 'px';
+      };
+      const onUp = () => {
+        handle.classList.remove('dragging');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        const widths = Array.from(cols).map(c => parseInt(c.style.width) || 0);
+        localStorage.setItem('logColWidths', JSON.stringify(widths));
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
 }
 
 function _logParams() {
@@ -65,7 +107,7 @@ async function searchLogs(page) {
     const hostname = l.device_hostname || '-';
     return `<tr>
       <td class="small text-nowrap">${dt}</td>
-      <td class="small text-truncate" style="overflow:hidden" title="${hostname}">${hostname}</td>
+      <td class="small text-truncate" style="overflow:hidden" title="${hostname}${l.client_ip ? '\nIP: '+l.client_ip : ''}">${hostname}</td>
       <td class="small text-truncate" style="overflow:hidden">${l.username||'-'}</td>
       <td class="small text-muted text-nowrap">${l.client_ip||'-'}</td>
       <td class="text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>

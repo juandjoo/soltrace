@@ -50,6 +50,10 @@ body { background:#f5f7fa; font-size:14px; }
 .action-rename { color:#fd7e14; }
 .action-login, .action-logout { color:#6c757d; }
 .size-val { font-family:monospace; }
+/* 로그 테이블 컬럼 리사이즈 핸들 */
+#logPage table thead th { position:relative; }
+.col-resize-handle { position:absolute; right:0; top:0; bottom:0; width:5px; cursor:col-resize; user-select:none; z-index:1; }
+.col-resize-handle:hover, .col-resize-handle.dragging { background:rgba(232,93,4,.35); }
 </style>
 </head>
 <body>
@@ -221,16 +225,16 @@ body { background:#f5f7fa; font-size:14px; }
       <div class="card">
         <div class="table-responsive">
           <table class="table table-hover mb-0 table-sm" style="table-layout:fixed">
-            <colgroup>
-              <col style="width:130px"> <!-- 시간 -->
-              <col style="width:130px"> <!-- 장비 -->
-              <col style="width:90px">  <!-- 사용자 -->
-              <col style="width:110px"> <!-- IP -->
-              <col style="width:70px">  <!-- 작업 -->
-              <col>                     <!-- 파일 경로 (나머지) -->
-              <col style="width:62px">  <!-- 크기 -->
-              <col style="width:60px">  <!-- 전송시간 -->
-              <col style="width:52px">  <!-- 상태 -->
+            <colgroup id="logColGroup">
+              <col data-idx="0" style="width:130px"> <!-- 시간 -->
+              <col data-idx="1" style="width:160px"> <!-- 장비 -->
+              <col data-idx="2" style="width:90px">  <!-- 사용자 -->
+              <col data-idx="3" style="width:110px"> <!-- IP -->
+              <col data-idx="4" style="width:70px">  <!-- 작업 -->
+              <col data-idx="5">                     <!-- 파일 경로 (나머지) -->
+              <col data-idx="6" style="width:62px">  <!-- 크기 -->
+              <col data-idx="7" style="width:60px">  <!-- 전송시간 -->
+              <col data-idx="8" style="width:52px">  <!-- 상태 -->
             </colgroup>
             <thead class="table-light">
               <tr>
