@@ -60,9 +60,8 @@ def set_config(db: Session, key: str, value: str) -> None:
 
 ADMIN_PW_KEY  = "admin_password_hash"
 ADMIN_ID_KEY  = "admin_username"
-ALLOWED_IPS_KEY = "allowed_ips"          # 레거시 키 (마이그레이션 호환)
-OFFICE_IPS_KEY  = "allowed_ips_office"   # 사내망 (CIDR 허용)
-DAEMON_IPS_KEY  = "allowed_ips_daemon"   # daemon 장비 IP
+ALLOWED_IPS_KEY = "allowed_ips"         # 레거시 키 (마이그레이션 호환)
+OFFICE_IPS_KEY  = "allowed_ips_office"  # 웹 접속 허용 IP/CIDR
 
 
 def get_admin_username(db: Session) -> str:
@@ -111,15 +110,6 @@ def set_office_ips(db: Session, ips: list[str]) -> None:
     set_config(db, OFFICE_IPS_KEY, "\n".join(ip.strip() for ip in ips if ip.strip()))
 
 
-def get_daemon_ips(db: Session) -> list[str]:
-    raw = get_config(db, DAEMON_IPS_KEY) or ""
-    return _parse_ips(raw)
-
-
-def set_daemon_ips(db: Session, ips: list[str]) -> None:
-    set_config(db, DAEMON_IPS_KEY, "\n".join(ip.strip() for ip in ips if ip.strip()))
-
-
 def _ip_matches(client_ip: str, entry: str) -> bool:
     """entry는 단일 IP 또는 CIDR 표기 (예: 10.0.0.0/8)."""
     try:
@@ -131,18 +121,7 @@ def _ip_matches(client_ip: str, entry: str) -> bool:
 
 
 def check_ip_allowed(db: Session, client_ip: str) -> bool:
-    office = get_office_ips(db)
-    daemon = get_daemon_ips(db)
-    combined = office + daemon
-    if not combined:
+    allowed = get_office_ips(db)
+    if not allowed:
         return True  # 목록 미설정 시 모두 허용
-    return any(_ip_matches(client_ip, entry) for entry in combined)
-
-
-# 레거시 호환 (settings.py 등에서 사용 중이던 심볼 유지)
-def get_allowed_ips(db: Session) -> list[str]:
-    return get_office_ips(db) + get_daemon_ips(db)
-
-
-def set_allowed_ips(db: Session, ips: list[str]) -> None:
-    set_office_ips(db, ips)
+    return any(_ip_matches(client_ip, entry) for entry in allowed)

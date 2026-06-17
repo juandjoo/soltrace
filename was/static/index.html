@@ -316,22 +316,6 @@ body { background:#f5f7fa; font-size:14px; }
           <!-- 계정 보안 -->
           <div id="settings-security" class="settings-pane d-none" style="max-width:620px">
             <div class="d-flex flex-column gap-3">
-              <!-- 아이디 변경 -->
-              <div class="card">
-                <div class="card-header bg-white fw-semibold"><i class="bi bi-person-fill me-1"></i>아이디 변경</div>
-                <div class="card-body">
-                  <div id="usrMsg" class="alert d-none py-2 small"></div>
-                  <div class="mb-3">
-                    <label class="form-label small fw-semibold">현재 아이디</label>
-                    <input type="text" class="form-control form-control-sm" id="usrCurrent" readonly>
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label small fw-semibold">새 아이디</label>
-                    <input type="text" class="form-control form-control-sm" id="usrNew" placeholder="새 아이디 입력">
-                  </div>
-                  <button class="btn btn-sm btn-primary" onclick="changeUsername()">변경</button>
-                </div>
-              </div>
               <!-- 비밀번호 변경 -->
               <div class="card">
                 <div class="card-header bg-white fw-semibold"><i class="bi bi-key me-1"></i>비밀번호 변경</div>
@@ -361,22 +345,11 @@ body { background:#f5f7fa; font-size:14px; }
                   <div class="d-flex align-items-center gap-2 mb-3 p-2 bg-light rounded">
                     <span class="small text-muted">현재 접속 IP:</span>
                     <code id="myIpDisplay" class="small fw-semibold">-</code>
-                    <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-1" onclick="addMyIpToOffice()">사내망 추가</button>
-                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="addMyIpToDaemon()">Daemon 추가</button>
+                    <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-1" onclick="addMyIp()">목록에 추가</button>
                   </div>
-                  <div class="row g-3">
-                    <div class="col-md-6">
-                      <label class="form-label small fw-semibold">사내망 IP / 대역</label>
-                      <div class="form-text mb-1">한 줄에 하나씩. CIDR 대역 가능.<br>예: <code>192.168.1.0/24</code>, <code>10.0.0.5</code></div>
-                      <textarea class="form-control form-control-sm font-monospace" id="officeIps" rows="6" placeholder="비워두면 제한 없음"></textarea>
-                    </div>
-                    <div class="col-md-6">
-                      <label class="form-label small fw-semibold">Daemon 장비 IP</label>
-                      <div class="form-text mb-1">한 줄에 하나씩. 로그 수집 daemon 서버.<br>예: <code>172.16.0.10</code></div>
-                      <textarea class="form-control form-control-sm font-monospace" id="daemonIps" rows="6" placeholder="Daemon 장비 IP 목록"></textarea>
-                    </div>
-                  </div>
-                  <div class="form-text mt-2 text-warning-emphasis"><i class="bi bi-exclamation-triangle me-1"></i>두 목록 모두 비면 모든 IP 허용. 저장 전 현재 IP 포함 여부 확인.</div>
+                  <div class="form-text mb-1">한 줄에 하나씩. CIDR 대역 가능. 비워두면 모든 IP 허용.<br>예: <code>192.168.1.0/24</code>, <code>10.0.0.5</code></div>
+                  <textarea class="form-control form-control-sm font-monospace" id="allowedIps" rows="8" placeholder="비워두면 제한 없음"></textarea>
+                  <div class="form-text mt-2 text-warning-emphasis"><i class="bi bi-exclamation-triangle me-1"></i>저장 전 현재 IP 포함 여부를 확인하세요.</div>
                   <button class="btn btn-sm btn-primary mt-3" onclick="saveAllowedIps()">저장</button>
                 </div>
               </div>

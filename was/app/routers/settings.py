@@ -16,7 +16,6 @@ from app.security import (
     verify_admin_password, set_admin_password,
     get_admin_username, set_admin_username,
     get_office_ips, set_office_ips,
-    get_daemon_ips, set_daemon_ips,
     get_config, set_config,
 )
 
@@ -91,22 +90,10 @@ def get_security(request: Request, db: Session = Depends(get_db), _: str = Depen
     my_ip = request.client.host if request.client else None
     return {
         "username": get_admin_username(db),
-        "office_ips": get_office_ips(db),
-        "daemon_ips": get_daemon_ips(db),
+        "allowed_ips": get_office_ips(db),
         "my_ip": my_ip,
     }
 
-
-@router.put("/username", status_code=status.HTTP_204_NO_CONTENT)
-def change_username(
-    body: dict,
-    db: Session = Depends(get_db),
-    _: str = Depends(require_admin),
-):
-    username = (body.get("username") or "").strip()
-    if not username:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="아이디를 입력하세요")
-    set_admin_username(db, username)
 
 
 def _validate_ip_list(entries: list) -> list[str]:
@@ -128,18 +115,16 @@ def update_allowed_ips(
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    office = body.get("office_ips", [])
-    daemon = body.get("daemon_ips", [])
-    if not isinstance(office, list) or not isinstance(daemon, list):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="office_ips/daemon_ips must be lists")
-    invalid = _validate_ip_list(office + daemon)
+    ips = body.get("allowed_ips", [])
+    if not isinstance(ips, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="allowed_ips must be a list")
+    invalid = _validate_ip_list(ips)
     if invalid:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"유효하지 않은 IP/CIDR: {', '.join(invalid)}",
         )
-    set_office_ips(db, office)
-    set_daemon_ips(db, daemon)
+    set_office_ips(db, ips)
 
 
 _PW_MASK = "***"
