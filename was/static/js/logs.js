@@ -110,7 +110,7 @@ async function searchLogs(page) {
     const timeDisplay = l.transfer_time && l.transfer_time > 0 ? l.transfer_time.toFixed(1)+'s' : '-';
     return `<tr>
       <td class="small text-nowrap">${dt}</td>
-      <td class="small text-truncate" style="overflow:hidden" title="${hostname}${l.client_ip ? '\nIP: '+l.client_ip : ''}">${hostname}</td>
+      <td class="small text-truncate" style="overflow:hidden" title="${hostname}${l.device_ip ? '\n'+l.device_ip : ''}">${hostname}</td>
       <td class="small text-truncate" style="overflow:hidden">${l.username||'-'}</td>
       <td class="small text-muted text-nowrap">${l.client_ip||'-'}</td>
       <td class="text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>

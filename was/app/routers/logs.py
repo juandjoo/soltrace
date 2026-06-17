@@ -91,6 +91,7 @@ def query_logs(
     for log in items:
         r = FtpLogResponse.model_validate(log)
         r.device_hostname = log.device.hostname if log.device else None
+        r.device_ip = log.device.ip_address if log.device else None
         results.append(r)
 
     return LogListResponse(total=total, page=page, size=size, items=results)

@@ -179,6 +179,7 @@ class FtpLogResponse(BaseModel):
     id: int
     device_id: int
     device_hostname: Optional[str] = None
+    device_ip: Optional[str] = None
     log_time: datetime
     client_ip: Optional[str]
     username: Optional[str]
