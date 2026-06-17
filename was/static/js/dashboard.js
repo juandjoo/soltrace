@@ -93,20 +93,31 @@ async function loadDashboard() {
   const PALETTE = ['#0d6efd','#198754','#fd7e14','#6f42c1','#dc3545','#20c997','#0dcaf0','#ffc107'];
 
   destroyChart('topUsers');
-  const tu = (data.top_users || []).slice(0, 8);
+  // 내림차순 정렬 (많은 사용자 → 시계방향 첫 슬라이스)
+  const tu = (data.top_users || []).slice().sort((a, b) => b.bytes - a.bytes).slice(0, 8);
   const totalUserBytes = tu.reduce((s, u) => s + (u.bytes || 0), 0);
   charts.topUsers = new Chart(document.getElementById('chartTopUsers'), {
     type: 'doughnut',
     data: {labels: tu.map(u => u.label), datasets: [{data: tu.map(u => u.bytes), backgroundColor: PALETTE, hoverOffset: 12, borderWidth: 1}]},
     options: {
       responsive: true, maintainAspectRatio: false,
+      rotation: -90,       // 12시 방향 시작
+      circumference: 360,  // 시계방향 전체
       plugins: {
-        legend: {position: 'right', labels: {boxWidth: 12, font: {size: 11}}},
+        legend: {display: false},
         tooltip: {callbacks: {label: c => `${c.label}: ${fmtBytes(c.parsed)}`}},
         centerText: totalUserBytes > 0 ? {line1: fmtBytes(totalUserBytes), line2: '총 사용량', size: 13} : null,
       },
     },
   });
+  // 커스텀 범례: 사용자명 + 용량 (많은 순)
+  const legendEl = document.getElementById('topUsersLegend');
+  legendEl.innerHTML = tu.map((u, i) => `
+    <li class="d-flex align-items-center gap-2 mb-1" style="min-width:0">
+      <span style="width:10px;height:10px;border-radius:2px;background:${PALETTE[i]};flex-shrink:0"></span>
+      <span class="text-truncate" style="flex:1;min-width:0" title="${u.label}">${u.label}</span>
+      <span class="text-muted ms-1" style="flex-shrink:0;white-space:nowrap">${fmtBytes(u.bytes)}</span>
+    </li>`).join('');
 
   destroyChart('topGroups');
   const tg = (data.top_groups || []).slice(0, 8);
