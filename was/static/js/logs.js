@@ -131,12 +131,13 @@ async function searchLogs(page) {
       ? filePath.replace(' -> ', ' → ')
       : filePath;
     const hostname = l.device_hostname || '-';
+    const deviceIp = l.device_ip || '-';
     const isTransfer = action === 'upload' || action === 'download' || action === 'delete';
     const sizeDisplay = isTransfer && l.file_size ? fmtBytes(l.file_size) : '-';
     const timeDisplay = l.transfer_time && l.transfer_time > 0 ? l.transfer_time.toFixed(1)+'s' : '-';
     return `<tr>
       <td class="small text-center text-nowrap">${dt}</td>
-      <td class="small text-center text-truncate" style="overflow:hidden" title="${hostname}${l.device_ip ? '\n'+l.device_ip : ''}">${hostname}</td>
+      <td class="small text-center text-truncate" style="overflow:hidden;font-family:monospace" title="${hostname}">${deviceIp}</td>
       <td class="small text-center text-truncate" style="overflow:hidden">${l.username||'-'}</td>
       <td class="small text-center text-muted text-nowrap">${l.client_ip||'-'}</td>
       <td class="text-center text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
