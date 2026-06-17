@@ -138,16 +138,16 @@ def get_dashboard(
         .join(Group, Group.id == DeviceGroup.group_id)
         .with_entities(
             Group.name,
-            Group.telco,
+            Group.customer,
             func.count().label("cnt"),
             func.coalesce(func.sum(FtpLog.file_size), 0).label("bytes"),
         )
-        .group_by(Group.name, Group.telco)
+        .group_by(Group.name, Group.customer)
         .order_by(func.coalesce(func.sum(FtpLog.file_size), 0).desc())
         .limit(10)
         .all()
     )
-    top_groups = [TopItem(label=r.name, telco=r.telco, count=r.cnt, bytes=r.bytes) for r in group_rows]
+    top_groups = [TopItem(label=r.name, customer=r.customer, count=r.cnt, bytes=r.bytes) for r in group_rows]
 
     # ── By action ────────────────────────────────────────────────────────────
     action_rows = (

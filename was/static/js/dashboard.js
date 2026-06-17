@@ -129,7 +129,7 @@ async function loadDashboard() {
           ...bytesBarOpts.plugins,
           tooltip: {callbacks: {
             label: c => fmtBytes(c.parsed.x),
-            afterLabel: c => { const t = tg[c.dataIndex]?.telco; return t ? `고객사: ${t}` : ''; },
+            afterLabel: c => { const t = tg[c.dataIndex]?.customer; return t ? `고객사: ${t}` : ''; },
           }},
         },
       },
