@@ -22,8 +22,12 @@ function _initLogColResize() {
   const ths  = Array.from(table.querySelectorAll('thead th'));
   const row  = table.querySelector('thead tr');
 
-  // 저장된 폭 복원
-  const saved = JSON.parse(localStorage.getItem('logColWidths') || 'null');
+  // 저장된 폭 복원 (v2: 컬럼 기본값 변경 시 이전 저장값 무효화)
+  const WIDTHS_VER = 'v2';
+  const savedRaw = localStorage.getItem('logColWidths');
+  const savedMeta = localStorage.getItem('logColWidthsVer');
+  const saved = (savedMeta === WIDTHS_VER && savedRaw) ? JSON.parse(savedRaw) : null;
+  if (!saved) localStorage.removeItem('logColWidths');
   if (saved) cols.forEach((col, i) => { if (saved[i]) col.style.width = saved[i] + 'px'; });
 
   const ZONE = 6; // 각 th 우측 경계에서 ±px 이내를 드래그 존으로 인식
@@ -68,6 +72,7 @@ function _initLogColResize() {
       document.removeEventListener('mouseup', onUp);
       localStorage.setItem('logColWidths',
         JSON.stringify(ths.map(t => Math.round(t.getBoundingClientRect().width))));
+      localStorage.setItem('logColWidthsVer', WIDTHS_VER);
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -135,7 +140,7 @@ async function searchLogs(page) {
       <td class="small text-center text-truncate" style="overflow:hidden">${l.username||'-'}</td>
       <td class="small text-center text-muted text-nowrap">${l.client_ip||'-'}</td>
       <td class="text-center text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
-      <td class="small text-center" style="word-break:break-all;overflow:hidden" title="${filePath.replace(/"/g,'&quot;')}">${fileDisplay||'-'}</td>
+      <td class="small" style="word-break:break-all;overflow:hidden" title="${filePath.replace(/"/g,'&quot;')}">${fileDisplay||'-'}</td>
       <td class="size-val small text-center text-nowrap">${sizeDisplay}</td>
       <td class="small text-center text-nowrap">${timeDisplay}</td>
       <td class="text-center"><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>
