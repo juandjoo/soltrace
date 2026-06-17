@@ -94,17 +94,15 @@ body { background:#f5f7fa; font-size:14px; }
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear-fill"></i>설정</a></li>
     </ul>
-    <div class="ms-auto d-flex align-items-center gap-1">
-      <button class="btn btn-sm" onclick="logout()" title="로그아웃" style="padding:8px 10px; border-radius:10px; color:#475569;"><i class="bi bi-box-arrow-right" style="font-size:1.25rem;"></i></button>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <span id="sessionTimerDisplay" class="d-flex align-items-center gap-1 small" style="color:#6c757d">
+        <i class="bi bi-clock" style="font-size:.85rem"></i>
+        <span id="sessionTimerText" style="font-variant-numeric:tabular-nums;min-width:2.6rem;font-weight:500">--:--</span>
+      </span>
+      <button class="btn btn-sm py-0 px-2" onclick="extendSession()" style="font-size:12px;border-radius:8px;border:1px solid #ced4da;color:#475569;line-height:1.8">연장</button>
+      <button class="btn btn-sm" onclick="logout()" title="로그아웃" style="padding:8px 10px;border-radius:10px;color:#475569"><i class="bi bi-box-arrow-right" style="font-size:1.25rem"></i></button>
     </div>
   </nav>
-
-  <!-- 세션 만료 경고 배너 -->
-  <div id="sessionWarning" class="d-none alert alert-warning mb-0 py-2 px-4 rounded-0 d-flex align-items-center gap-2" style="position:sticky;top:52px;z-index:1019;">
-    <i class="bi bi-clock-history"></i>
-    <span id="sessionWarningMsg" class="small fw-semibold"></span>
-    <button class="btn btn-sm btn-warning ms-2 py-0 px-2" onclick="extendSession()">세션 연장</button>
-  </div>
 
   <!-- Content -->
   <div id="main" class="p-4">

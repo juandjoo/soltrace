@@ -7,10 +7,8 @@ let logPage = 1;
 let logPageSize = 50;
 
 // ── 세션 타이머 ──────────────────────────────────────────────────────────────
-let _warnTimer = null;
 let _expireTimer = null;
 let _countdownInterval = null;
-const _WARN_BEFORE_MS = 5 * 60 * 1000;   // 만료 5분 전 경고
 
 function _parseJwtExp(tok) {
   try {
@@ -19,26 +17,23 @@ function _parseJwtExp(tok) {
   } catch { return null; }
 }
 
-function _clearSessionTimers() {
-  if (_warnTimer)        { clearTimeout(_warnTimer);          _warnTimer = null; }
-  if (_expireTimer)      { clearTimeout(_expireTimer);        _expireTimer = null; }
-  if (_countdownInterval){ clearInterval(_countdownInterval); _countdownInterval = null; }
-  const el = document.getElementById('sessionWarning');
-  if (el) el.classList.add('d-none');
+function _updateTopbarTimer(expiresAt) {
+  const left = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+  const m = Math.floor(left / 60);
+  const s = String(left % 60).padStart(2, '0');
+  const txt  = document.getElementById('sessionTimerText');
+  const disp = document.getElementById('sessionTimerDisplay');
+  if (!txt || !disp) return;
+  txt.textContent = `${m}:${s}`;
+  const color = left <= 300 ? '#dc3545' : left <= 600 ? '#fd7e14' : '#6c757d';
+  disp.style.color = color;
 }
 
-function _showSessionWarning(expiresAt) {
-  const el  = document.getElementById('sessionWarning');
-  const msg = document.getElementById('sessionWarningMsg');
-  if (!el || !msg) return;
-  el.classList.remove('d-none');
-  if (_countdownInterval) clearInterval(_countdownInterval);
-  _countdownInterval = setInterval(() => {
-    const left = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
-    const m = Math.floor(left / 60);
-    const s = String(left % 60).padStart(2, '0');
-    msg.textContent = `세션 만료까지 ${m}:${s} 남았습니다.`;
-  }, 1000);
+function _clearSessionTimers() {
+  if (_expireTimer)      { clearTimeout(_expireTimer);        _expireTimer = null; }
+  if (_countdownInterval){ clearInterval(_countdownInterval); _countdownInterval = null; }
+  const txt = document.getElementById('sessionTimerText');
+  if (txt) txt.textContent = '--:--';
 }
 
 function startSessionTimers(tok) {
@@ -48,16 +43,9 @@ function startSessionTimers(tok) {
   const expiresAt = exp * 1000;
   const msLeft = expiresAt - Date.now();
   if (msLeft <= 0) { showLogin(); return; }
-  const warnAt = msLeft - _WARN_BEFORE_MS;
-  if (warnAt > 0) {
-    _warnTimer = setTimeout(() => _showSessionWarning(expiresAt), warnAt);
-  } else {
-    _showSessionWarning(expiresAt);
-  }
-  _expireTimer = setTimeout(() => {
-    _clearSessionTimers();
-    showLogin();
-  }, msLeft);
+  _updateTopbarTimer(expiresAt);
+  _countdownInterval = setInterval(() => _updateTopbarTimer(expiresAt), 1000);
+  _expireTimer = setTimeout(() => { _clearSessionTimers(); showLogin(); }, msLeft);
 }
 
 async function api(method, path, body) {
