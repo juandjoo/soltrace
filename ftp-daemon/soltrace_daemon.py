@@ -50,6 +50,7 @@ defaults = {
     "buffer_file": "/var/lib/soltrace/buffer.jsonl",
     "log_file": "/var/log/soltrace-daemon.log",
     "log_level": "INFO",
+    "skip_login_logout": "false",
 }
 
 
@@ -467,6 +468,7 @@ class SolTraceDaemon:
         self.batch_size = int(self.cfg["batch_size"])
         self.poll_interval = int(self.cfg["poll_interval"])
         self.heartbeat_interval = int(self.cfg["heartbeat_interval"])
+        self.skip_login_logout = self.cfg.getboolean("skip_login_logout", fallback=False)
 
         self.tailers = [
             FileTailer(self.cfg["transfer_log"], parse_transfer_log, state_dir),
@@ -690,6 +692,8 @@ class SolTraceDaemon:
                 except Exception as e:
                     log.warning("Tailer error: %s", e)
 
+            if self.skip_login_logout:
+                all_entries = [e for e in all_entries if e.get("action") not in ("login", "logout")]
             self._last_queue_size = len(all_entries)
             if not all_entries:
                 self._last_queue_size = 0
