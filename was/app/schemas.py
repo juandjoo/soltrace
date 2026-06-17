@@ -109,7 +109,7 @@ class GroupCreate(BaseModel):
     telco: Optional[str] = Field(default=None, max_length=100)
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
-    auth: Optional[str] = None
+    application: Optional[str] = None
 
 class GroupUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
@@ -117,7 +117,7 @@ class GroupUpdate(BaseModel):
     telco: Optional[str] = Field(default=None, max_length=100)
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
-    auth: Optional[str] = None
+    application: Optional[str] = None
 
 class GroupResponse(BaseModel):
     id: int
@@ -126,7 +126,7 @@ class GroupResponse(BaseModel):
     telco: Optional[str] = None
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
-    auth: Optional[str] = None
+    application: Optional[str] = None
     created_at: datetime
     device_count: int = 0
 

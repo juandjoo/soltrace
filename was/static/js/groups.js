@@ -152,7 +152,7 @@ async function openGroupModal(id) {
   document.getElementById('groupDesc').value = g?.description || '';
   document.getElementById('groupCustomer').value = g?.customer || '';
   document.getElementById('groupUploadDomains').value = g?.upload_domains || '';
-  document.getElementById('groupAuth').value = g?.auth || '';
+  document.getElementById('groupApplication').value = g?.application || '';
   await getTelcos();
   populateGroupTelco(g?.telco || '');
   document.getElementById('groupModalTitle').textContent = id ? '그룹 수정' : '그룹 추가';
@@ -167,7 +167,7 @@ async function saveGroup() {
     telco: document.getElementById('groupTelco').value || null,
     customer: document.getElementById('groupCustomer').value.trim() || null,
     upload_domains: document.getElementById('groupUploadDomains').value.trim() || null,
-    auth: document.getElementById('groupAuth').value.trim() || null,
+    application: document.getElementById('groupApplication').value.trim() || null,
   };
   if (!body.name) return alert('그룹명을 입력하세요.');
   try {

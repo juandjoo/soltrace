@@ -75,7 +75,7 @@ class Group(Base):
     telco = Column(String(100))
     customer = Column(Text)
     upload_domains = Column(Text)
-    auth = Column(Text)
+    application = Column(Text)
     created_at = Column(DateTime(timezone=True), default=_now)
 
     devices = relationship("Device", secondary="device_groups", back_populates="groups")

@@ -360,9 +360,9 @@ body { background:#f5f7fa; font-size:14px; }
                 <table class="table table-hover mb-0">
                   <thead class="table-light">
                     <tr>
-                      <th>호스트명</th><th class="text-center">IP</th><th class="text-center">장비상태</th><th class="text-center">데몬상태</th>
+                      <th class="text-center">호스트명</th><th class="text-center">IP</th><th class="text-center">장비상태</th><th class="text-center">데몬상태</th>
                       <th class="text-center">CPU / MEM / Disk</th><th class="text-center">버퍼</th>
-                      <th class="text-center">마지막 연결</th><th>그룹</th><th></th>
+                      <th class="text-center">마지막 연결</th><th class="text-center">그룹</th><th></th>
                     </tr>
                   </thead>
                   <tbody id="deviceTable"><tr><td colspan="9" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
@@ -518,8 +518,8 @@ body { background:#f5f7fa; font-size:14px; }
           <textarea class="form-control form-control-sm" id="groupUploadDomains" rows="6" placeholder="한 줄에 하나씩 입력&#10;예) vivasambackup-ftp.lgucdn.com&#10;    cjclip-ftp.lgucdn.com"></textarea>
         </div>
         <div class="mb-3">
-          <label class="form-label small fw-semibold">인증 (auth)</label>
-          <textarea class="form-control form-control-sm" id="groupAuth" rows="3" placeholder="예) LDAP / AD&#10;ldap://ldap.example.com&#10;bindDN: cn=soltrace,dc=example,dc=com"></textarea>
+          <label class="form-label small fw-semibold">Application</label>
+          <textarea class="form-control form-control-sm" id="groupApplication" rows="3" placeholder="예) CMS&#10;Ingest Server&#10;관련 시스템명 또는 연동 정보"></textarea>
         </div>
         <div class="mb-0">
           <label class="form-label small fw-semibold">비고</label>
