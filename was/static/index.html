@@ -83,9 +83,9 @@ body { background:#f5f7fa; font-size:14px; }
 <!-- Main Layout -->
 <div id="appLayout" style="display:none!important">
   <!-- Top navbar -->
-  <nav id="topbar" class="navbar navbar-expand px-4 py-2">
-    <button class="navbar-brand me-4" onclick="nav('dashboard')"><i class="bi bi-hdd-network me-2" style="color:#e85d04"></i><span style="color:#e85d04">Sol</span><span style="color:#212529">Trace</span></button>
-    <ul class="nav gap-1">
+  <nav id="topbar" class="navbar navbar-expand px-4 py-2" style="position:relative">
+    <button class="navbar-brand" onclick="nav('dashboard')"><i class="bi bi-hdd-network me-2" style="color:#e85d04"></i><span style="color:#e85d04">Sol</span><span style="color:#212529">Trace</span></button>
+    <ul class="nav gap-1" style="position:absolute;left:50%;transform:translateX(-50%)">
       <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i>대시보드</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
     </ul>
@@ -199,17 +199,18 @@ body { background:#f5f7fa; font-size:14px; }
         </div>
       </div>
       <!-- Filters -->
-      <div class="card mb-3 p-2">
-        <div class="d-flex gap-2 flex-nowrap align-items-center">
-          <select class="form-select form-select-sm flex-shrink-0" style="width:120px" id="logGroupFilter" onchange="searchLogs(1)">
+      <div class="card mb-3 px-3 py-2">
+        <!-- 1행: 조건 필터 -->
+        <div class="d-flex gap-2 align-items-center mb-2">
+          <select class="form-select form-select-sm" id="logGroupFilter" onchange="searchLogs(1)">
             <option value="">전체 그룹</option>
           </select>
-          <select class="form-select form-select-sm flex-shrink-0" style="width:120px" id="logDeviceFilter">
+          <select class="form-select form-select-sm" id="logDeviceFilter">
             <option value="">전체 장비</option>
           </select>
-          <input class="form-control form-control-sm flex-shrink-0" style="width:100px" id="logUserFilter" placeholder="사용자명">
-          <input class="form-control form-control-sm flex-shrink-0" style="width:115px" id="logIpFilter" placeholder="IP">
-          <select class="form-select form-select-sm flex-shrink-0" style="width:110px" id="logActionFilter">
+          <input class="form-control form-control-sm" id="logUserFilter" placeholder="사용자명">
+          <input class="form-control form-control-sm" id="logIpFilter" placeholder="IP" style="max-width:150px">
+          <select class="form-select form-select-sm" id="logActionFilter" style="max-width:140px">
             <option value="">전체 작업</option>
             <option value="upload">업로드</option>
             <option value="download">다운로드</option>
@@ -220,14 +221,18 @@ body { background:#f5f7fa; font-size:14px; }
             <option value="mkdir">폴더생성</option>
             <option value="rmdir">폴더삭제</option>
           </select>
+        </div>
+        <!-- 2행: 날짜 필터 + 조회 -->
+        <div class="d-flex gap-2 align-items-center">
           <div class="d-flex gap-1 flex-shrink-0">
             <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(0)">오늘</button>
             <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(-1)">어제</button>
             <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(-7)">7일</button>
           </div>
-          <input type="datetime-local" class="form-control form-control-sm flex-shrink-0" style="width:158px" id="logStartTime">
-          <input type="datetime-local" class="form-control form-control-sm flex-shrink-0" style="width:158px" id="logEndTime">
-          <button class="btn btn-primary btn-sm flex-shrink-0" onclick="searchLogs(1)"><i class="bi bi-search"></i></button>
+          <input type="datetime-local" class="form-control form-control-sm" id="logStartTime">
+          <span class="text-muted flex-shrink-0">~</span>
+          <input type="datetime-local" class="form-control form-control-sm" id="logEndTime">
+          <button class="btn btn-primary btn-sm flex-shrink-0 ms-auto px-4" onclick="searchLogs(1)"><i class="bi bi-search me-1"></i>조회</button>
         </div>
       </div>
       <div class="card">
