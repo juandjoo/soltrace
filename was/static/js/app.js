@@ -8,7 +8,7 @@ function nav(page) {
   document.querySelectorAll('#topbar .nav-link, #topbar #btnSettings').forEach(el => el.classList.remove('active'));
   const link = document.querySelector(`#topbar [onclick="nav('${page}')"]`);
   if (link) link.classList.add('active');
-  if (page === 'dashboard') { loadDashboard(); loadServiceHealth(); }
+  if (page === 'dashboard') { dashQuick(7); }
   else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
   if (page === 'logs') initLogsPage();
   if (page === 'settings') settingsTab(currentSettingsTab);

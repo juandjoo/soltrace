@@ -18,15 +18,23 @@ router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
 @router.get("", response_model=DashboardDetail)
 def get_dashboard(
-    days: int = Query(default=7, ge=1, le=90),
+    days: int = Query(default=7, ge=1, le=366),
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
     device_id: Optional[int] = None,
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
     now = datetime.now(timezone.utc)
-    since = now - timedelta(days=days)
+    if start_date and end_date:
+        since = start_date if start_date.tzinfo else start_date.replace(tzinfo=timezone.utc)
+        until = end_date if end_date.tzinfo else end_date.replace(tzinfo=timezone.utc)
+    else:
+        since = now - timedelta(days=days)
+        until = now
+    days = max(1, (until - since).days or 1)
 
-    base_q = db.query(FtpLog).filter(FtpLog.log_time >= since)
+    base_q = db.query(FtpLog).filter(FtpLog.log_time >= since, FtpLog.log_time <= until)
     if device_id:
         base_q = base_q.filter(FtpLog.device_id == device_id)
 
@@ -167,14 +175,19 @@ def _ratio(num, den):
 
 @router.get("/service-health", response_model=ServiceHealthResponse)
 def get_service_health(
-    hours: int = Query(default=24, ge=1, le=168),
+    hours: int = Query(default=24, ge=1, le=8760),
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
     device_id: Optional[int] = None,
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
     """부하로 인한 서비스 영향도 — 장비별 최신 상태 + 최근 알림 + 추이."""
     now = datetime.now(timezone.utc)
-    since = now - timedelta(hours=hours)
+    if start_date and end_date:
+        since = start_date if start_date.tzinfo else start_date.replace(tzinfo=timezone.utc)
+    else:
+        since = now - timedelta(hours=hours)
     params = {"since": since, "did": device_id}
     dev_f = "AND m.device_id = :did" if device_id else ""
     adev_f = "AND a.device_id = :did" if device_id else ""

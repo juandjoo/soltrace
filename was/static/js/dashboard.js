@@ -39,9 +39,44 @@ function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
+function _dashDateParams() {
+  const s = document.getElementById('dashStart').value;
+  const e = document.getElementById('dashEnd').value;
+  if (s && e) {
+    return `start_date=${encodeURIComponent(new Date(s).toISOString())}&end_date=${encodeURIComponent(new Date(e + 'T23:59:59').toISOString())}`;
+  }
+  return 'days=7';
+}
+
+function dashQuick(days) {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - days + 1);
+  document.getElementById('dashStart').value = start.toISOString().slice(0, 10);
+  document.getElementById('dashEnd').value = end.toISOString().slice(0, 10);
+  document.querySelectorAll('.dash-quick').forEach(b => {
+    const active = parseInt(b.dataset.days) === days;
+    b.classList.toggle('btn-primary', active);
+    b.classList.toggle('btn-outline-secondary', !active);
+  });
+  loadAll();
+}
+
+function dashCustom() {
+  document.querySelectorAll('.dash-quick').forEach(b => {
+    b.classList.remove('btn-primary');
+    b.classList.add('btn-outline-secondary');
+  });
+  loadAll();
+}
+
+function loadAll() {
+  loadDashboard();
+  loadServiceHealth();
+}
+
 async function loadDashboard() {
-  const days = document.getElementById('dashDays').value;
-  const data = await api('GET', `/dashboard?days=${days}`);
+  const data = await api('GET', `/dashboard?${_dashDateParams()}`);
   if (!data) return;
 
   const bytesBarOpts = {
@@ -94,8 +129,7 @@ async function loadDashboard() {
 }
 
 async function loadServiceHealth() {
-  const hours = document.getElementById('healthHours').value;
-  const data = await api('GET', `/dashboard/service-health?hours=${hours}`);
+  const data = await api('GET', `/dashboard/service-health?${_dashDateParams()}`);
   if (!data) return;
 
   // 서비스 영향도 도넛
@@ -211,7 +245,7 @@ function toggleDashAutoRefresh() {
     btn.title = '자동 새로고침 켜기';
     btn.querySelector('span').textContent = '자동';
   } else {
-    _dashTimer = setInterval(() => { loadDashboard(); loadServiceHealth(); }, 60000);
+    _dashTimer = setInterval(() => { loadAll(); }, 60000);
     btn.classList.add('btn-primary');
     btn.classList.remove('btn-outline-secondary');
     btn.title = '자동 새로고침 끄기 (60초)';

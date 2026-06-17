@@ -99,16 +99,19 @@ body { background:#f5f7fa; font-size:14px; }
 
     <!-- Dashboard -->
     <div id="page-dashboard" class="page active">
-      <div class="d-flex align-items-center mb-4">
+      <div class="d-flex align-items-center gap-2 mb-4 flex-wrap">
         <h5 class="mb-0 fw-bold"><i class="bi bi-speedometer2 me-2" style="color:#e85d04"></i>대시보드</h5>
-        <div class="ms-auto d-flex gap-2">
-          <select class="form-select form-select-sm" id="dashDays" onchange="loadDashboard()" style="width:130px">
-            <option value="7">최근 7일</option>
-            <option value="30">최근 30일</option>
-            <option value="90">최근 90일</option>
-          </select>
+        <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary dash-quick" data-days="1" onclick="dashQuick(1)">일</button>
+            <button class="btn btn-primary dash-quick" data-days="7" onclick="dashQuick(7)">주</button>
+            <button class="btn btn-outline-secondary dash-quick" data-days="30" onclick="dashQuick(30)">월</button>
+          </div>
+          <input type="date" class="form-control form-control-sm" id="dashStart" style="width:130px" onchange="dashCustom()">
+          <span class="text-muted small">~</span>
+          <input type="date" class="form-control form-control-sm" id="dashEnd" style="width:130px" onchange="dashCustom()">
           <button class="btn btn-sm btn-outline-secondary" id="btnDashAuto" onclick="toggleDashAutoRefresh()" title="자동 새로고침 켜기"><i class="bi bi-arrow-repeat"></i> <span>자동</span></button>
-          <button class="btn btn-sm btn-outline-primary" onclick="loadDashboard();loadServiceHealth()"><i class="bi bi-arrow-clockwise"></i></button>
+          <button class="btn btn-sm btn-outline-primary" onclick="loadAll()"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
       <!-- 사용량 + 영향도: 한 줄 (세부값은 마우스오버 툴팁) -->
@@ -127,15 +130,7 @@ body { background:#f5f7fa; font-size:14px; }
         </div>
         <div class="col-lg-4">
           <div class="card dash-card p-3 h-100">
-            <div class="d-flex align-items-center mb-2">
-              <span class="fw-semibold small">서비스 영향도 (상태)</span>
-              <select class="form-select form-select-sm ms-auto" id="healthHours" onchange="loadServiceHealth()" style="width:108px">
-                <option value="6">6시간</option>
-                <option value="24" selected>24시간</option>
-                <option value="72">3일</option>
-                <option value="168">7일</option>
-              </select>
-            </div>
+            <div class="fw-semibold mb-2 small">서비스 영향도 (상태)</div>
             <div style="position:relative; height:240px"><canvas id="chartHealthStatus"></canvas></div>
           </div>
         </div>
