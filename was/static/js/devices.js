@@ -82,6 +82,7 @@ async function loadDevices() {
         ${d.status === 'disabled' ? `<button class="btn btn-xs btn-success me-1" onclick="enableDevice(${d.id})">활성화</button>` : ''}
         <button class="btn btn-xs btn-outline-info me-1" onclick="showDeviceStatus(${d.id})"><i class="bi bi-activity"></i></button>
         <button class="btn btn-xs btn-outline-secondary me-1" onclick="openDeviceGroups(${d.id},'${d.hostname}',${JSON.stringify(d.groups.map(g=>g.id))})">그룹</button>
+        <button class="btn btn-xs ${d.update_requested ? 'btn-warning' : 'btn-outline-success'} me-1" onclick="requestDaemonUpdate(${d.id})" title="데몬 업데이트"><i class="bi bi-arrow-repeat"></i></button>
         <button class="btn btn-xs btn-outline-danger" onclick="deleteDevice(${d.id})"><i class="bi bi-trash"></i></button>
       </td>
     </tr>`;
@@ -136,6 +137,17 @@ async function deleteDevice(id) {
   if (!confirm('장비를 삭제하시겠습니까? 관련 로그도 모두 삭제됩니다.')) return;
   await api('DELETE', `/devices/${id}`);
   loadDevices();
+}
+
+async function requestDaemonUpdate(id) {
+  const d = _deviceCache.find(x => x.id === id);
+  const name = d?.hostname || `#${id}`;
+  if (!confirm(`${name} 데몬을 업데이트하시겠습니까?\n다음 하트비트(30초 내)에 자동으로 최신 버전을 다운로드하고 재시작합니다.`)) return;
+  try {
+    await api('POST', `/devices/${id}/update`);
+    alert(`${name}: 업데이트 요청이 전송되었습니다.\n다음 하트비트에서 데몬이 자동으로 재시작됩니다.`);
+    loadDevices();
+  } catch(e) { alert('업데이트 요청 실패: ' + e.message); }
 }
 
 async function openDeviceGroups(deviceId, hostname, currentGroupIds) {

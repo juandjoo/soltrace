@@ -87,6 +87,7 @@ class DeviceResponse(BaseModel):
     mem_mb: Optional[float] = None
     disk_free_gb: Optional[float] = None
     daemon_uptime: Optional[int] = None
+    update_requested: bool = False
     created_at: datetime
     groups: List[GroupBrief] = []
 

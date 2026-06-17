@@ -80,8 +80,12 @@ def heartbeat(req: HeartbeatRequest, db: Session = Depends(get_db)):
         if val is not None:
             setattr(device, field, val)
 
+    resp: dict = {"status": device.status}
+    if device.update_requested:
+        resp["update"] = True
+        device.update_requested = False
     db.commit()
-    return {"status": device.status}
+    return resp
 
 
 @router.post("/logs", response_model=IngestResponse)

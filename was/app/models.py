@@ -54,6 +54,7 @@ class Device(Base):
     mem_mb = Column(Float)
     disk_free_gb = Column(Float)
     daemon_uptime = Column(Integer)
+    update_requested = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 

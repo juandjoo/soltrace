@@ -42,6 +42,7 @@ defaults = {
     "retry_delay": "10",
     "http_timeout": "15",
     "ssl_verify": "true",     # false = self-signed 인증서 허용 (보안 주의)
+    "update_url": "https://raw.githubusercontent.com/juandjoo/soltrace/main/ftp-daemon",
     "max_buffer_lines": "50000",
     "state_dir": "/var/lib/soltrace",
     "buffer_file": "/var/lib/soltrace/buffer.jsonl",
@@ -541,6 +542,50 @@ class SolTraceDaemon:
         else:
             log.error("Registration failed (will retry next heartbeat)")
 
+    def _self_update(self):
+        """GitHub에서 최신 파일 다운로드 후 서비스 재시작."""
+        update_url = self.cfg["daemon"].get("update_url", "").rstrip("/")
+        if not update_url:
+            log.warning("update_url not configured — skipping self-update")
+            return
+
+        files = ["requirements.txt", "soltrace_daemon.py", "soltrace_bulk.py"]
+        tmps = []
+        try:
+            log.info("Self-update: downloading from %s", update_url)
+            for fname in files:
+                url = f"{update_url}/{fname}"
+                tmp = BASE_DIR / f".{fname}.tmp"
+                r = self.client.session.get(url, timeout=30)
+                r.raise_for_status()
+                tmp.write_bytes(r.content)
+                tmps.append((tmp, BASE_DIR / fname))
+                log.info("Downloaded: %s (%d bytes)", fname, len(r.content))
+
+            # 모두 성공 → 교체
+            for tmp, dst in tmps:
+                tmp.replace(dst)
+                log.info("Updated: %s", dst.name)
+
+            # requirements 변경 대비 pip 업데이트
+            venv_pip = BASE_DIR / "venv" / "bin" / "pip"
+            if venv_pip.exists():
+                subprocess.run(
+                    [str(venv_pip), "install", "-r", str(BASE_DIR / "requirements.txt"), "-q"],
+                    check=False,
+                )
+
+            log.info("Self-update complete — restarting service")
+            subprocess.run(["systemctl", "restart", "soltrace-daemon"], check=False)
+
+        except Exception as e:
+            log.error("Self-update failed: %s", e)
+            for tmp, _ in tmps:
+                try:
+                    tmp.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
     def _heartbeat_loop(self):
         # psutil CPU 측정은 첫 호출이 0을 반환하므로 워밍업
         psutil.cpu_percent(interval=None)
@@ -556,6 +601,9 @@ class SolTraceDaemon:
                           status_payload.get("daemon_status"),
                           status_payload.get("cpu_percent") or 0,
                           status_payload.get("mem_mb") or 0)
+                if result.get("update"):
+                    log.info("Update requested by WAS — starting self-update")
+                    threading.Thread(target=self._self_update, daemon=True).start()
             else:
                 log.warning("Heartbeat failed")
 

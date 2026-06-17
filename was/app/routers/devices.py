@@ -72,6 +72,20 @@ def assign_groups(
     return device
 
 
+@router.post("/{device_id}/update", status_code=status.HTTP_204_NO_CONTENT)
+def request_daemon_update(
+    device_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """다음 하트비트에서 데몬 자가 업데이트를 트리거한다."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+    device.update_requested = True
+    db.commit()
+
+
 @router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_device(device_id: int, db: Session = Depends(get_db), _: str = Depends(require_admin)):
     device = db.query(Device).filter(Device.id == device_id).first()
