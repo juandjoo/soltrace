@@ -228,6 +228,7 @@ body { background:#f5f7fa; font-size:14px; }
           </div>
           <input class="form-control form-control-sm" style="flex:0.8;min-width:80px" id="logUserFilter" placeholder="사용자ID" readonly autocomplete="off" onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')searchLogs(1)">
           <input class="form-control form-control-sm" style="flex:0.9;min-width:95px" id="logIpFilter" placeholder="사용자IP" readonly autocomplete="off" onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')searchLogs(1)">
+          <input class="form-control form-control-sm" style="flex:1.4;min-width:110px" id="logFileFilter" placeholder="파일명/경로" autocomplete="off" onkeydown="if(event.key==='Enter')searchLogs(1)">
           <select class="form-select form-select-sm" style="flex:0.9;min-width:90px" id="logActionFilter" onchange="searchLogs(1)">
             <option value="__exclude_login_logout__" selected>전체 (로그인 제외)</option>
             <option value="">전체</option>

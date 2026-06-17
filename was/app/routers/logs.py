@@ -29,6 +29,7 @@ def _apply_filters(
     group_id: Optional[int],
     username: Optional[str],
     client_ip: Optional[str],
+    file_path: Optional[str],
     action: Optional[str],
     exclude_actions: Optional[str],
     log_status: Optional[str],
@@ -44,6 +45,8 @@ def _apply_filters(
         q = q.filter(FtpLog.username.ilike(f"%{username}%"))
     if client_ip:
         q = q.filter(FtpLog.client_ip.ilike(f"%{client_ip}%"))
+    if file_path:
+        q = q.filter(FtpLog.file_path.ilike(f"%{file_path}%"))
     if action:
         q = q.filter(FtpLog.action == action)
     elif exclude_actions:
@@ -63,6 +66,7 @@ def query_logs(
     group_id: Optional[int] = None,
     username: Optional[str] = None,
     client_ip: Optional[str] = None,
+    file_path: Optional[str] = None,
     action: Optional[str] = None,
     exclude_actions: Optional[str] = None,
     log_status: Optional[str] = Query(default=None, alias="status"),
@@ -80,7 +84,7 @@ def query_logs(
     q = _apply_filters(
         db.query(FtpLog), db,
         device_id=device_id, group_id=group_id, username=username, client_ip=client_ip,
-        action=action, exclude_actions=exclude_actions, log_status=log_status,
+        file_path=file_path, action=action, exclude_actions=exclude_actions, log_status=log_status,
         start_time=start_time, end_time=end_time,
     )
     total = q.with_entities(func.count()).scalar()
@@ -108,6 +112,7 @@ def export_csv(
     group_id: Optional[int] = None,
     username: Optional[str] = None,
     client_ip: Optional[str] = None,
+    file_path: Optional[str] = None,
     action: Optional[str] = None,
     exclude_actions: Optional[str] = None,
     log_status: Optional[str] = Query(default=None, alias="status"),
@@ -139,7 +144,7 @@ def export_csv(
         q = _apply_filters(
             q, db,
             device_id=device_id, group_id=group_id, username=username, client_ip=client_ip,
-            action=action, exclude_actions=exclude_actions, log_status=log_status,
+            file_path=file_path, action=action, exclude_actions=exclude_actions, log_status=log_status,
             start_time=start_time, end_time=end_time,
         )
 
@@ -174,6 +179,7 @@ def export_xlsx(
     group_id: Optional[int] = None,
     username: Optional[str] = None,
     client_ip: Optional[str] = None,
+    file_path: Optional[str] = None,
     action: Optional[str] = None,
     exclude_actions: Optional[str] = None,
     log_status: Optional[str] = Query(default=None, alias="status"),
@@ -209,7 +215,7 @@ def export_xlsx(
     q = _apply_filters(
         q, db,
         device_id=device_id, group_id=group_id, username=username, client_ip=client_ip,
-        action=action, exclude_actions=exclude_actions, log_status=log_status,
+        file_path=file_path, action=action, exclude_actions=exclude_actions, log_status=log_status,
         start_time=start_time, end_time=end_time,
     )
 

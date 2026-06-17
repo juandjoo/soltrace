@@ -127,12 +127,14 @@ function _logParams() {
   const grp = document.getElementById('logGroupFilter').value;
   const user = document.getElementById('logUserFilter').value.trim();
   const ip = document.getElementById('logIpFilter').value.trim();
+  const filePath = document.getElementById('logFileFilter').value.trim();
   const action = document.getElementById('logActionFilter').value;
   const start = document.getElementById('logStartTime').value;
   const end = document.getElementById('logEndTime').value;
   if (grp) params.set('group_id', grp);
   if (user) params.set('username', user);
   if (ip) params.set('client_ip', ip);
+  if (filePath) params.set('file_path', filePath);
   if (action === '__exclude_login_logout__') params.set('exclude_actions', 'login,logout');
   else if (action) params.set('action', action);
   if (start) params.set('start_time', new Date(start).toISOString());
