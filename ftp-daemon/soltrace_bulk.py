@@ -56,7 +56,7 @@ log = logging.getLogger("soltrace.bulk")
 def parse_date(s: Optional[str]) -> Optional[datetime]:
     if not s:
         return None
-    return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    return datetime.strptime(s, "%Y-%m-%d").astimezone(timezone.utc)
 
 
 def iter_file(path: str, parser, date_from: Optional[datetime], date_to: Optional[datetime]):

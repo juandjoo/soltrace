@@ -127,7 +127,7 @@ def parse_transfer_log(line: str) -> Optional[dict]:
         return None
     try:
         dt_str = f"{parts[1]} {parts[2]} {parts[3]} {parts[4]}"
-        log_time = datetime.strptime(dt_str, "%b %d %H:%M:%S %Y").replace(tzinfo=timezone.utc)
+        log_time = datetime.strptime(dt_str, "%b %d %H:%M:%S %Y").astimezone(timezone.utc)
         transfer_time = float(parts[5])
         client_ip = parts[6]
         file_size = int(parts[7])
@@ -177,7 +177,7 @@ def parse_extended_log(line: str) -> Optional[dict]:
     username = None if username == "-" else username
 
     try:
-        log_time = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        log_time = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc)
     except ValueError:
         return None
 
