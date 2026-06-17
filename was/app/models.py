@@ -116,6 +116,12 @@ class FtpLog(Base):
             postgresql_using="gin",
             postgresql_ops={"username": "gin_trgm_ops"},
         ),
+        Index(
+            "idx_ftp_logs_client_ip_trgm",
+            "client_ip",
+            postgresql_using="gin",
+            postgresql_ops={"client_ip": "gin_trgm_ops"},
+        ),
         {"postgresql_partition_by": "RANGE (log_time)"},
     )
 

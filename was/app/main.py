@@ -51,6 +51,13 @@ def _run_migrations(conn):
           THEN ALTER TABLE groups RENAME COLUMN auth TO application; END IF;
         END $$
     """))
+    # client_ip GIN trigram 인덱스 — ILIKE '%...%' 검색 성능
+    conn.execute(text("""
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_ftp_logs_client_ip_trgm')
+          THEN CREATE INDEX idx_ftp_logs_client_ip_trgm ON ftp_logs USING gin (client_ip gin_trgm_ops); END IF;
+        END $$
+    """))
 
 
 @asynccontextmanager
