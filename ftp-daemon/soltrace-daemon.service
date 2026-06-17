@@ -5,6 +5,9 @@ After=network-online.target proftpd.service
 Wants=network-online.target
 # proftpd 재시작 시 데몬도 함께 재시작
 PartOf=proftpd.service
+# 재시작 폭발 제한 (systemd 219+ 호환 위치)
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -17,30 +20,15 @@ ExecStart=/opt/soltrace-daemon/venv/bin/python3 soltrace_daemon.py
 Restart=on-failure
 RestartSec=10
 RestartPreventExitStatus=1
-StartLimitIntervalSec=300
-StartLimitBurst=3
 
 # ── 타임아웃 ────────────────────────────────────────────────────
 TimeoutStartSec=30
 TimeoutStopSec=15
 
-# ── 보안 하드닝 ─────────────────────────────────────────────────
-# 프로세스가 새 권한(setuid 등)을 획득하지 못하도록 차단
+# ── 보안 하드닝 (systemd 219+ / CentOS 7 호환) ──────────────────
 NoNewPrivileges=yes
-# /tmp, /var/tmp를 프로세스 전용 네임스페이스로 격리
 PrivateTmp=yes
-# /home 접근 차단
 ProtectHome=yes
-# /usr, /boot, /etc 를 읽기 전용으로 보호 (쓰기가 필요한 경로는 ReadWritePaths에 명시)
-ProtectSystem=strict
-ReadWritePaths=/var/lib/soltrace /var/log /opt/soltrace-daemon
-ReadOnlyPaths=/usr/service/logs/proftpd
-# 커널 파라미터·모듈·cgroup 변경 차단
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-# 실시간 스케줄링 차단
-RestrictRealtime=yes
 
 # ── 로그 ────────────────────────────────────────────────────────
 StandardOutput=journal
