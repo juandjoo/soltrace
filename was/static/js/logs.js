@@ -3,6 +3,10 @@ const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제',
 let _logGroupMap = {};   // id → group object
 
 async function initLogsPage() {
+  // 브라우저 자동완성으로 로그인 정보가 입력되는 것을 방지
+  document.getElementById('logUserFilter').value = '';
+  document.getElementById('logIpFilter').value = '';
+
   const groups = await api('GET', '/groups');
   if (groups) {
     allGroups = groups;
