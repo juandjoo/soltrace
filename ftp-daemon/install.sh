@@ -87,14 +87,24 @@ FTP_LOG_DIR="${FTP_LOG_DIR:-/usr/service/logs/proftpd}"
 
 if [ -d "$FTP_LOG_DIR" ]; then
     if command -v setfacl &>/dev/null; then
-        setfacl -R -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR" 2>/dev/null && \
-        setfacl -R -d -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR" 2>/dev/null && \
-        echo "[INFO] FTP 로그 ACL 설정 완료: $FTP_LOG_DIR" || \
-        echo "[WARN] ACL 설정 실패 — 수동으로 읽기 권한을 부여하세요: setfacl -R -m u:${DAEMON_USER}:r $FTP_LOG_DIR"
+        # 상위 디렉터리 순회(x) 권한 — 경로 탐색에 필요
+        _p="$FTP_LOG_DIR"
+        while [ "$_p" != "/" ]; do
+            _p=$(dirname "$_p")
+            [ "$_p" != "/" ] && setfacl -m "u:${DAEMON_USER}:x" "$_p" 2>/dev/null || true
+        done
+        # 로그 디렉터리: 읽기+순회(rx)
+        setfacl -m "u:${DAEMON_USER}:rx" "$FTP_LOG_DIR"
+        # 기존 파일: 읽기(r)
+        setfacl -R -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR"
+        # 신규 파일(로그 로테이션 후)에도 자동 적용
+        setfacl -d -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR"
+        echo "[INFO] FTP 로그 ACL 설정 완료: $FTP_LOG_DIR"
     else
         echo "[WARN] setfacl 없음 — FTP 로그 읽기 권한 수동 설정 필요:"
-        echo "       chown root:${DAEMON_USER} ${FTP_LOG_DIR}/*"
-        echo "       chmod 640 ${FTP_LOG_DIR}/*"
+        echo "       setfacl -m u:${DAEMON_USER}:x /usr/service /usr/service/logs"
+        echo "       setfacl -m u:${DAEMON_USER}:rx $FTP_LOG_DIR"
+        echo "       setfacl -R -m u:${DAEMON_USER}:r $FTP_LOG_DIR"
     fi
 else
     echo "[WARN] FTP 로그 디렉터리를 찾을 수 없습니다: $FTP_LOG_DIR"
