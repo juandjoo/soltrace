@@ -51,9 +51,8 @@ body { background:#f5f7fa; font-size:14px; }
 .action-login, .action-logout { color:#6c757d; }
 .size-val { font-family:monospace; }
 /* 로그 테이블 */
-#logPage table thead th { position:relative; }
 #logPage table td, #logPage table th { padding:5px 10px; }
-#logPage table thead th::after { content:''; position:absolute; right:0; top:15%; bottom:15%; width:2px; background:#dee2e6; pointer-events:none; border-radius:1px; }
+#logPage table thead th:not(:last-child) { border-right:2px solid #ced4da; }
 </style>
 </head>
 <body>

@@ -18,42 +18,51 @@ function _initLogColResize() {
   if (!table || table.dataset.resizeReady) return;
   table.dataset.resizeReady = '1';
 
-  const cols = table.querySelectorAll('colgroup col');
-  const ths  = table.querySelectorAll('thead th');
+  const cols = Array.from(table.querySelectorAll('colgroup col'));
+  const ths  = Array.from(table.querySelectorAll('thead th'));
+  const row  = table.querySelector('thead tr');
 
   // 저장된 폭 복원
   const saved = JSON.parse(localStorage.getItem('logColWidths') || 'null');
   if (saved) cols.forEach((col, i) => { if (saved[i]) col.style.width = saved[i] + 'px'; });
 
-  const EDGE = 8; // 우측 끝에서 이 px 이내면 리사이즈 모드
+  const ZONE = 6; // 각 th 우측 경계에서 ±px 이내를 드래그 존으로 인식
 
-  ths.forEach((th, i) => {
-    th.addEventListener('mousemove', e => {
-      th.style.cursor = e.offsetX >= th.offsetWidth - EDGE ? 'col-resize' : '';
-    });
-    th.addEventListener('mouseleave', () => { th.style.cursor = ''; });
-    th.addEventListener('mousedown', e => {
-      if (e.offsetX < th.offsetWidth - EDGE) return; // 우측 끝이 아니면 무시
-      e.preventDefault();
-      const startX = e.clientX;
-      const startW = th.getBoundingClientRect().width;
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
+  function hitCol(clientX) {
+    // 마지막 컬럼 경계는 제외 (last-child는 경계 없음)
+    for (let i = 0; i < ths.length - 1; i++) {
+      if (Math.abs(clientX - ths[i].getBoundingClientRect().right) <= ZONE) return i;
+    }
+    return -1;
+  }
 
-      const onMove = e => {
-        cols[i].style.width = Math.max(40, startW + e.clientX - startX) + 'px';
-      };
-      const onUp = () => {
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-        localStorage.setItem('logColWidths',
-          JSON.stringify(Array.from(ths).map(t => Math.round(t.getBoundingClientRect().width))));
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
+  row.addEventListener('mousemove', e => {
+    row.style.cursor = hitCol(e.clientX) >= 0 ? 'col-resize' : '';
+  });
+  row.addEventListener('mouseleave', () => { row.style.cursor = ''; });
+
+  row.addEventListener('mousedown', e => {
+    const i = hitCol(e.clientX);
+    if (i < 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = ths[i].getBoundingClientRect().width;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = e => {
+      cols[i].style.width = Math.max(40, startW + e.clientX - startX) + 'px';
+    };
+    const onUp = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      localStorage.setItem('logColWidths',
+        JSON.stringify(ths.map(t => Math.round(t.getBoundingClientRect().width))));
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   });
 }
 
