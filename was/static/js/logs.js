@@ -245,6 +245,23 @@ async function _download(endpoint, ext) {
 async function exportLogs() { await _download('/logs/export', 'csv'); }
 async function exportXlsx() { await _download('/logs/export/xlsx', 'xlsx'); }
 
+function resetLogFilters() {
+  document.getElementById('logTelcoFilter').value = '';
+  _renderGroupOptions('');
+  document.getElementById('logGroupFilter').value = '';
+  ['logUserFilter', 'logIpFilter'].forEach(id => {
+    const el = document.getElementById(id);
+    el.setAttribute('readonly', '');
+    el.value = '';
+  });
+  document.getElementById('logFileFilter').value = '';
+  document.getElementById('logActionFilter').value = '__exclude_login_logout__';
+  document.getElementById('logStatusFilter').value = '';
+  document.getElementById('logStartTime').value = '';
+  document.getElementById('logEndTime').value = '';
+  searchLogs(1);
+}
+
 function logDateQuick(dayOffset) {
   const _fmt = d => {
     const p = n => String(n).padStart(2,'0');
