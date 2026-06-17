@@ -14,19 +14,22 @@ async function initLogsPage() {
 }
 
 function _initLogColResize() {
-  const colGroup = document.getElementById('logColGroup');
-  if (!colGroup) return;
-  const cols = colGroup.querySelectorAll('col');
-  const ths = document.querySelectorAll('#logPage table thead th');
+  const table = document.querySelector('#logPage table');
+  if (!table) return;
+  // 중복 초기화 방지
+  if (table.dataset.resizeReady) return;
+  table.dataset.resizeReady = '1';
 
-  // Restore saved widths from localStorage
+  const cols = table.querySelectorAll('colgroup col');
+  const ths  = table.querySelectorAll('thead th');
+
+  // 저장된 폭 복원
   const saved = JSON.parse(localStorage.getItem('logColWidths') || 'null');
   if (saved) {
     cols.forEach((col, i) => { if (saved[i]) col.style.width = saved[i] + 'px'; });
   }
 
   ths.forEach((th, i) => {
-    // Skip last resizable if it's the flex column (no fixed width)
     const handle = document.createElement('div');
     handle.className = 'col-resize-handle';
     th.appendChild(handle);
@@ -35,17 +38,19 @@ function _initLogColResize() {
       e.preventDefault();
       handle.classList.add('dragging');
       const startX = e.clientX;
-      const startW = cols[i].offsetWidth || th.offsetWidth || 80;
+      // <col>.offsetWidth은 항상 0 → th의 실제 렌더링 폭 사용
+      const startW = th.getBoundingClientRect().width;
 
       const onMove = e => {
-        const w = Math.max(36, startW + e.clientX - startX);
+        const w = Math.max(40, startW + e.clientX - startX);
         cols[i].style.width = w + 'px';
       };
       const onUp = () => {
         handle.classList.remove('dragging');
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-        const widths = Array.from(cols).map(c => parseInt(c.style.width) || 0);
+        // 실제 렌더링 폭으로 저장
+        const widths = Array.from(ths).map(th => Math.round(th.getBoundingClientRect().width));
         localStorage.setItem('logColWidths', JSON.stringify(widths));
       };
       document.addEventListener('mousemove', onMove);
@@ -114,7 +119,7 @@ async function searchLogs(page) {
       <td class="small text-center text-truncate" style="overflow:hidden">${l.username||'-'}</td>
       <td class="small text-center text-muted text-nowrap">${l.client_ip||'-'}</td>
       <td class="text-center text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
-      <td class="small" style="word-break:break-all;overflow:hidden" title="${filePath.replace(/"/g,'&quot;')}">${fileDisplay||'-'}</td>
+      <td class="small text-center" style="word-break:break-all;overflow:hidden" title="${filePath.replace(/"/g,'&quot;')}">${fileDisplay||'-'}</td>
       <td class="size-val small text-center text-nowrap">${sizeDisplay}</td>
       <td class="small text-center text-nowrap">${timeDisplay}</td>
       <td class="text-center"><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>
