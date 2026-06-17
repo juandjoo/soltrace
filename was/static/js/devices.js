@@ -57,24 +57,24 @@ async function loadDevices() {
         <strong>${d.hostname}</strong>
         <div class="text-muted" style="font-size:11px">${d.daemon_version||''}</div>
       </td>
-      <td class="text-muted small">${d.ip_address||'-'}</td>
-      <td>${statusBadge(d.status)}</td>
-      <td>
+      <td class="text-center text-muted small">${d.ip_address||'-'}</td>
+      <td class="text-center">${statusBadge(d.status)}</td>
+      <td class="text-center">
         ${daemonBadge(dStatus, errMsg)}
         <div class="text-muted" style="font-size:11px">${fmtUptime(d.daemon_uptime)} 가동</div>
       </td>
-      <td>
-        <div class="d-flex gap-2 align-items-center">
+      <td class="text-center">
+        <div class="d-flex gap-2 align-items-center justify-content-center">
           ${metricBar(d.cpu_percent, 100, '%', 70, 90)}
           ${metricBar(d.mem_mb, 512, 'MB', 400, 480)}
           ${d.disk_free_gb != null ? `<span class="small text-muted">💾${d.disk_free_gb.toFixed(1)}G</span>` : ''}
         </div>
       </td>
-      <td class="small">
+      <td class="text-center small">
         ${d.buffer_lines > 0 ? `<span class="badge bg-warning text-dark">${d.buffer_lines.toLocaleString()}건</span>` : '<span class="text-muted">-</span>'}
         ${d.queue_size > 0 ? `<span class="badge bg-info text-dark ms-1">Q:${d.queue_size}</span>` : ''}
       </td>
-      <td class="text-muted small">${timeAgo(d.last_heartbeat)}</td>
+      <td class="text-center text-muted small">${timeAgo(d.last_heartbeat)}</td>
       <td>${d.groups.map(g=>`<span class="badge bg-light text-dark border me-1">${g.name}</span>`).join('')||'<span class="text-muted small">-</span>'}</td>
       <td class="text-end text-nowrap">
         ${d.status === 'pending' ? `<button class="btn btn-xs btn-success me-1" onclick="confirmDevice(${d.id})">확인</button>` : ''}
