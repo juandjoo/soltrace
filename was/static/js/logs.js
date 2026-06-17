@@ -1,6 +1,7 @@
 const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제', cwd_fail:'디렉토리 이동 실패'};
 
 let _logGroupMap = {};   // id → group object
+let _pendingSearch = false;  // navToLogsFilters가 세팅, initLogsPage 완료 후 자동 검색
 
 async function initLogsPage() {
   // Chrome 자동완성 차단: readonly로 리셋 후 값 초기화
@@ -24,6 +25,11 @@ async function initLogsPage() {
   }
   _initGroupTooltip();
   _initLogColResize();
+
+  if (_pendingSearch) {
+    _pendingSearch = false;
+    searchLogs(1);
+  }
 }
 
 function _renderGroupOptions(telco) {

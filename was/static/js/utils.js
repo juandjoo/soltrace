@@ -32,8 +32,10 @@ function _updateTopbarTimer(expiresAt) {
 function _clearSessionTimers() {
   if (_expireTimer)      { clearTimeout(_expireTimer);        _expireTimer = null; }
   if (_countdownInterval){ clearInterval(_countdownInterval); _countdownInterval = null; }
-  const txt = document.getElementById('sessionTimerText');
-  if (txt) txt.textContent = '--:--';
+  const txt  = document.getElementById('sessionTimerText');
+  const disp = document.getElementById('sessionTimerDisplay');
+  if (txt)  txt.textContent = '--:--';
+  if (disp) disp.classList.remove('session-timer--warn', 'session-timer--danger');
 }
 
 function startSessionTimers(tok) {

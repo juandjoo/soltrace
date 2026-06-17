@@ -82,7 +82,7 @@ function renderGroupPage(page) {
     if (!list.length) return '';
     const total = list.reduce((s, g) => s + g.device_count, 0);
     const headerLabel = telco
-      ? `<i class="bi bi-broadcast-pin-fill me-2" style="color:#e85d04"></i><span class="fw-semibold">${telco}</span>`
+      ? `<i class="bi bi-broadcast-pin-fill me-2 text-brand"></i><span class="fw-semibold">${telco}</span>`
       : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-semibold text-muted">통신사 미지정</span>`;
     const spacer = isFirst ? '' : `<tr><td colspan="${GROUP_COLS}" style="height:10px;padding:0;background:#f5f7fa;border-top:2px solid #dee2e6"></td></tr>`;
     isFirst = false;

@@ -61,7 +61,6 @@ body        { background: #f5f7fa; font-size: 14px; }
 .btn-topbar-icon:hover { background: var(--st-brand-bg); color: var(--st-brand); }
 
 /* ── 설정 좌측 세로 탭 ─────────────────────────────────────────── */
-.settings-pane.d-none           { display: none; }
 .settings-vnav .nav-link        { color: var(--st-text); border-radius: 8px; padding: 8px 14px; margin-bottom: 3px; font-size: 13.5px; }
 .settings-vnav .nav-link i      { font-size: 1.1rem; width: 1.5rem; }
 .settings-vnav .nav-link:hover  { background: var(--st-brand-bg); color: var(--st-brand); }

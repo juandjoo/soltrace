@@ -83,8 +83,8 @@ function navToLogsFilters({action = '', status = ''} = {}) {
   if (e) document.getElementById('logEndTime').value   = e + 'T23:59';
   document.getElementById('logActionFilter').value = action;
   document.getElementById('logStatusFilter').value  = status;
+  _pendingSearch = true;  // initLogsPage 완료 후 자동 검색 (logs.js)
   nav('logs');
-  setTimeout(() => searchLogs(1), 400);
 }
 
 async function loadDashboard() {
