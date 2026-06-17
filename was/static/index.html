@@ -53,9 +53,7 @@ body { background:#f5f7fa; font-size:14px; }
 /* 로그 테이블 */
 #logPage table thead th { position:relative; }
 #logPage table td, #logPage table th { padding:5px 10px; }
-.col-resize-handle { position:absolute; right:0; top:0; bottom:0; width:6px; cursor:col-resize; user-select:none; z-index:1; }
-.col-resize-handle::after { content:''; position:absolute; right:2px; top:15%; bottom:15%; width:1px; background:#dee2e6; }
-.col-resize-handle:hover::after, .col-resize-handle.dragging::after { background:#e85d04; width:2px; }
+#logPage table thead th::after { content:''; position:absolute; right:0; top:15%; bottom:15%; width:2px; background:#dee2e6; pointer-events:none; border-radius:1px; }
 </style>
 </head>
 <body>
@@ -236,7 +234,7 @@ body { background:#f5f7fa; font-size:14px; }
         <div class="table-responsive">
           <table class="table table-hover mb-0 table-sm" style="table-layout:fixed">
             <colgroup id="logColGroup">
-              <col data-idx="0" style="width:130px"> <!-- 시간 -->
+              <col data-idx="0" style="width:155px"> <!-- 시간 -->
               <col data-idx="1" style="width:160px"> <!-- 장비 -->
               <col data-idx="2" style="width:90px">  <!-- 사용자 -->
               <col data-idx="3" style="width:110px"> <!-- IP -->
@@ -248,7 +246,7 @@ body { background:#f5f7fa; font-size:14px; }
             </colgroup>
             <thead class="table-light">
               <tr>
-                <th class="text-center">시간</th><th class="text-center">장비</th><th class="text-center">사용자</th><th class="text-center">IP</th><th class="text-center">작업</th>
+                <th class="text-center">시간</th><th class="text-center">업로드 장비</th><th class="text-center">사용자</th><th class="text-center">사용자 IP</th><th class="text-center">작업</th>
                 <th class="text-center">파일 경로</th><th class="text-center">크기</th><th class="text-center">전송시간</th><th class="text-center">상태</th>
               </tr>
             </thead>

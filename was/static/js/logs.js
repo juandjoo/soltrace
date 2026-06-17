@@ -15,9 +15,7 @@ async function initLogsPage() {
 
 function _initLogColResize() {
   const table = document.querySelector('#logPage table');
-  if (!table) return;
-  // 중복 초기화 방지
-  if (table.dataset.resizeReady) return;
+  if (!table || table.dataset.resizeReady) return;
   table.dataset.resizeReady = '1';
 
   const cols = table.querySelectorAll('colgroup col');
@@ -25,33 +23,33 @@ function _initLogColResize() {
 
   // 저장된 폭 복원
   const saved = JSON.parse(localStorage.getItem('logColWidths') || 'null');
-  if (saved) {
-    cols.forEach((col, i) => { if (saved[i]) col.style.width = saved[i] + 'px'; });
-  }
+  if (saved) cols.forEach((col, i) => { if (saved[i]) col.style.width = saved[i] + 'px'; });
+
+  const EDGE = 8; // 우측 끝에서 이 px 이내면 리사이즈 모드
 
   ths.forEach((th, i) => {
-    const handle = document.createElement('div');
-    handle.className = 'col-resize-handle';
-    th.appendChild(handle);
-
-    handle.addEventListener('mousedown', e => {
+    th.addEventListener('mousemove', e => {
+      th.style.cursor = e.offsetX >= th.offsetWidth - EDGE ? 'col-resize' : '';
+    });
+    th.addEventListener('mouseleave', () => { th.style.cursor = ''; });
+    th.addEventListener('mousedown', e => {
+      if (e.offsetX < th.offsetWidth - EDGE) return; // 우측 끝이 아니면 무시
       e.preventDefault();
-      handle.classList.add('dragging');
       const startX = e.clientX;
-      // <col>.offsetWidth은 항상 0 → th의 실제 렌더링 폭 사용
       const startW = th.getBoundingClientRect().width;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
 
       const onMove = e => {
-        const w = Math.max(40, startW + e.clientX - startX);
-        cols[i].style.width = w + 'px';
+        cols[i].style.width = Math.max(40, startW + e.clientX - startX) + 'px';
       };
       const onUp = () => {
-        handle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-        // 실제 렌더링 폭으로 저장
-        const widths = Array.from(ths).map(th => Math.round(th.getBoundingClientRect().width));
-        localStorage.setItem('logColWidths', JSON.stringify(widths));
+        localStorage.setItem('logColWidths',
+          JSON.stringify(Array.from(ths).map(t => Math.round(t.getBoundingClientRect().width))));
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
@@ -102,7 +100,8 @@ async function searchLogs(page) {
 
   tbody.innerHTML = data.items.map(l => {
     const d = new Date(l.log_time);
-    const dt = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    const p = n => String(n).padStart(2,'0');
+    const dt = `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
     const action = l.action;
     const icon = {upload:'<i class="bi bi-upload action-upload"></i>', download:'<i class="bi bi-download action-download"></i>', delete:'<i class="bi bi-trash action-delete"></i>', rename:'<i class="bi bi-pencil action-rename"></i>', login:'<i class="bi bi-box-arrow-in-right action-login"></i>', logout:'<i class="bi bi-box-arrow-right action-logout"></i>'}[action] || action;
     const filePath = l.file_path || '';
