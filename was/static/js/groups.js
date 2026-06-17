@@ -66,8 +66,8 @@ function renderGroupPage(page) {
       <td class="fw-semibold" style="word-break:break-word">${g.name}</td>
       <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
       <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer || '<span class="text-muted">-</span>'}</td>
-      <td class="small" style="word-break:break-word">${g.application || '<span class="text-muted">-</span>'}</td>
       <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains || '-'}</td>
+      <td class="small" style="word-break:break-word">${g.application || '<span class="text-muted">-</span>'}</td>
       <td class="small text-muted" style="word-break:break-word">${g.description || '-'}</td>
       <td><div class="d-flex gap-1 justify-content-end">
         <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
@@ -102,11 +102,11 @@ function renderGroupPage(page) {
         <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
           <colgroup>
             <col style="width:14%"><col style="width:6%"><col style="width:14%">
-            <col style="width:14%"><col style="width:24%"><col style="width:17%"><col style="width:11%">
+            <col style="width:24%"><col style="width:14%"><col style="width:17%"><col style="width:11%">
           </colgroup>
           <thead class="table-light">
             <tr><th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
-            <th>서비스</th><th>업로드 도메인</th><th>비고</th><th></th></tr>
+            <th>업로드 도메인</th><th>서비스</th><th>비고</th><th></th></tr>
           </thead>
           <tbody>${sectionRows || '<tr><td colspan="7" class="text-center text-muted py-3">해당 항목이 없습니다.</td></tr>'}</tbody>
         </table>
