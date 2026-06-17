@@ -34,6 +34,7 @@ ProtectHome=yes
 # /usr, /boot, /etc 를 읽기 전용으로 보호 (쓰기가 필요한 경로는 ReadWritePaths에 명시)
 ProtectSystem=strict
 ReadWritePaths=/var/lib/soltrace /var/log /opt/soltrace-daemon
+ReadOnlyPaths=/usr/service/logs/proftpd
 # 커널 파라미터·모듈·cgroup 변경 차단
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
