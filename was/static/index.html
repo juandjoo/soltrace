@@ -209,7 +209,8 @@ body { background:#f5f7fa; font-size:14px; }
           <input class="form-control form-control-sm" style="flex:0.8;min-width:72px" id="logUserFilter" placeholder="사용자">
           <input class="form-control form-control-sm" style="flex:0.9;min-width:95px" id="logIpFilter" placeholder="IP">
           <select class="form-select form-select-sm" style="flex:0.9;min-width:90px" id="logActionFilter">
-            <option value="">전체 작업</option>
+            <option value="__exclude_login_logout__" selected>전체 (로그인 제외)</option>
+            <option value="">전체</option>
             <option value="upload">업로드</option>
             <option value="download">다운로드</option>
             <option value="delete">삭제</option>

@@ -92,7 +92,8 @@ function _logParams() {
   if (dev) params.set('device_id', dev);
   if (user) params.set('username', user);
   if (ip) params.set('client_ip', ip);
-  if (action) params.set('action', action);
+  if (action === '__exclude_login_logout__') params.set('exclude_actions', 'login,logout');
+  else if (action) params.set('action', action);
   if (start) params.set('start_time', new Date(start).toISOString());
   if (end) params.set('end_time', new Date(end).toISOString());
   return params;
