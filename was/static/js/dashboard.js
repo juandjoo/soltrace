@@ -75,6 +75,18 @@ function loadAll() {
   loadServiceHealth();
 }
 
+// 대시보드 날짜 범위를 유지하면서 로그 조회 페이지로 드릴다운
+function navToLogsFilters({action = '', status = ''} = {}) {
+  const s = document.getElementById('dashStart').value;
+  const e = document.getElementById('dashEnd').value;
+  if (s) document.getElementById('logStartTime').value = s + 'T00:00';
+  if (e) document.getElementById('logEndTime').value   = e + 'T23:59';
+  document.getElementById('logActionFilter').value = action;
+  document.getElementById('logStatusFilter').value  = status;
+  nav('logs');
+  setTimeout(() => searchLogs(1), 400);
+}
+
 async function loadDashboard() {
   const data = await api('GET', `/dashboard?${_dashDateParams()}`);
   if (!data) return;
@@ -196,10 +208,17 @@ async function loadServiceHealth() {
   } else {
     rateEl.style.display = '';
     rateWrap.querySelector('.no-fail')?.remove();
+    // 슬라이스 클릭 시 로그 조회로 드릴다운
+    // 인덱스 0=전송 실패(status=fail), 1=로그인 실패(action=login,status=fail), 2=CWD 실패(action=cwd_fail)
+    const _rateFilters = [
+      {action: '', status: 'fail'},
+      {action: 'login', status: 'fail'},
+      {action: 'cwd_fail', status: ''},
+    ];
     charts.healthRate = new Chart(rateEl, {
       type: 'doughnut',
       data: {
-        labels: ['전송 실패', '로그인 실패', 'CWD 실패'],
+        labels: ['전송 실패', '로그인 실패', 'CWD 실패 (디렉토리 이동)'],
         datasets: [{
           data: [ft.transfer_fails || 0, ft.login_fails || 0, ft.cwd_fails || 0],
           backgroundColor: ['#dc3545', '#fd7e14', '#6f42c1'],
@@ -208,6 +227,13 @@ async function loadServiceHealth() {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
+        onClick: (evt, elems) => {
+          if (!elems.length) return;
+          navToLogsFilters(_rateFilters[elems[0].index]);
+        },
+        onHover: (evt, elems) => {
+          evt.native.target.style.cursor = elems.length ? 'pointer' : 'default';
+        },
         plugins: {
           legend: {
             position: 'right',
@@ -224,7 +250,7 @@ async function loadServiceHealth() {
               },
             },
           },
-          tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed.toLocaleString()}건`}},
+          tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 조회`}},
           centerText: {line1: `${failTotal.toLocaleString()}건`, line2: '총 실패', size: 13, color: '#dc3545'},
         },
       },

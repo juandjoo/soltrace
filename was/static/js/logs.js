@@ -1,4 +1,4 @@
-const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제'};
+const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제', cwd_fail:'디렉토리 이동 실패'};
 
 let _logGroupMap = {};   // id → group object
 
@@ -129,6 +129,7 @@ function _logParams() {
   const ip = document.getElementById('logIpFilter').value.trim();
   const filePath = (document.getElementById('logFileFilter')?.value || '').trim();
   const action = document.getElementById('logActionFilter').value;
+  const status = document.getElementById('logStatusFilter').value;
   const start = document.getElementById('logStartTime').value;
   const end = document.getElementById('logEndTime').value;
   if (grp) params.set('group_id', grp);
@@ -137,6 +138,7 @@ function _logParams() {
   if (filePath) params.set('file_path', filePath);
   if (action === '__exclude_login_logout__') params.set('exclude_actions', 'login,logout');
   else if (action) params.set('action', action);
+  if (status) params.set('status', status);
   if (start) params.set('start_time', new Date(start).toISOString());
   if (end) params.set('end_time', new Date(end).toISOString());
   return params;
