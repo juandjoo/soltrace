@@ -114,40 +114,44 @@ body { background:#f5f7fa; font-size:14px; }
           <button class="btn btn-sm btn-outline-primary" onclick="loadAll()"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
-      <!-- 사용량 + 영향도: 한 줄 (세부값은 마우스오버 툴팁) -->
+      <!-- 1행: 사용량 2개 -->
       <div class="row g-3 mb-3">
-        <div class="col-lg-4">
+        <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
             <div class="fw-semibold mb-2 small">사용자별 사용량</div>
             <div style="position:relative; height:240px"><canvas id="chartTopUsers"></canvas></div>
           </div>
         </div>
-        <div class="col-lg-4">
+        <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
             <div class="fw-semibold mb-2 small">장비그룹별 사용량</div>
             <div style="position:relative; height:240px"><canvas id="chartTopGroups"></canvas></div>
           </div>
         </div>
-        <div class="col-lg-4">
-          <div class="card dash-card p-3 h-100">
-            <div class="fw-semibold mb-2 small">서비스 영향도 (상태)</div>
-            <div style="position:relative; height:240px"><canvas id="chartHealthStatus"></canvas></div>
-          </div>
-        </div>
       </div>
 
-      <!-- 세부: 실패율 추이 + 최근 알림 -->
-      <div class="row g-3">
-        <div class="col-xl-6">
-          <div class="card dash-card p-3">
+      <!-- 2행: 영향도 + 실패건수 -->
+      <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+          <div class="card dash-card p-3 h-100">
+            <div class="fw-semibold mb-2 small">서비스 영향도 (상태)</div>
+            <div style="position:relative; height:220px"><canvas id="chartHealthStatus"></canvas></div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card dash-card p-3 h-100">
             <div class="fw-semibold mb-2 small">전송/로그인 실패 건수</div>
             <div style="position:relative; height:220px"><canvas id="chartHealthRate"></canvas></div>
           </div>
         </div>
-        <div class="col-xl-6">
+      </div>
+
+      <!-- 3행: 이상 알림 -->
+      <div class="row g-3">
+        <div class="col-12">
           <div class="card dash-card p-3">
             <div class="fw-semibold mb-2 small">최근 이상 알림</div>
-            <div class="table-responsive" style="max-height:220px; overflow:auto">
+            <div class="table-responsive" style="max-height:260px; overflow:auto">
               <table class="table table-sm align-middle mb-0">
                 <thead><tr class="text-muted small">
                   <th>시각(UTC)</th><th>장비</th><th>지표</th><th>심각도</th><th>값</th><th>평소</th><th>내용</th>
