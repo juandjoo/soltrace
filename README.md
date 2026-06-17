@@ -84,7 +84,18 @@ sudo bash scripts/install_was_rocky8.sh
 설치 완료 후 출력되는 `ADMIN_PASSWORD`를 보관한다.  
 접속: `http://<WAS_IP>`
 
-### FTP 서버 데몬 (Rocky Linux 8)
+### FTP 서버 데몬
+
+> **OS별 상세 설치 가이드**: [ftp-daemon/README.md](ftp-daemon/README.md)  
+> CentOS 7 (EOL 저장소 교체·Python 3.8·urllib3 대응 포함), Rocky Linux 8/9 모두 다룹니다.
+
+**Rocky Linux 8 / 9 — 자동 설치:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/juandjoo/soltrace/main/ftp-daemon/install.sh | sudo bash
+```
+
+또는 스크립트 방식:
 
 ```bash
 git clone https://github.com/juandjoo/soltrace.git
@@ -92,10 +103,62 @@ cd soltrace
 sudo bash scripts/install_daemon_rocky8.sh
 ```
 
+**CentOS 7 (EOL) — 자동 설치 전 저장소 교체 필요:**
+
+```bash
+# 1. yum 저장소를 vault.centos.org로 교체
+sudo tee /etc/yum.repos.d/CentOS-Base.repo > /dev/null << 'EOF'
+[base]
+name=CentOS-7 - Base
+baseurl=https://vault.centos.org/centos/7/os/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+enabled=1
+[updates]
+name=CentOS-7 - Updates
+baseurl=https://vault.centos.org/centos/7/updates/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+enabled=1
+[extras]
+name=CentOS-7 - Extras
+baseurl=https://vault.centos.org/centos/7/extras/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+enabled=1
+EOF
+sudo yum clean all && sudo yum makecache
+
+# 2. Python 3.8 설치 (SCL)
+sudo yum install -y centos-release-scl
+sudo tee /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo > /dev/null << 'EOF'
+[centos-sclo-rh]
+name=CentOS-7 - SCLo rh
+baseurl=https://vault.centos.org/centos/7/sclo/$basearch/rh/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-SCLo
+enabled=1
+[centos-sclo-sclo]
+name=CentOS-7 - SCLo sclo
+baseurl=https://vault.centos.org/centos/7/sclo/$basearch/sclo/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-SCLo
+enabled=1
+EOF
+sudo yum install -y rh-python38
+
+# 3. 데몬 자동 설치
+curl -fsSL https://raw.githubusercontent.com/juandjoo/soltrace/main/ftp-daemon/install.sh | sudo bash
+
+# 4. urllib3 v2 호환성 패치 (OpenSSL 1.0.2k 환경)
+sudo /opt/soltrace-daemon/venv/bin/pip install "urllib3<2"
+sudo systemctl restart soltrace-daemon
+```
+
 설치 후 WAS 주소 등 설정 확인:
 
 ```bash
-vi /opt/soltrace-daemon/config.ini
+vi /opt/soltrace-daemon/config.ini     # was_url 반드시 https:// 로 설정
 systemctl restart soltrace-daemon
 journalctl -u soltrace-daemon -f
 ```
