@@ -5,7 +5,7 @@ let currentSettingsTab = 'telco';
 function nav(page) {
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  document.querySelectorAll('#topbar .nav-link, #topbar #btnSettings').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('#topbar .nav-link').forEach(el => el.classList.remove('active'));
   const link = document.querySelector(`#topbar [onclick="nav('${page}')"]`);
   if (link) link.classList.add('active');
   if (page === 'dashboard') { dashQuick(7); }

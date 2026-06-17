@@ -17,9 +17,6 @@ body { background:#f5f7fa; font-size:14px; }
 #topbar .nav-link i { font-size:1.1rem; }
 #topbar .nav-link:hover { color:#e85d04; background:#fff5ee; }
 #topbar .nav-link.active { color:#e85d04; background:#fff5ee; font-weight:600; }
-#topbar #btnSettings { border:none; background:none; padding:8px 10px; border-radius:10px; color:#475569; }
-#topbar #btnSettings:hover, #topbar #btnSettings.active { background:#fff5ee; color:#e85d04; }
-#topbar #btnSettings i { font-size:1.25rem; }
 #main { overflow:auto; }
 .page { display:none; }
 .page.active { display:block; }
@@ -90,14 +87,14 @@ body { background:#f5f7fa; font-size:14px; }
 <!-- Main Layout -->
 <div id="appLayout" style="display:none!important">
   <!-- Top navbar -->
-  <nav id="topbar" class="navbar navbar-expand px-4 py-2" style="position:relative">
+  <nav id="topbar" class="navbar navbar-expand px-4 py-2">
     <button class="navbar-brand" onclick="nav('dashboard')"><i class="bi bi-hdd-network me-2" style="color:#e85d04"></i><span style="color:#e85d04">Sol</span><span style="color:#212529">Trace</span></button>
     <ul class="nav gap-1 flex-nowrap" style="position:absolute;left:50%;transform:translateX(-50%)">
       <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i>대시보드</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
+      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear-fill"></i>설정</a></li>
     </ul>
     <div class="ms-auto d-flex align-items-center gap-1">
-      <button class="btn" id="btnSettings" title="설정" onclick="nav('settings')"><i class="bi bi-gear-fill"></i></button>
       <button class="btn btn-sm" onclick="logout()" title="로그아웃" style="padding:8px 10px; border-radius:10px; color:#475569;"><i class="bi bi-box-arrow-right" style="font-size:1.25rem;"></i></button>
     </div>
   </nav>
