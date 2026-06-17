@@ -90,19 +90,18 @@ async function loadDashboard() {
     scales: {x: {beginAtZero: true, ticks: {callback: v => fmtBytes(v)}}},
   };
 
-  const PALETTE = ['#0d6efd','#198754','#fd7e14','#6f42c1','#dc3545','#20c997','#0dcaf0','#ffc107'];
+  const PALETTE = ['#0d6efd','#198754','#fd7e14','#6f42c1','#dc3545','#20c997','#0dcaf0','#ffc107','#e83e8c','#6c757d'];
 
   destroyChart('topUsers');
   // 내림차순 정렬 (많은 사용자 → 시계방향 첫 슬라이스)
-  const tu = (data.top_users || []).slice().sort((a, b) => b.bytes - a.bytes).slice(0, 8);
+  const tu = (data.top_users || []).slice().sort((a, b) => b.bytes - a.bytes).slice(0, 10);
   const totalUserBytes = tu.reduce((s, u) => s + (u.bytes || 0), 0);
   charts.topUsers = new Chart(document.getElementById('chartTopUsers'), {
     type: 'doughnut',
     data: {labels: tu.map(u => u.label), datasets: [{data: tu.map(u => u.bytes), backgroundColor: PALETTE, hoverOffset: 12, borderWidth: 1}]},
     options: {
       responsive: true, maintainAspectRatio: false,
-      rotation: -90,       // 12시 방향 시작
-      circumference: 360,  // 시계방향 전체
+      rotation: 0,         // Chart.js 4: 0 = 12시 방향 시작
       plugins: {
         legend: {display: false},
         tooltip: {callbacks: {label: c => `${c.label}: ${fmtBytes(c.parsed)}`}},
