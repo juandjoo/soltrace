@@ -20,7 +20,7 @@ const _centerPlugin = {
     ctx.restore();
   }
 };
-Chart.register(_centerPlugin);
+if (!Chart.registry.plugins.get('centerText')) Chart.register(_centerPlugin);
 
 const HEALTH_STATUS = {
   ok:       {label:'정상', cls:'success', icon:'check-circle'},
@@ -68,7 +68,7 @@ async function loadDashboard() {
       plugins: {
         legend: {position: 'right', labels: {boxWidth: 12, font: {size: 11}}},
         tooltip: {callbacks: {label: c => `${c.label}: ${fmtBytes(c.parsed)}`}},
-        centerText: {line1: fmtBytes(totalUserBytes), line2: '총 사용량', size: 13},
+        centerText: totalUserBytes > 0 ? {line1: fmtBytes(totalUserBytes), line2: '총 사용량', size: 13} : null,
       },
     },
   });

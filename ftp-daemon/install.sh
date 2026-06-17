@@ -61,8 +61,8 @@ echo "[INFO] 패키지 설치 완료"
 cp soltrace-daemon.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
-systemctl start "$SERVICE_NAME"
-echo "[INFO] 서비스 등록 및 시작 완료"
+systemctl start "$SERVICE_NAME" || echo "[WARN] 서비스 시작 실패 — config.ini 설정 후 수동 시작하세요: systemctl start $SERVICE_NAME"
+echo "[INFO] 서비스 등록 완료"
 
 echo ""
 echo "======================================"

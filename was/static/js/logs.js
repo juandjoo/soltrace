@@ -110,7 +110,7 @@ async function searchLogs(page) {
       ? filePath.replace(' -> ', ' → ')
       : filePath;
     const hostname = l.device_hostname || '-';
-    const isTransfer = action === 'upload' || action === 'download';
+    const isTransfer = action === 'upload' || action === 'download' || action === 'delete';
     const sizeDisplay = isTransfer && l.file_size ? fmtBytes(l.file_size) : '-';
     const timeDisplay = l.transfer_time && l.transfer_time > 0 ? l.transfer_time.toFixed(1)+'s' : '-';
     return `<tr>
@@ -171,7 +171,7 @@ function logDateQuick(dayOffset) {
   if (dayOffset === -1) {
     // 어제 전체
     start = new Date(now); start.setDate(start.getDate()-1); start.setHours(0,0,0,0);
-    end   = new Date(now); end.setDate(end.getDate()-1);     end.setHours(23,59,0,0);
+    end   = new Date(now); end.setDate(end.getDate()-1);     end.setHours(23,59,59,999);
   } else if (dayOffset === 0) {
     // 오늘 00:00 ~ 지금
     start = new Date(now); start.setHours(0,0,0,0);

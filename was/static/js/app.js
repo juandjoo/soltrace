@@ -9,6 +9,7 @@ function nav(page) {
   const link = document.querySelector(`#topbar [onclick="nav('${page}')"]`);
   if (link) link.classList.add('active');
   if (page === 'dashboard') { loadDashboard(); loadServiceHealth(); }
+  else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
   if (page === 'logs') initLogsPage();
   if (page === 'settings') settingsTab(currentSettingsTab);
 }
