@@ -8,8 +8,9 @@ _DEFAULT_ADMIN = "Admin1234!"
 class Settings(BaseSettings):
     database_url: str = "postgresql://soltrace:soltracepass@localhost:5432/soltrace"
     secret_key: str = _DEFAULT_SECRET
+    admin_username: str = "admin"
     admin_password: str = _DEFAULT_ADMIN
-    access_token_expire_minutes: int = 60 * 24  # 24h
+    access_token_expire_minutes: int = 60        # 1h
 
     # ── 설정 페이지 (버전/자가 업데이트) ────────────────────────────────
     repo_dir: str = "/opt/soltrace"                          # git 저장소 경로

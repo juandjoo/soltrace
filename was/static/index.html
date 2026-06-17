@@ -67,10 +67,18 @@ body { background:#f5f7fa; font-size:14px; }
       <div class="modal-body">
         <p class="text-muted small mb-3">FTP Log Analyzer에 로그인하세요.</p>
         <div id="loginError" class="alert alert-danger d-none small py-2"></div>
+        <div id="loginIpBlocked" class="alert alert-warning d-none small py-2">
+          <i class="bi bi-shield-x me-1"></i>이 IP에서는 접속이 차단되어 있습니다.<br>
+          <span>차단된 IP: <code id="blockedIpDisplay"></code></span>
+        </div>
         <form id="loginForm">
           <div class="mb-3">
-            <label class="form-label small fw-semibold">Admin Password</label>
-            <input type="password" class="form-control" id="loginPwd" placeholder="비밀번호 입력" autofocus>
+            <label class="form-label small fw-semibold">아이디</label>
+            <input type="text" class="form-control" id="loginUser" placeholder="아이디 입력" autofocus autocomplete="username">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">비밀번호</label>
+            <input type="password" class="form-control" id="loginPwd" placeholder="비밀번호 입력" autocomplete="current-password">
           </div>
           <button type="submit" class="btn btn-primary w-100" id="loginBtn">로그인</button>
         </form>
@@ -93,6 +101,13 @@ body { background:#f5f7fa; font-size:14px; }
       <button class="btn btn-sm" onclick="logout()" title="로그아웃" style="padding:8px 10px; border-radius:10px; color:#475569;"><i class="bi bi-box-arrow-right" style="font-size:1.25rem;"></i></button>
     </div>
   </nav>
+
+  <!-- 세션 만료 경고 배너 -->
+  <div id="sessionWarning" class="d-none alert alert-warning mb-0 py-2 px-4 rounded-0 d-flex align-items-center gap-2" style="position:sticky;top:52px;z-index:1019;">
+    <i class="bi bi-clock-history"></i>
+    <span id="sessionWarningMsg" class="small fw-semibold"></span>
+    <button class="btn btn-sm btn-warning ms-2 py-0 px-2" onclick="showLogin()">재로그인</button>
+  </div>
 
   <!-- Content -->
   <div id="main" class="p-4">
@@ -270,7 +285,7 @@ body { background:#f5f7fa; font-size:14px; }
         <!-- 좌측 세로 탭 -->
         <ul class="nav settings-vnav flex-column" style="min-width:170px">
           <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-telephone-fill me-2"></i>텔코 정보</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('password')"><i class="bi bi-key-fill me-2"></i>비밀번호</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('security')"><i class="bi bi-shield-lock-fill me-2"></i>계정 보안</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack-fill me-2"></i>장비 관리</a></li>
           <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3-fill me-2"></i>그룹 관리</a></li>
@@ -298,25 +313,72 @@ body { background:#f5f7fa; font-size:14px; }
             </div>
           </div>
 
-          <!-- 비밀번호 -->
-          <div id="settings-password" class="settings-pane d-none" style="max-width:620px">
-            <div class="card">
-              <div class="card-header bg-white fw-semibold"><i class="bi bi-key me-1"></i>비밀번호 변경</div>
-              <div class="card-body">
-                <div id="pwMsg" class="alert d-none py-2 small"></div>
-                <div class="mb-3">
-                  <label class="form-label small fw-semibold">현재 비밀번호</label>
-                  <input type="password" class="form-control form-control-sm" id="pwCurrent">
+          <!-- 계정 보안 -->
+          <div id="settings-security" class="settings-pane d-none" style="max-width:620px">
+            <div class="d-flex flex-column gap-3">
+              <!-- 아이디 변경 -->
+              <div class="card">
+                <div class="card-header bg-white fw-semibold"><i class="bi bi-person-fill me-1"></i>아이디 변경</div>
+                <div class="card-body">
+                  <div id="usrMsg" class="alert d-none py-2 small"></div>
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold">현재 아이디</label>
+                    <input type="text" class="form-control form-control-sm" id="usrCurrent" readonly>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold">새 아이디</label>
+                    <input type="text" class="form-control form-control-sm" id="usrNew" placeholder="새 아이디 입력">
+                  </div>
+                  <button class="btn btn-sm btn-primary" onclick="changeUsername()">변경</button>
                 </div>
-                <div class="mb-3">
-                  <label class="form-label small fw-semibold">새 비밀번호 (8자 이상)</label>
-                  <input type="password" class="form-control form-control-sm" id="pwNew">
+              </div>
+              <!-- 비밀번호 변경 -->
+              <div class="card">
+                <div class="card-header bg-white fw-semibold"><i class="bi bi-key me-1"></i>비밀번호 변경</div>
+                <div class="card-body">
+                  <div id="pwMsg" class="alert d-none py-2 small"></div>
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold">현재 비밀번호</label>
+                    <input type="password" class="form-control form-control-sm" id="pwCurrent">
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold">새 비밀번호 (8자 이상)</label>
+                    <input type="password" class="form-control form-control-sm" id="pwNew">
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold">새 비밀번호 확인</label>
+                    <input type="password" class="form-control form-control-sm" id="pwConfirm">
+                  </div>
+                  <button class="btn btn-sm btn-primary" onclick="changePassword()">변경</button>
                 </div>
-                <div class="mb-3">
-                  <label class="form-label small fw-semibold">새 비밀번호 확인</label>
-                  <input type="password" class="form-control form-control-sm" id="pwConfirm">
+              </div>
+              <!-- 접속 IP 허용 목록 -->
+              <div class="card">
+                <div class="card-header bg-white fw-semibold"><i class="bi bi-shield-lock me-1"></i>접속 허용 IP</div>
+                <div class="card-body">
+                  <div id="ipMsg" class="alert d-none py-2 small"></div>
+                  <!-- 현재 접속 IP -->
+                  <div class="d-flex align-items-center gap-2 mb-3 p-2 bg-light rounded">
+                    <span class="small text-muted">현재 접속 IP:</span>
+                    <code id="myIpDisplay" class="small fw-semibold">-</code>
+                    <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-1" onclick="addMyIpToOffice()">사내망 추가</button>
+                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="addMyIpToDaemon()">Daemon 추가</button>
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold">사내망 IP / 대역</label>
+                      <div class="form-text mb-1">한 줄에 하나씩. CIDR 대역 가능.<br>예: <code>192.168.1.0/24</code>, <code>10.0.0.5</code></div>
+                      <textarea class="form-control form-control-sm font-monospace" id="officeIps" rows="6" placeholder="비워두면 제한 없음"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold">Daemon 장비 IP</label>
+                      <div class="form-text mb-1">한 줄에 하나씩. 로그 수집 daemon 서버.<br>예: <code>172.16.0.10</code></div>
+                      <textarea class="form-control form-control-sm font-monospace" id="daemonIps" rows="6" placeholder="Daemon 장비 IP 목록"></textarea>
+                    </div>
+                  </div>
+                  <div class="form-text mt-2 text-warning-emphasis"><i class="bi bi-exclamation-triangle me-1"></i>두 목록 모두 비면 모든 IP 허용. 저장 전 현재 IP 포함 여부 확인.</div>
+                  <button class="btn btn-sm btn-primary mt-3" onclick="saveAllowedIps()">저장</button>
                 </div>
-                <button class="btn btn-sm btn-primary" onclick="changePassword()">변경</button>
               </div>
             </div>
           </div>

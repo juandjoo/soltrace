@@ -6,6 +6,7 @@
 
 import hashlib
 import hmac
+import ipaddress
 import os
 
 from sqlalchemy import text
@@ -54,10 +55,22 @@ def set_config(db: Session, key: str, value: str) -> None:
     db.commit()
 
 
-# ── 관리자 비밀번호 ──────────────────────────────────────────────────────────
-# DB에 해시가 있으면 그것으로 검증, 없으면 .env의 ADMIN_PASSWORD로 부트스트랩.
+# ── 관리자 아이디 / 비밀번호 ─────────────────────────────────────────────────
+# DB에 값이 있으면 그것으로 검증, 없으면 .env 기본값(admin / ADMIN_PASSWORD)으로 부트스트랩.
 
-ADMIN_PW_KEY = "admin_password_hash"
+ADMIN_PW_KEY  = "admin_password_hash"
+ADMIN_ID_KEY  = "admin_username"
+ALLOWED_IPS_KEY = "allowed_ips"          # 레거시 키 (마이그레이션 호환)
+OFFICE_IPS_KEY  = "allowed_ips_office"   # 사내망 (CIDR 허용)
+DAEMON_IPS_KEY  = "allowed_ips_daemon"   # daemon 장비 IP
+
+
+def get_admin_username(db: Session) -> str:
+    return get_config(db, ADMIN_ID_KEY) or app_settings.admin_username
+
+
+def set_admin_username(db: Session, username: str) -> None:
+    set_config(db, ADMIN_ID_KEY, username)
 
 
 def verify_admin_password(db: Session, password: str) -> bool:
@@ -67,5 +80,69 @@ def verify_admin_password(db: Session, password: str) -> bool:
     return hmac.compare_digest(password, app_settings.admin_password)
 
 
+def verify_admin_credentials(db: Session, username: str, password: str) -> bool:
+    # 두 검증을 항상 실행해 타이밍 사이드채널 방지
+    username_ok = hmac.compare_digest(username, get_admin_username(db))
+    password_ok = verify_admin_password(db, password)
+    return username_ok and password_ok
+
+
 def set_admin_password(db: Session, new_password: str) -> None:
     set_config(db, ADMIN_PW_KEY, hash_password(new_password))
+
+
+# ── 접속 IP 허용 목록 ────────────────────────────────────────────────────────
+
+def _parse_ips(raw: str) -> list[str]:
+    return [e.strip() for e in raw.replace(",", "\n").splitlines() if e.strip()]
+
+
+def get_office_ips(db: Session) -> list[str]:
+    # None = 키 자체가 DB에 없음 → 레거시 마이그레이션
+    # ""   = 키가 있지만 비어있음 → 사용자가 의도적으로 초기화한 것
+    raw = get_config(db, OFFICE_IPS_KEY)
+    if raw is None:
+        legacy = get_config(db, ALLOWED_IPS_KEY) or ""
+        return _parse_ips(legacy)
+    return _parse_ips(raw)
+
+
+def set_office_ips(db: Session, ips: list[str]) -> None:
+    set_config(db, OFFICE_IPS_KEY, "\n".join(ip.strip() for ip in ips if ip.strip()))
+
+
+def get_daemon_ips(db: Session) -> list[str]:
+    raw = get_config(db, DAEMON_IPS_KEY) or ""
+    return _parse_ips(raw)
+
+
+def set_daemon_ips(db: Session, ips: list[str]) -> None:
+    set_config(db, DAEMON_IPS_KEY, "\n".join(ip.strip() for ip in ips if ip.strip()))
+
+
+def _ip_matches(client_ip: str, entry: str) -> bool:
+    """entry는 단일 IP 또는 CIDR 표기 (예: 10.0.0.0/8)."""
+    try:
+        addr = ipaddress.ip_address(client_ip)
+        net = ipaddress.ip_network(entry, strict=False)
+        return addr in net
+    except ValueError:
+        return client_ip == entry
+
+
+def check_ip_allowed(db: Session, client_ip: str) -> bool:
+    office = get_office_ips(db)
+    daemon = get_daemon_ips(db)
+    combined = office + daemon
+    if not combined:
+        return True  # 목록 미설정 시 모두 허용
+    return any(_ip_matches(client_ip, entry) for entry in combined)
+
+
+# 레거시 호환 (settings.py 등에서 사용 중이던 심볼 유지)
+def get_allowed_ips(db: Session) -> list[str]:
+    return get_office_ips(db) + get_daemon_ips(db)
+
+
+def set_allowed_ips(db: Session, ips: list[str]) -> None:
+    set_office_ips(db, ips)

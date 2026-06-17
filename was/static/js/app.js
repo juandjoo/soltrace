@@ -26,6 +26,7 @@ function settingsTab(tab) {
   if (tab === 'devices') loadDevices();
   if (tab === 'groups') loadGroups();
   if (tab === 'notify') loadNotify();
+  if (tab === 'security') loadSecurity();
 }
 
 function initApp() {
@@ -34,20 +35,32 @@ function initApp() {
 
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
+  const username = document.getElementById('loginUser').value.trim();
   const pwd = document.getElementById('loginPwd').value;
   const errEl = document.getElementById('loginError');
+  const ipBlockedEl = document.getElementById('loginIpBlocked');
   const btn = document.getElementById('loginBtn');
+  errEl.classList.add('d-none');
+  ipBlockedEl.classList.add('d-none');
   btn.disabled = true;
   try {
     const res = await fetch(API + '/auth/login', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({password: pwd})
+      body: JSON.stringify({username, password: pwd})
     });
-    if (!res.ok) throw new Error('비밀번호가 올바르지 않습니다.');
+    if (res.status === 403) {
+      const data = await res.json().catch(() => ({}));
+      const ip = data?.detail?.client_ip || '';
+      document.getElementById('blockedIpDisplay').textContent = ip;
+      ipBlockedEl.classList.remove('d-none');
+      return;
+    }
+    if (!res.ok) throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.');
     const data = await res.json();
     token = data.access_token;
     localStorage.setItem('soltrace_token', token);
+    startSessionTimers(token);
     loginModal.hide();
     document.getElementById('appLayout').style.removeProperty('display');
     initApp();
@@ -65,6 +78,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
 
 (function init() {
   if (token) {
+    startSessionTimers(token);
     document.getElementById('appLayout').style.removeProperty('display');
     initApp();
   } else {

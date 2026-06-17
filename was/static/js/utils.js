@@ -6,6 +6,60 @@ let allTelcos = [];
 let logPage = 1;
 let logPageSize = 50;
 
+// ── 세션 타이머 ──────────────────────────────────────────────────────────────
+let _warnTimer = null;
+let _expireTimer = null;
+let _countdownInterval = null;
+const _WARN_BEFORE_MS = 5 * 60 * 1000;   // 만료 5분 전 경고
+
+function _parseJwtExp(tok) {
+  try {
+    const payload = JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.exp || null;
+  } catch { return null; }
+}
+
+function _clearSessionTimers() {
+  if (_warnTimer)        { clearTimeout(_warnTimer);          _warnTimer = null; }
+  if (_expireTimer)      { clearTimeout(_expireTimer);        _expireTimer = null; }
+  if (_countdownInterval){ clearInterval(_countdownInterval); _countdownInterval = null; }
+  const el = document.getElementById('sessionWarning');
+  if (el) el.classList.add('d-none');
+}
+
+function _showSessionWarning(expiresAt) {
+  const el  = document.getElementById('sessionWarning');
+  const msg = document.getElementById('sessionWarningMsg');
+  if (!el || !msg) return;
+  el.classList.remove('d-none');
+  if (_countdownInterval) clearInterval(_countdownInterval);
+  _countdownInterval = setInterval(() => {
+    const left = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+    const m = Math.floor(left / 60);
+    const s = String(left % 60).padStart(2, '0');
+    msg.textContent = `세션 만료까지 ${m}:${s} 남았습니다.`;
+  }, 1000);
+}
+
+function startSessionTimers(tok) {
+  _clearSessionTimers();
+  const exp = _parseJwtExp(tok);
+  if (!exp) return;
+  const expiresAt = exp * 1000;
+  const msLeft = expiresAt - Date.now();
+  if (msLeft <= 0) { showLogin(); return; }
+  const warnAt = msLeft - _WARN_BEFORE_MS;
+  if (warnAt > 0) {
+    _warnTimer = setTimeout(() => _showSessionWarning(expiresAt), warnAt);
+  } else {
+    _showSessionWarning(expiresAt);
+  }
+  _expireTimer = setTimeout(() => {
+    _clearSessionTimers();
+    showLogin();
+  }, msLeft);
+}
+
 async function api(method, path, body) {
   const opts = {
     method,
@@ -24,6 +78,7 @@ async function api(method, path, body) {
 }
 
 function showLogin() {
+  _clearSessionTimers();
   token = null;
   localStorage.removeItem('soltrace_token');
   document.getElementById('appLayout').style.display = 'none';

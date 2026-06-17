@@ -211,3 +211,71 @@ async function testNotify(channel = 'all') {
   }
   setTimeout(() => { msg.innerHTML = ''; }, 4000);
 }
+
+// ── 계정 보안 탭 ──────────────────────────────────────────────────────────────
+
+async function loadSecurity() {
+  try {
+    const d = await api('GET', '/settings/security');
+    if (!d) return;
+    document.getElementById('usrCurrent').value = d.username || '';
+    document.getElementById('officeIps').value = (d.office_ips || []).join('\n');
+    document.getElementById('daemonIps').value = (d.daemon_ips || []).join('\n');
+    document.getElementById('myIpDisplay').textContent = d.my_ip || '-';
+  } catch(e) { settingsMsg('ipMsg', 'danger', e.message); }
+}
+
+async function changeUsername() {
+  const nw = document.getElementById('usrNew').value.trim();
+  if (!nw) { settingsMsg('usrMsg', 'danger', '새 아이디를 입력하세요.'); return; }
+  try {
+    await api('PUT', '/settings/username', {username: nw});
+    settingsMsg('usrMsg', 'success', '아이디가 변경되었습니다. 다음 로그인부터 적용됩니다.');
+    document.getElementById('usrCurrent').value = nw;
+    document.getElementById('usrNew').value = '';
+  } catch(e) { settingsMsg('usrMsg', 'danger', e.message); }
+}
+
+function _taLines(id) {
+  return document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+}
+
+function _addIpToTextarea(id, ip) {
+  const el = document.getElementById(id);
+  const lines = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!lines.includes(ip)) {
+    lines.push(ip);
+    el.value = lines.join('\n');
+  }
+}
+
+function addMyIpToOffice() {
+  const ip = document.getElementById('myIpDisplay').textContent;
+  if (ip && ip !== '-') _addIpToTextarea('officeIps', ip);
+}
+
+function addMyIpToDaemon() {
+  const ip = document.getElementById('myIpDisplay').textContent;
+  if (ip && ip !== '-') _addIpToTextarea('daemonIps', ip);
+}
+
+async function saveAllowedIps() {
+  const office_ips = _taLines('officeIps');
+  const daemon_ips = _taLines('daemonIps');
+  const myIp = document.getElementById('myIpDisplay').textContent;
+  const allIps = [...office_ips, ...daemon_ips];
+  if (allIps.length > 0 && myIp && myIp !== '-') {
+    const covered = allIps.some(entry => {
+      try {
+        // 간단한 클라이언트 사이드 CIDR 체크 (정확도 낮음 — 서버가 최종 판단)
+        if (entry.includes('/')) return true; // CIDR은 포함으로 가정
+        return entry === myIp;
+      } catch { return false; }
+    });
+    if (!covered && !confirm(`현재 접속 IP(${myIp})가 허용 목록에 없습니다.\n저장하면 이 IP에서 접속이 차단됩니다. 계속하시겠습니까?`)) return;
+  }
+  try {
+    await api('PUT', '/settings/allowed-ips', {office_ips, daemon_ips});
+    settingsMsg('ipMsg', 'success', '접속 허용 IP가 저장되었습니다.');
+  } catch(e) { settingsMsg('ipMsg', 'danger', e.message); }
+}

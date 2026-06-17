@@ -1,7 +1,7 @@
 import logging
 import subprocess
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 log = logging.getLogger("soltrace.settings")
@@ -10,7 +10,15 @@ from app.config import settings as cfg
 from app.database import get_db
 from app.deps import require_admin
 from app.schemas import PasswordChangeRequest, UpdateTriggerResponse, VersionInfo, NotifySettings
-from app.security import verify_admin_password, set_admin_password, get_config, set_config
+import ipaddress
+
+from app.security import (
+    verify_admin_password, set_admin_password,
+    get_admin_username, set_admin_username,
+    get_office_ips, set_office_ips,
+    get_daemon_ips, set_daemon_ips,
+    get_config, set_config,
+)
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
@@ -74,6 +82,64 @@ def change_password(
 @router.post("/check-update", response_model=VersionInfo)
 def check_update(_: str = Depends(require_admin)):
     return _version_info(check_remote=True)
+
+
+# ── 계정 보안 ─────────────────────────────────────────────────────────────────
+
+@router.get("/security")
+def get_security(request: Request, db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    my_ip = request.client.host if request.client else None
+    return {
+        "username": get_admin_username(db),
+        "office_ips": get_office_ips(db),
+        "daemon_ips": get_daemon_ips(db),
+        "my_ip": my_ip,
+    }
+
+
+@router.put("/username", status_code=status.HTTP_204_NO_CONTENT)
+def change_username(
+    body: dict,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    username = (body.get("username") or "").strip()
+    if not username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="아이디를 입력하세요")
+    set_admin_username(db, username)
+
+
+def _validate_ip_list(entries: list) -> list[str]:
+    invalid = []
+    for entry in entries:
+        if not isinstance(entry, str):
+            invalid.append(str(entry))
+            continue
+        try:
+            ipaddress.ip_network(entry.strip(), strict=False)
+        except ValueError:
+            invalid.append(entry)
+    return invalid
+
+
+@router.put("/allowed-ips", status_code=status.HTTP_204_NO_CONTENT)
+def update_allowed_ips(
+    body: dict,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    office = body.get("office_ips", [])
+    daemon = body.get("daemon_ips", [])
+    if not isinstance(office, list) or not isinstance(daemon, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="office_ips/daemon_ips must be lists")
+    invalid = _validate_ip_list(office + daemon)
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"유효하지 않은 IP/CIDR: {', '.join(invalid)}",
+        )
+    set_office_ips(db, office)
+    set_daemon_ips(db, daemon)
 
 
 _PW_MASK = "***"
