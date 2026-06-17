@@ -40,6 +40,7 @@ class Device(Base):
     device_key = Column(String(64), unique=True, nullable=False)
     status = Column(String(20), default="pending")
     os_info = Column(Text)
+    kernel_version = Column(String(100))
     proftpd_version = Column(String(50))
     daemon_version = Column(String(20))
     last_heartbeat = Column(DateTime(timezone=True))
@@ -73,6 +74,7 @@ class Group(Base):
     telco = Column(String(100))
     customer = Column(Text)
     upload_domains = Column(Text)
+    auth = Column(Text)
     created_at = Column(DateTime(timezone=True), default=_now)
 
     devices = relationship("Device", secondary="device_groups", back_populates="groups")

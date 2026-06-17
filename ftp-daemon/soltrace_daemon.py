@@ -99,6 +99,18 @@ def get_proftpd_version() -> str:
         return "unknown"
 
 
+def _get_os_pretty_name() -> str:
+    """배포판 이름을 /etc/os-release에서 읽음. 실패하면 platform 폴백."""
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("PRETTY_NAME="):
+                    return line.split("=", 1)[1].strip().strip('"')[:100]
+    except Exception:
+        pass
+    return f"{platform.system()} {platform.version()}"[:100]
+
+
 # ── Log Parsers ───────────────────────────────────────────────────────────────
 
 def parse_transfer_log(line: str) -> Optional[dict]:
@@ -337,12 +349,13 @@ class WasClient:
     def send_logs(self, entries: list) -> Optional[dict]:
         return self._post("/ingest/logs", {"device_key": self.device_key, "logs": entries})
 
-    def register(self, hostname: str, ip: str, os_info: str, proftpd_ver: str) -> Optional[dict]:
+    def register(self, hostname: str, ip: str, os_info: str, kernel_version: str, proftpd_ver: str) -> Optional[dict]:
         return self._post("/ingest/register", {
             "device_key": self.device_key,
             "hostname": hostname,
             "ip_address": ip,
             "os_info": os_info,
+            "kernel_version": kernel_version,
             "proftpd_version": proftpd_ver,
             "daemon_version": "1.0.0",
         })
@@ -519,7 +532,8 @@ class SolTraceDaemon:
         log.info("Registering device key=%s..., hostname=%s", self.device_key[:8], self.hostname)
         result = self.client.register(
             hostname=self.hostname, ip=self.ip,
-            os_info=f"{platform.system()} {platform.release()}",
+            os_info=_get_os_pretty_name(),
+            kernel_version=platform.release(),
             proftpd_ver=get_proftpd_version(),
         )
         if result:

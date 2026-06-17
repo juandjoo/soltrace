@@ -50,6 +50,7 @@ class DeviceBase(BaseModel):
     hostname: str
     ip_address: Optional[str] = None
     os_info: Optional[str] = None
+    kernel_version: Optional[str] = None
     proftpd_version: Optional[str] = None
     daemon_version: Optional[str] = None
 
@@ -71,6 +72,7 @@ class DeviceResponse(BaseModel):
     device_key: str
     status: str
     os_info: Optional[str]
+    kernel_version: Optional[str] = None
     proftpd_version: Optional[str]
     daemon_version: Optional[str]
     last_heartbeat: Optional[datetime]
@@ -106,6 +108,7 @@ class GroupCreate(BaseModel):
     telco: Optional[str] = Field(default=None, max_length=100)
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
+    auth: Optional[str] = None
 
 class GroupUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
@@ -113,6 +116,7 @@ class GroupUpdate(BaseModel):
     telco: Optional[str] = Field(default=None, max_length=100)
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
+    auth: Optional[str] = None
 
 class GroupResponse(BaseModel):
     id: int
@@ -121,6 +125,7 @@ class GroupResponse(BaseModel):
     telco: Optional[str] = None
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
+    auth: Optional[str] = None
     created_at: datetime
     device_count: int = 0
 

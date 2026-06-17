@@ -31,6 +31,8 @@ def register_device(req: DeviceRegister, db: Session = Depends(get_db)):
             device.ip_address = req.ip_address
         if req.os_info:
             device.os_info = req.os_info
+        if req.kernel_version:
+            device.kernel_version = req.kernel_version
         if req.proftpd_version:
             device.proftpd_version = req.proftpd_version
         if req.daemon_version:
@@ -44,6 +46,7 @@ def register_device(req: DeviceRegister, db: Session = Depends(get_db)):
         ip_address=req.ip_address,
         device_key=req.device_key,
         os_info=req.os_info,
+        kernel_version=req.kernel_version,
         proftpd_version=req.proftpd_version,
         daemon_version=req.daemon_version,
         last_heartbeat=datetime.now(timezone.utc),
