@@ -1,16 +1,52 @@
 const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제'};
 
+let _logGroupMap = {};   // id → group object
+
 async function initLogsPage() {
-  const [devices, groups] = await Promise.all([api('GET', '/devices'), api('GET', '/groups')]);
-  if (devices) {
-    document.getElementById('logDeviceFilter').innerHTML =
-      '<option value="">전체 장비</option>' + devices.map(d=>`<option value="${d.id}">${d.hostname}</option>`).join('');
-  }
+  const groups = await api('GET', '/groups');
   if (groups) {
-    document.getElementById('logGroupFilter').innerHTML =
-      '<option value="">전체 그룹</option>' + groups.map(g=>`<option value="${g.id}">${g.telco?g.telco+' · ':''}${g.name}</option>`).join('');
+    allGroups = groups;
+    _logGroupMap = Object.fromEntries(groups.map(g => [String(g.id), g]));
+
+    // 텔코 목록 (그룹에서 추출, 중복 제거)
+    const telcos = [...new Set(groups.map(g => g.telco).filter(Boolean))].sort();
+    document.getElementById('logTelcoFilter').innerHTML =
+      '<option value="">전체 텔코</option>' + telcos.map(t => `<option value="${t}">${t}</option>`).join('');
+
+    _renderGroupOptions('');
   }
+  _initGroupTooltip();
   _initLogColResize();
+}
+
+function _renderGroupOptions(telco) {
+  const filtered = telco ? allGroups.filter(g => g.telco === telco) : allGroups;
+  document.getElementById('logGroupFilter').innerHTML =
+    '<option value="">전체 그룹</option>' +
+    filtered.map(g => `<option value="${g.id}">${telco ? '' : (g.telco ? g.telco + ' · ' : '')}${g.name}</option>`).join('');
+}
+
+function onTelcoFilter() {
+  const telco = document.getElementById('logTelcoFilter').value;
+  _renderGroupOptions(telco);
+  searchLogs(1);
+}
+
+function _initGroupTooltip() {
+  const sel = document.getElementById('logGroupFilter');
+  const tip = document.getElementById('logGroupTip');
+
+  sel.addEventListener('mouseenter', () => {
+    const g = _logGroupMap[sel.value];
+    if (!g || (!g.application && !g.description && !g.customer)) { tip.classList.add('d-none'); return; }
+    const rows = [];
+    if (g.application) rows.push(`<span class="text-muted">서비스:</span> <b>${g.application}</b>`);
+    if (g.customer)    rows.push(`<span class="text-muted">고객사:</span> ${g.customer}`);
+    if (g.description) rows.push(`<span class="text-muted">설명:</span> ${g.description}`);
+    tip.innerHTML = rows.join('<br>');
+    tip.classList.remove('d-none');
+  });
+  sel.addEventListener('mouseleave', () => tip.classList.add('d-none'));
 }
 
 function _initLogColResize() {
@@ -82,14 +118,12 @@ function _initLogColResize() {
 function _logParams() {
   const params = new URLSearchParams();
   const grp = document.getElementById('logGroupFilter').value;
-  const dev = document.getElementById('logDeviceFilter').value;
   const user = document.getElementById('logUserFilter').value.trim();
   const ip = document.getElementById('logIpFilter').value.trim();
   const action = document.getElementById('logActionFilter').value;
   const start = document.getElementById('logStartTime').value;
   const end = document.getElementById('logEndTime').value;
   if (grp) params.set('group_id', grp);
-  if (dev) params.set('device_id', dev);
   if (user) params.set('username', user);
   if (ip) params.set('client_ip', ip);
   if (action === '__exclude_login_logout__') params.set('exclude_actions', 'login,logout');

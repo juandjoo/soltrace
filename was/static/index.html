@@ -217,14 +217,17 @@ body { background:#f5f7fa; font-size:14px; }
       <!-- Filters -->
       <div class="card mb-3 px-3 py-2" style="overflow-x:auto">
         <div class="d-flex gap-1 align-items-center flex-nowrap">
-          <select class="form-select form-select-sm" style="flex:1;min-width:90px" id="logGroupFilter" onchange="searchLogs(1)">
-            <option value="">전체 그룹</option>
+          <select class="form-select form-select-sm" style="flex:0.8;min-width:80px" id="logTelcoFilter" onchange="onTelcoFilter()">
+            <option value="">전체 텔코</option>
           </select>
-          <select class="form-select form-select-sm" style="flex:1.2;min-width:105px" id="logDeviceFilter" onchange="searchLogs(1)">
-            <option value="">전체 장비</option>
-          </select>
-          <input class="form-control form-control-sm" style="flex:0.8;min-width:72px" id="logUserFilter" placeholder="사용자" onkeydown="if(event.key==='Enter')searchLogs(1)">
-          <input class="form-control form-control-sm" style="flex:0.9;min-width:95px" id="logIpFilter" placeholder="IP" onkeydown="if(event.key==='Enter')searchLogs(1)">
+          <div style="position:relative;flex:1;min-width:90px">
+            <select class="form-select form-select-sm w-100" id="logGroupFilter" onchange="searchLogs(1)">
+              <option value="">전체 그룹</option>
+            </select>
+            <div id="logGroupTip" class="d-none position-absolute bg-white border rounded shadow-sm px-2 py-1 small" style="top:calc(100% + 4px);left:0;z-index:1055;min-width:200px;line-height:1.6;pointer-events:none"></div>
+          </div>
+          <input class="form-control form-control-sm" style="flex:0.8;min-width:80px" id="logUserFilter" placeholder="사용자ID" onkeydown="if(event.key==='Enter')searchLogs(1)">
+          <input class="form-control form-control-sm" style="flex:0.9;min-width:95px" id="logIpFilter" placeholder="사용자IP" onkeydown="if(event.key==='Enter')searchLogs(1)">
           <select class="form-select form-select-sm" style="flex:0.9;min-width:90px" id="logActionFilter" onchange="searchLogs(1)">
             <option value="__exclude_login_logout__" selected>전체 (로그인 제외)</option>
             <option value="">전체</option>
