@@ -23,7 +23,7 @@ function _initLogColResize() {
   const row  = table.querySelector('thead tr');
 
   // 저장된 폭 복원 (v2: 컬럼 기본값 변경 시 이전 저장값 무효화)
-  const WIDTHS_VER = 'v2';
+  const WIDTHS_VER = 'v3';
   const savedRaw = localStorage.getItem('logColWidths');
   const savedMeta = localStorage.getItem('logColWidthsVer');
   const saved = (savedMeta === WIDTHS_VER && savedRaw) ? JSON.parse(savedRaw) : null;
