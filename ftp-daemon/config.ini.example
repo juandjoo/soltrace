@@ -4,7 +4,7 @@
 # ────────────────────────────────────────────────────────────────
 
 # WAS 서버 주소 (http/https 모두 가능)
-was_url = http://soltrace.mbone.net
+was_url = https://soltrace.mbone.net
 
 # 웹 UI에서 "데몬 업데이트" 버튼 클릭 시 파일을 받아올 URL (GitHub raw)
 update_url = https://raw.githubusercontent.com/juandjoo/soltrace/main/ftp-daemon
