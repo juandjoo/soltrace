@@ -6,6 +6,7 @@ proftpd 로그를 파싱하여 WAS(soltrace.mbone.net)에 전송한다.
 TransferLog  : 업로드(i) / 다운로드(o) / 삭제(d) 이벤트
 ExtendedAllLog: 로그인(230/PASS) / 로그아웃(QUIT) / 이름변경(RNTO) 이벤트
 """
+import ast
 import configparser
 import hashlib
 import json
@@ -23,6 +24,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 import psutil
 import requests
@@ -32,7 +34,7 @@ BASE_DIR = Path(__file__).parent
 CONFIG_FILE = BASE_DIR / "config.ini"
 
 defaults = {
-    "was_url": "http://soltrace.mbone.net",
+    "was_url": "https://soltrace.mbone.net",
     "transfer_log": "/usr/service/logs/proftpd/TransferLog",
     "extended_log": "/usr/service/logs/proftpd/ExtendedAllLog",
     "batch_size": "200",
@@ -162,7 +164,18 @@ _EXT_RE = re.compile(
     r'(\S+)\s+(\S+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+'
     r'"([^"]+)"\s+"([^"]*)"'
 )
-_rnfr_sessions: dict = {}
+_rnfr_sessions: dict = {}   # pid -> (path, monotonic_time)
+_RNFR_TTL = 300.0           # RNFR 미완료 세션 만료 시간 (초)
+
+
+def _flush_stale_rnfr():
+    """RNTO 없이 TTL이 지난 RNFR 세션을 정리한다 (메모리 누수 방지)."""
+    now = time.monotonic()
+    stale = [k for k, (_, ts) in _rnfr_sessions.items() if now - ts > _RNFR_TTL]
+    if stale:
+        log.debug("Flushing %d stale RNFR sessions", len(stale))
+        for k in stale:
+            del _rnfr_sessions[k]
 
 
 def parse_extended_log(line: str) -> Optional[dict]:
@@ -208,10 +221,11 @@ def parse_extended_log(line: str) -> Optional[dict]:
         entry["action"] = "logout"
         return entry
     if command == "RNFR":
-        _rnfr_sessions[pid] = path
+        _rnfr_sessions[pid] = (path, time.monotonic())
         return None
     if command == "RNTO" and status_code == 250:
-        from_path = _rnfr_sessions.pop(pid, None)
+        val = _rnfr_sessions.pop(pid, None)
+        from_path = val[0] if val else None
         entry["action"] = "rename"
         entry["file_path"] = f"{from_path} -> {path}" if from_path else path
         return entry
@@ -543,11 +557,23 @@ class SolTraceDaemon:
         else:
             log.error("Registration failed (will retry next heartbeat)")
 
+    @staticmethod
+    def _validate_update_url(url: str) -> bool:
+        """update_url이 허용된 HTTPS 도메인인지 검증한다."""
+        try:
+            p = urlparse(url)
+            return p.scheme == "https" and p.netloc in {"raw.githubusercontent.com", "github.com"}
+        except Exception:
+            return False
+
     def _self_update(self):
         """GitHub에서 최신 파일 다운로드 후 서비스 재시작."""
         update_url = self.cfg["daemon"].get("update_url", "").rstrip("/")
         if not update_url:
             log.warning("update_url not configured — skipping self-update")
+            return
+        if not self._validate_update_url(update_url):
+            log.error("Self-update blocked: update_url must be https://raw.githubusercontent.com/... (got: %s)", update_url)
             return
 
         files = ["requirements.txt", "soltrace_daemon.py", "soltrace_bulk.py"]
@@ -559,9 +585,17 @@ class SolTraceDaemon:
                 tmp = BASE_DIR / f".{fname}.tmp"
                 r = self.client.session.get(url, timeout=30)
                 r.raise_for_status()
-                tmp.write_bytes(r.content)
+                content = r.content
+                sha256 = hashlib.sha256(content).hexdigest()
+                # Python 파일 구문 검사 — 손상·불완전 다운로드 감지
+                if fname.endswith(".py"):
+                    try:
+                        ast.parse(content.decode("utf-8"))
+                    except SyntaxError as e:
+                        raise RuntimeError(f"{fname} 구문 오류: {e}")
+                log.info("Downloaded: %s (%d bytes) sha256=%s", fname, len(content), sha256)
+                tmp.write_bytes(content)
                 tmps.append((tmp, BASE_DIR / fname))
-                log.info("Downloaded: %s (%d bytes)", fname, len(r.content))
 
             # 모두 성공 → 교체
             for tmp, dst in tmps:
@@ -644,6 +678,7 @@ class SolTraceDaemon:
 
     def _sender_loop(self):
         while self.running:
+            _flush_stale_rnfr()
             # 로그 파일 폴링
             all_entries = []
             for tailer in self.tailers:

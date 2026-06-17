@@ -7,6 +7,9 @@ set -euo pipefail
 INSTALL_DIR=/opt/soltrace-daemon
 REPO_RAW="https://raw.githubusercontent.com/juandjoo/soltrace/main/ftp-daemon"
 SERVICE_NAME=soltrace-daemon
+DAEMON_USER=soltrace
+STATE_DIR=/var/lib/soltrace
+LOG_FILE=/var/log/soltrace-daemon.log
 
 # ── Python 3.8 경로 탐색 ──────────────────────────────────────────
 find_python() {
@@ -34,6 +37,10 @@ fi
 PY_VER=$("$PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 echo "[INFO] Python $PY_VER 사용: $PYTHON"
 
+# ── 전용 시스템 계정 생성 ────────────────────────────────────────
+echo "[INFO] 시스템 계정 생성 중: $DAEMON_USER"
+useradd -r -M -s /sbin/nologin "$DAEMON_USER" 2>/dev/null || true
+
 # ── 디렉터리 생성 ────────────────────────────────────────────────
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
@@ -57,6 +64,43 @@ venv/bin/pip install --upgrade pip -q
 venv/bin/pip install -r requirements.txt -q
 echo "[INFO] 패키지 설치 완료"
 
+# ── 파일 권한 설정 ───────────────────────────────────────────────
+echo "[INFO] 파일 권한 설정 중..."
+chown -R "$DAEMON_USER:$DAEMON_USER" "$INSTALL_DIR"
+chmod 750 "$INSTALL_DIR"
+chmod 640 "$INSTALL_DIR/config.ini"   # 소유자 rw, 그룹 r, 타 접근 불가
+
+# 상태/버퍼 디렉터리
+mkdir -p "$STATE_DIR"
+chown "$DAEMON_USER:$DAEMON_USER" "$STATE_DIR"
+chmod 700 "$STATE_DIR"
+
+# 로그 파일
+touch "$LOG_FILE"
+chown "$DAEMON_USER:$DAEMON_USER" "$LOG_FILE"
+chmod 640 "$LOG_FILE"
+
+# ── FTP 로그 읽기 권한 ───────────────────────────────────────────
+# config.ini의 transfer_log/extended_log 경로에 soltrace 계정 읽기 권한 부여
+FTP_LOG_DIR=$(dirname "$(grep -i 'transfer_log' "$INSTALL_DIR/config.ini" 2>/dev/null | awk -F= '{print $2}' | tr -d ' ')" 2>/dev/null || true)
+FTP_LOG_DIR="${FTP_LOG_DIR:-/usr/service/logs/proftpd}"
+
+if [ -d "$FTP_LOG_DIR" ]; then
+    if command -v setfacl &>/dev/null; then
+        setfacl -R -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR" 2>/dev/null && \
+        setfacl -R -d -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR" 2>/dev/null && \
+        echo "[INFO] FTP 로그 ACL 설정 완료: $FTP_LOG_DIR" || \
+        echo "[WARN] ACL 설정 실패 — 수동으로 읽기 권한을 부여하세요: setfacl -R -m u:${DAEMON_USER}:r $FTP_LOG_DIR"
+    else
+        echo "[WARN] setfacl 없음 — FTP 로그 읽기 권한 수동 설정 필요:"
+        echo "       chown root:${DAEMON_USER} ${FTP_LOG_DIR}/*"
+        echo "       chmod 640 ${FTP_LOG_DIR}/*"
+    fi
+else
+    echo "[WARN] FTP 로그 디렉터리를 찾을 수 없습니다: $FTP_LOG_DIR"
+    echo "       config.ini의 transfer_log 경로에 $DAEMON_USER 읽기 권한을 직접 부여하세요."
+fi
+
 # ── systemd 서비스 등록 ──────────────────────────────────────────
 cp soltrace-daemon.service /etc/systemd/system/
 systemctl daemon-reload
@@ -68,7 +112,10 @@ echo ""
 echo "======================================"
 echo " SolTrace 데몬 설치 완료"
 echo "======================================"
-echo " 설정 파일: $INSTALL_DIR/config.ini"
+echo " 실행 계정:  $DAEMON_USER (비root)"
+echo " 설정 파일:  $INSTALL_DIR/config.ini"
+echo " 상태 저장:  $STATE_DIR"
+echo " 로그 파일:  $LOG_FILE"
 echo ""
 echo " 1. config.ini 편집 후 서비스 재시작:"
 echo "    vi $INSTALL_DIR/config.ini"
