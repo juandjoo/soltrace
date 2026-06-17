@@ -220,7 +220,18 @@ body { background:#f5f7fa; font-size:14px; }
       </div>
       <div class="card">
         <div class="table-responsive">
-          <table class="table table-hover mb-0 table-sm">
+          <table class="table table-hover mb-0 table-sm" style="table-layout:fixed">
+            <colgroup>
+              <col style="width:130px"> <!-- 시간 -->
+              <col style="width:130px"> <!-- 장비 -->
+              <col style="width:90px">  <!-- 사용자 -->
+              <col style="width:110px"> <!-- IP -->
+              <col style="width:70px">  <!-- 작업 -->
+              <col>                     <!-- 파일 경로 (나머지) -->
+              <col style="width:62px">  <!-- 크기 -->
+              <col style="width:60px">  <!-- 전송시간 -->
+              <col style="width:52px">  <!-- 상태 -->
+            </colgroup>
             <thead class="table-light">
               <tr>
                 <th>시간</th><th>장비</th><th>사용자</th><th>IP</th><th>작업</th>

@@ -54,18 +54,24 @@ async function searchLogs(page) {
   }
 
   tbody.innerHTML = data.items.map(l => {
-    const dt = new Date(l.log_time).toLocaleString('ko-KR');
+    const d = new Date(l.log_time);
+    const dt = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
     const action = l.action;
     const icon = {upload:'<i class="bi bi-upload action-upload"></i>', download:'<i class="bi bi-download action-download"></i>', delete:'<i class="bi bi-trash action-delete"></i>', rename:'<i class="bi bi-pencil action-rename"></i>', login:'<i class="bi bi-box-arrow-in-right action-login"></i>', logout:'<i class="bi bi-box-arrow-right action-logout"></i>'}[action] || action;
+    const filePath = l.file_path || '';
+    const fileDisplay = action === 'rename'
+      ? filePath.replace(' -> ', '\n→ ')
+      : filePath;
+    const hostname = l.device_hostname || '-';
     return `<tr>
-      <td class="small">${dt}</td>
-      <td class="small">${l.device_hostname||'-'}</td>
-      <td>${l.username||'-'}</td>
-      <td class="small text-muted">${l.client_ip||'-'}</td>
-      <td>${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
-      <td class="small" style="max-width:260px;word-break:break-all;white-space:pre-wrap" title="${(l.file_path||'').replace(/"/g,'&quot;')}">${l.file_path ? (action==='rename' ? l.file_path.replace(' -> ','\n→ ') : l.file_path) : '-'}</td>
-      <td class="size-val small">${fmtBytes(l.file_size)}</td>
-      <td class="small">${l.transfer_time ? l.transfer_time.toFixed(2)+'s' : '-'}</td>
+      <td class="small text-nowrap">${dt}</td>
+      <td class="small text-truncate" style="overflow:hidden" title="${hostname}">${hostname}</td>
+      <td class="small text-truncate" style="overflow:hidden">${l.username||'-'}</td>
+      <td class="small text-muted text-nowrap">${l.client_ip||'-'}</td>
+      <td class="text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
+      <td class="small" style="word-break:break-all;white-space:pre-wrap;overflow:hidden" title="${filePath.replace(/"/g,'&quot;')}">${fileDisplay||'-'}</td>
+      <td class="size-val small text-nowrap">${fmtBytes(l.file_size)}</td>
+      <td class="small text-nowrap">${l.transfer_time ? l.transfer_time.toFixed(1)+'s' : '-'}</td>
       <td><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>
     </tr>`;
   }).join('');
