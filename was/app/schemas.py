@@ -234,6 +234,7 @@ class TopItem(BaseModel):
     label: str
     count: int
     bytes: int
+    telco: Optional[str] = None
 
 class DashboardDetail(BaseModel):
     stats: DashboardStats

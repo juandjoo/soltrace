@@ -123,7 +123,16 @@ async function loadDashboard() {
     charts.topGroups = new Chart(gEl, {
       type: 'bar',
       data: {labels: tg.map(g => g.label), datasets: [{label: '사용량', data: tg.map(g => g.bytes), backgroundColor: '#6f42c188'}]},
-      options: bytesBarOpts,
+      options: {
+        ...bytesBarOpts,
+        plugins: {
+          ...bytesBarOpts.plugins,
+          tooltip: {callbacks: {
+            label: c => fmtBytes(c.parsed.x),
+            afterLabel: c => { const t = tg[c.dataIndex]?.telco; return t ? `고객사: ${t}` : ''; },
+          }},
+        },
+      },
     });
   }
 }
