@@ -86,21 +86,30 @@ _raw=$(grep -i '^\s*transfer_log\s*=' "$INSTALL_DIR/config.ini" 2>/dev/null | he
 FTP_LOG_DIR=$(dirname "$_raw" 2>/dev/null || true)
 FTP_LOG_DIR="${FTP_LOG_DIR:-/usr/service/logs/proftpd}"
 
+_grant_log_access() {
+    # 상위 디렉터리 순회(x) 권한
+    _p="$FTP_LOG_DIR"
+    while [ "$_p" != "/" ]; do
+        _p=$(dirname "$_p")
+        [ "$_p" != "/" ] && setfacl -m "u:${DAEMON_USER}:x" "$_p" 2>/dev/null || true
+    done
+    setfacl -m  "u:${DAEMON_USER}:rx" "$FTP_LOG_DIR"
+    setfacl -R  -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR"
+    setfacl -d  -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR"
+}
+
 if [ -d "$FTP_LOG_DIR" ]; then
     if command -v setfacl &>/dev/null; then
-        # 상위 디렉터리 순회(x) 권한 — 경로 탐색에 필요
-        _p="$FTP_LOG_DIR"
-        while [ "$_p" != "/" ]; do
-            _p=$(dirname "$_p")
-            [ "$_p" != "/" ] && setfacl -m "u:${DAEMON_USER}:x" "$_p" 2>/dev/null || true
-        done
-        # 로그 디렉터리: 읽기+순회(rx)
-        setfacl -m "u:${DAEMON_USER}:rx" "$FTP_LOG_DIR"
-        # 기존 파일: 읽기(r)
-        setfacl -R -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR"
-        # 신규 파일(로그 로테이션 후)에도 자동 적용
-        setfacl -d -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR"
-        echo "[INFO] FTP 로그 ACL 설정 완료: $FTP_LOG_DIR"
+        _grant_log_access
+        # 실제 접근 가능한지 검증
+        if su -s /bin/bash "$DAEMON_USER" -c "ls '$FTP_LOG_DIR'" &>/dev/null; then
+            echo "[INFO] FTP 로그 ACL 설정 완료 (접근 확인됨): $FTP_LOG_DIR"
+        else
+            echo "[WARN] ACL 설정 후에도 접근 실패: $FTP_LOG_DIR"
+            echo "       파일시스템 마운트에 ACL 옵션이 없을 수 있습니다."
+            echo "       확인: mount | grep \$(df '$FTP_LOG_DIR' | tail -1 | awk '{print \$1}')"
+            echo "       대안: chmod o+x 로 other execute 권한 부여 또는 마운트 옵션에 acl 추가 후 재마운트"
+        fi
     else
         echo "[WARN] setfacl 없음 — FTP 로그 읽기 권한 수동 설정 필요:"
         echo "       setfacl -m u:${DAEMON_USER}:x /usr/service /usr/service/logs"
