@@ -1,3 +1,27 @@
+// Register center-text plugin for doughnut charts (used by all donut charts on dashboard)
+const _centerPlugin = {
+  id: 'centerText',
+  afterDraw(chart) {
+    const ct = chart.options?.plugins?.centerText;
+    if (!ct) return;
+    const {ctx, chartArea: {top, bottom, left, right}} = chart;
+    const cx = (left + right) / 2, cy = (top + bottom) / 2;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${ct.size || 13}px sans-serif`;
+    ctx.fillStyle = ct.color || '#333';
+    ctx.fillText(ct.line1 || '', cx, ct.line2 ? cy - 9 : cy);
+    if (ct.line2) {
+      ctx.font = `${(ct.size || 13) - 1}px sans-serif`;
+      ctx.fillStyle = ct.subColor || '#888';
+      ctx.fillText(ct.line2, cx, cy + 9);
+    }
+    ctx.restore();
+  }
+};
+Chart.register(_centerPlugin);
+
 const HEALTH_STATUS = {
   ok:       {label:'정상', cls:'success', icon:'check-circle'},
   warning:  {label:'주의', cls:'warning', icon:'exclamation-triangle'},
@@ -32,21 +56,21 @@ async function loadDashboard() {
   };
 
   const PALETTE = ['#0d6efd','#198754','#fd7e14','#6f42c1','#dc3545','#20c997','#0dcaf0','#ffc107'];
-  const donutBytesOpts = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {position: 'right', labels: {boxWidth: 12, font: {size: 11}}},
-      tooltip: {callbacks: {label: c => `${c.label}: ${fmtBytes(c.parsed)}`}},
-    },
-  };
 
   destroyChart('topUsers');
   const tu = (data.top_users || []).slice(0, 8);
+  const totalUserBytes = tu.reduce((s, u) => s + (u.bytes || 0), 0);
   charts.topUsers = new Chart(document.getElementById('chartTopUsers'), {
     type: 'doughnut',
     data: {labels: tu.map(u => u.label), datasets: [{data: tu.map(u => u.bytes), backgroundColor: PALETTE, hoverOffset: 12, borderWidth: 1}]},
-    options: donutBytesOpts,
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {position: 'right', labels: {boxWidth: 12, font: {size: 11}}},
+        tooltip: {callbacks: {label: c => `${c.label}: ${fmtBytes(c.parsed)}`}},
+        centerText: {line1: fmtBytes(totalUserBytes), line2: '총 사용량', size: 13},
+      },
+    },
   });
 
   destroyChart('topGroups');
@@ -74,9 +98,11 @@ async function loadServiceHealth() {
   const data = await api('GET', `/dashboard/service-health?hours=${hours}`);
   if (!data) return;
 
+  // 서비스 영향도 도넛
   destroyChart('healthStatus');
   const counts = {ok: 0, warning: 0, critical: 0};
   data.devices.forEach(d => { if (counts[d.status] != null) counts[d.status]++; });
+  const totalDevices = counts.ok + counts.warning + counts.critical;
   charts.healthStatus = new Chart(document.getElementById('chartHealthStatus'), {
     type: 'doughnut',
     data: {
@@ -92,44 +118,65 @@ async function loadServiceHealth() {
       plugins: {
         legend: {position: 'right', labels: {boxWidth: 12, font: {size: 11}}},
         tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed}대`}},
+        centerText: {line1: `${totalDevices}대`, line2: '전체 장비', size: 13},
       },
     },
   });
 
+  // 실패 건수 — 0건이면 이상 없음 표시
   destroyChart('healthRate');
   const ft = data.fail_totals || {};
-  charts.healthRate = new Chart(document.getElementById('chartHealthRate'), {
-    type: 'doughnut',
-    data: {
-      labels: ['전송 실패', '로그인 실패', 'CWD 실패'],
-      datasets: [{
-        data: [ft.transfer_fails || 0, ft.login_fails || 0, ft.cwd_fails || 0],
-        backgroundColor: ['#dc3545', '#fd7e14', '#6f42c1'],
-        hoverOffset: 12, borderWidth: 1,
-      }],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: {
-            boxWidth: 12, font: {size: 11},
-            generateLabels: chart => {
-              const ds = chart.data.datasets[0];
-              return chart.data.labels.map((label, i) => ({
-                text: `${label}: ${ds.data[i].toLocaleString()}건`,
-                fillStyle: ds.backgroundColor[i],
-                strokeStyle: ds.backgroundColor[i],
-                hidden: false, index: i,
-              }));
+  const failTotal = (ft.transfer_fails || 0) + (ft.login_fails || 0) + (ft.cwd_fails || 0);
+  const rateEl = document.getElementById('chartHealthRate');
+  const rateWrap = rateEl.parentElement;
+
+  if (failTotal === 0) {
+    rateEl.style.display = 'none';
+    if (!rateWrap.querySelector('.no-fail')) {
+      const d = document.createElement('div');
+      d.className = 'no-fail d-flex flex-column align-items-center justify-content-center h-100 text-success gap-2';
+      d.innerHTML = '<i class="bi bi-check-circle-fill" style="font-size:2.8rem"></i>'
+        + '<span class="fw-semibold">이상 없음</span>'
+        + '<span class="small text-muted">전송 · 로그인 · CWD 실패 없음</span>';
+      rateWrap.appendChild(d);
+    }
+  } else {
+    rateEl.style.display = '';
+    rateWrap.querySelector('.no-fail')?.remove();
+    charts.healthRate = new Chart(rateEl, {
+      type: 'doughnut',
+      data: {
+        labels: ['전송 실패', '로그인 실패', 'CWD 실패'],
+        datasets: [{
+          data: [ft.transfer_fails || 0, ft.login_fails || 0, ft.cwd_fails || 0],
+          backgroundColor: ['#dc3545', '#fd7e14', '#6f42c1'],
+          hoverOffset: 12, borderWidth: 1,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              boxWidth: 12, font: {size: 11},
+              generateLabels: chart => {
+                const ds = chart.data.datasets[0];
+                return chart.data.labels.map((label, i) => ({
+                  text: `${label}: ${ds.data[i].toLocaleString()}건`,
+                  fillStyle: ds.backgroundColor[i],
+                  strokeStyle: ds.backgroundColor[i],
+                  hidden: false, index: i,
+                }));
+              },
             },
           },
+          tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed.toLocaleString()}건`}},
+          centerText: {line1: `${failTotal.toLocaleString()}건`, line2: '총 실패', size: 13, color: '#dc3545'},
         },
-        tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed.toLocaleString()}건`}},
       },
-    },
-  });
+    });
+  }
 
   const tb = document.getElementById('healthAlerts');
   if (!data.alerts.length) {
@@ -149,5 +196,25 @@ async function loadServiceHealth() {
         <td class="small text-muted">${a.message || ''}</td>
       </tr>`;
     }).join('');
+  }
+}
+
+// 자동 새로고침 (60초)
+let _dashTimer = null;
+function toggleDashAutoRefresh() {
+  const btn = document.getElementById('btnDashAuto');
+  if (_dashTimer) {
+    clearInterval(_dashTimer);
+    _dashTimer = null;
+    btn.classList.remove('btn-primary');
+    btn.classList.add('btn-outline-secondary');
+    btn.title = '자동 새로고침 켜기';
+    btn.querySelector('span').textContent = '자동';
+  } else {
+    _dashTimer = setInterval(() => { loadDashboard(); loadServiceHealth(); }, 60000);
+    btn.classList.add('btn-primary');
+    btn.classList.remove('btn-outline-secondary');
+    btn.title = '자동 새로고침 끄기 (60초)';
+    btn.querySelector('span').textContent = '자동 ON';
   }
 }

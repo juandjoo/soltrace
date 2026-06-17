@@ -105,6 +105,9 @@ async function searchLogs(page) {
       ? filePath.replace(' -> ', '\n→ ')
       : filePath;
     const hostname = l.device_hostname || '-';
+    const isTransfer = action === 'upload' || action === 'download';
+    const sizeDisplay = isTransfer && l.file_size ? fmtBytes(l.file_size) : '-';
+    const timeDisplay = l.transfer_time && l.transfer_time > 0 ? l.transfer_time.toFixed(1)+'s' : '-';
     return `<tr>
       <td class="small text-nowrap">${dt}</td>
       <td class="small text-truncate" style="overflow:hidden" title="${hostname}${l.client_ip ? '\nIP: '+l.client_ip : ''}">${hostname}</td>
@@ -112,8 +115,8 @@ async function searchLogs(page) {
       <td class="small text-muted text-nowrap">${l.client_ip||'-'}</td>
       <td class="text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
       <td class="small" style="word-break:break-all;white-space:pre-wrap;overflow:hidden" title="${filePath.replace(/"/g,'&quot;')}">${fileDisplay||'-'}</td>
-      <td class="size-val small text-nowrap">${fmtBytes(l.file_size)}</td>
-      <td class="small text-nowrap">${l.transfer_time ? l.transfer_time.toFixed(1)+'s' : '-'}</td>
+      <td class="size-val small text-nowrap">${sizeDisplay}</td>
+      <td class="small text-nowrap">${timeDisplay}</td>
       <td><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>
     </tr>`;
   }).join('');
@@ -152,3 +155,28 @@ async function _download(endpoint, ext) {
 
 async function exportLogs() { await _download('/logs/export', 'csv'); }
 async function exportXlsx() { await _download('/logs/export/xlsx', 'xlsx'); }
+
+function logDateQuick(dayOffset) {
+  const _fmt = d => {
+    const p = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  const now = new Date();
+  let start, end;
+  if (dayOffset === -1) {
+    // 어제 전체
+    start = new Date(now); start.setDate(start.getDate()-1); start.setHours(0,0,0,0);
+    end   = new Date(now); end.setDate(end.getDate()-1);     end.setHours(23,59,0,0);
+  } else if (dayOffset === 0) {
+    // 오늘 00:00 ~ 지금
+    start = new Date(now); start.setHours(0,0,0,0);
+    end   = now;
+  } else {
+    // N일 전 00:00 ~ 지금
+    start = new Date(now); start.setDate(start.getDate()+dayOffset); start.setHours(0,0,0,0);
+    end   = now;
+  }
+  document.getElementById('logStartTime').value = _fmt(start);
+  document.getElementById('logEndTime').value   = _fmt(end);
+  searchLogs(1);
+}
