@@ -103,27 +103,43 @@ def _run_migrations(conn):
           THEN ALTER TABLE ftp_logs ADD COLUMN row_hash VARCHAR(32); END IF;
         END $$
     """))
-    # (device_id, log_time, row_hash) 유니크 인덱스 — 파티셔닝 테이블 호환 (partition key 포함)
-    # row_hash IS NULL인 기존 행은 NULL≠NULL 규칙으로 충돌 없음
+    # 인덱스가 없을 때만 한 번 실행: 중복 제거 → 백필 → 유니크 인덱스 생성
+    # 순서가 중요: 기존 중복 행을 먼저 제거해야 백필 후 인덱스 생성이 실패하지 않음
     conn.execute(text("""
         DO $$ BEGIN
-          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_ftp_logs_dedup')
-          THEN CREATE UNIQUE INDEX idx_ftp_logs_dedup ON ftp_logs (device_id, log_time, row_hash); END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_ftp_logs_dedup') THEN
+            -- 1) 기존 중복 행 제거: 동일 내용이면 id 낮은 쪽(먼저 들어온 행) 유지
+            DELETE FROM ftp_logs
+            WHERE id IN (
+              SELECT id FROM (
+                SELECT id, ROW_NUMBER() OVER (
+                  PARTITION BY
+                    device_id,
+                    to_char(log_time AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+                    coalesce(username, ''), action,
+                    coalesce(file_path, ''), coalesce(file_size::text, '0'),
+                    coalesce(session_id, ''), coalesce(client_ip, '')
+                  ORDER BY id
+                ) AS rn
+                FROM ftp_logs
+                WHERE log_time >= now() - interval '90 days'
+              ) t
+              WHERE rn > 1
+            );
+            -- 2) 백필: Python _row_hash()와 동일한 필드·순서로 MD5 계산
+            UPDATE ftp_logs SET row_hash = md5(
+              device_id::text || '|' ||
+              to_char(log_time AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || '|' ||
+              coalesce(username, '') || '|' || action || '|' ||
+              coalesce(file_path, '') || '|' ||
+              coalesce(file_size::text, '0') || '|' ||
+              coalesce(session_id, '') || '|' ||
+              coalesce(client_ip, '')
+            ) WHERE row_hash IS NULL AND log_time >= now() - interval '90 days';
+            -- 3) 유니크 인덱스 생성 — 파티션 키(log_time) 포함으로 파티셔닝 테이블 호환
+            CREATE UNIQUE INDEX idx_ftp_logs_dedup ON ftp_logs (device_id, log_time, row_hash);
+          END IF;
         END $$
-    """))
-    # 최근 90일 기존 로그 백필 — Python _row_hash()와 동일한 필드 순서로 MD5 계산
-    conn.execute(text("""
-        UPDATE ftp_logs
-        SET row_hash = md5(
-          device_id::text || '|' ||
-          to_char(log_time AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || '|' ||
-          coalesce(username, '') || '|' || action || '|' ||
-          coalesce(file_path, '') || '|' ||
-          coalesce(file_size::text, '0') || '|' ||
-          coalesce(session_id, '') || '|' ||
-          coalesce(client_ip, '')
-        )
-        WHERE row_hash IS NULL AND log_time >= now() - interval '90 days'
     """))
 
 

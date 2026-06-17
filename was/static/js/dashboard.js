@@ -75,6 +75,13 @@ function loadAll() {
   loadServiceHealth();
 }
 
+// 슬라이스 인덱스 0=전송 실패, 1=로그인 실패, 2=CWD 실패
+const RATE_DRILL_FILTERS = [
+  {action: '', status: 'fail'},
+  {action: 'login', status: 'fail'},
+  {action: 'cwd_fail', status: ''},
+];
+
 // 대시보드 날짜 범위를 유지하면서 로그 조회 페이지로 드릴다운
 function navToLogsFilters({action = '', status = ''} = {}) {
   const s = document.getElementById('dashStart').value;
@@ -208,13 +215,6 @@ async function loadServiceHealth() {
   } else {
     rateEl.style.display = '';
     rateWrap.querySelector('.no-fail')?.remove();
-    // 슬라이스 클릭 시 로그 조회로 드릴다운
-    // 인덱스 0=전송 실패(status=fail), 1=로그인 실패(action=login,status=fail), 2=CWD 실패(action=cwd_fail)
-    const _rateFilters = [
-      {action: '', status: 'fail'},
-      {action: 'login', status: 'fail'},
-      {action: 'cwd_fail', status: ''},
-    ];
     charts.healthRate = new Chart(rateEl, {
       type: 'doughnut',
       data: {
@@ -229,7 +229,7 @@ async function loadServiceHealth() {
         responsive: true, maintainAspectRatio: false,
         onClick: (evt, elems) => {
           if (!elems.length) return;
-          navToLogsFilters(_rateFilters[elems[0].index]);
+          navToLogsFilters(RATE_DRILL_FILTERS[elems[0].index]);
         },
         onHover: (evt, elems) => {
           evt.native.target.style.cursor = elems.length ? 'pointer' : 'default';
