@@ -1,8 +1,9 @@
+import subprocess
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
@@ -97,6 +98,23 @@ app.include_router(telcos.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+def _cache_ver() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        return "0"
+
+_INDEX_HTML: str | None = None
+
+def _get_index_html() -> str:
+    global _INDEX_HTML
+    if _INDEX_HTML is None:
+        with open("static/index.html", encoding="utf-8") as f:
+            _INDEX_HTML = f.read().replace("__VER__", _cache_ver())
+    return _INDEX_HTML
+
 
 @app.get("/", include_in_schema=False)
 @app.get("/{full_path:path}", include_in_schema=False)
@@ -104,7 +122,7 @@ def spa(full_path: str = ""):
     if full_path.startswith("api/"):
         from fastapi import HTTPException
         raise HTTPException(status_code=404)
-    return FileResponse(
-        "static/index.html",
+    return HTMLResponse(
+        content=_get_index_html(),
         headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
     )
