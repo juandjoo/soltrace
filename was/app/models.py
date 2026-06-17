@@ -87,6 +87,10 @@ class DeviceGroup(Base):
     device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True)
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
 
+    __table_args__ = (
+        Index("idx_device_groups_group_id", "group_id"),
+    )
+
 
 class FtpLog(Base):
     __tablename__ = "ftp_logs"
@@ -122,6 +126,12 @@ class FtpLog(Base):
             postgresql_using="gin",
             postgresql_ops={"client_ip": "gin_trgm_ops"},
         ),
+        Index(
+            "idx_ftp_logs_file_path_trgm",
+            "file_path",
+            postgresql_using="gin",
+            postgresql_ops={"file_path": "gin_trgm_ops"},
+        ),
         {"postgresql_partition_by": "RANGE (log_time)"},
     )
 
@@ -143,6 +153,7 @@ class ServiceMetric(Base):
 
     __table_args__ = (
         Index("idx_service_metrics_bucket", "bucket"),
+        Index("idx_service_metrics_device_bucket", "device_id", "bucket"),
     )
 
 
@@ -168,4 +179,7 @@ class ServiceAlert(Base):
     __table_args__ = (
         UniqueConstraint("device_id", "bucket", "metric", name="uq_service_alert_bucket_metric"),
         Index("idx_service_alerts_created", "created_at"),
+        Index("idx_service_alerts_device_created", "device_id", "created_at"),
+        Index("idx_service_alerts_notified", "notified",
+              postgresql_where="notified = FALSE"),
     )

@@ -60,6 +60,41 @@ def _run_migrations(conn):
           THEN CREATE INDEX idx_ftp_logs_client_ip_trgm ON ftp_logs USING gin (client_ip gin_trgm_ops); END IF;
         END $$
     """))
+    # file_path GIN trigram 인덱스 — 파일명/경로 부분 검색 성능
+    conn.execute(text("""
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_ftp_logs_file_path_trgm')
+          THEN CREATE INDEX idx_ftp_logs_file_path_trgm ON ftp_logs USING gin (file_path gin_trgm_ops); END IF;
+        END $$
+    """))
+    # device_groups.group_id 인덱스 — PK가 (device_id, group_id) 순서라 group_id 단독 조회 불가
+    conn.execute(text("""
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_device_groups_group_id')
+          THEN CREATE INDEX idx_device_groups_group_id ON device_groups (group_id); END IF;
+        END $$
+    """))
+    # service_metrics (device_id, bucket) 복합 인덱스 — 장비별 시계열 쿼리
+    conn.execute(text("""
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_service_metrics_device_bucket')
+          THEN CREATE INDEX idx_service_metrics_device_bucket ON service_metrics (device_id, bucket); END IF;
+        END $$
+    """))
+    # service_alerts (device_id, created_at) 복합 인덱스 — 장비별 알림 조회
+    conn.execute(text("""
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_service_alerts_device_created')
+          THEN CREATE INDEX idx_service_alerts_device_created ON service_alerts (device_id, created_at); END IF;
+        END $$
+    """))
+    # service_alerts.notified 부분 인덱스 — 미발송 알림 polling
+    conn.execute(text("""
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_service_alerts_notified')
+          THEN CREATE INDEX idx_service_alerts_notified ON service_alerts (notified) WHERE notified = FALSE; END IF;
+        END $$
+    """))
 
 
 @asynccontextmanager
