@@ -82,7 +82,8 @@ chmod 640 "$LOG_FILE"
 
 # ── FTP 로그 읽기 권한 ───────────────────────────────────────────
 # config.ini의 transfer_log/extended_log 경로에 soltrace 계정 읽기 권한 부여
-FTP_LOG_DIR=$(dirname "$(grep -i 'transfer_log' "$INSTALL_DIR/config.ini" 2>/dev/null | awk -F= '{print $2}' | tr -d ' ')" 2>/dev/null || true)
+_raw=$(grep -i '^\s*transfer_log\s*=' "$INSTALL_DIR/config.ini" 2>/dev/null | head -1 | awk -F= '{print $2}' | sed 's/#.*//' | tr -d ' \t\r\n')
+FTP_LOG_DIR=$(dirname "$_raw" 2>/dev/null || true)
 FTP_LOG_DIR="${FTP_LOG_DIR:-/usr/service/logs/proftpd}"
 
 if [ -d "$FTP_LOG_DIR" ]; then

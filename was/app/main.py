@@ -41,6 +41,18 @@ def _ensure_partitions(db):
     db.commit()
 
 
+def _run_migrations(conn):
+    """스키마 변경이 필요한 마이그레이션을 idempotent하게 실행한다."""
+    # groups.auth → groups.application (rename)
+    conn.execute(text("""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='groups' AND column_name='auth')
+             AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='groups' AND column_name='application')
+          THEN ALTER TABLE groups RENAME COLUMN auth TO application; END IF;
+        END $$
+    """))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # pg_trgm 확장을 create_all 전에 보장 — username GIN(gin_trgm_ops) 인덱스 생성 선행 조건
@@ -48,13 +60,7 @@ async def lifespan(app: FastAPI):
         conn.execute(text('CREATE EXTENSION IF NOT EXISTS "pg_trgm"'))
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
-        conn.execute(text("""
-            DO $$ BEGIN
-              IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='groups' AND column_name='auth')
-                 AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='groups' AND column_name='application')
-              THEN ALTER TABLE groups RENAME COLUMN auth TO application; END IF;
-            END $$
-        """))
+        _run_migrations(conn)
     with SessionLocal() as db:
         db.execute(text("SELECT 1"))
         _ensure_partitions(db)

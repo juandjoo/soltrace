@@ -170,6 +170,8 @@ _RNFR_TTL = 300.0           # RNFR 미완료 세션 만료 시간 (초)
 
 def _flush_stale_rnfr():
     """RNTO 없이 TTL이 지난 RNFR 세션을 정리한다 (메모리 누수 방지)."""
+    if not _rnfr_sessions:
+        return
     now = time.monotonic()
     stale = [k for k, (_, ts) in _rnfr_sessions.items() if now - ts > _RNFR_TTL]
     if stale:
