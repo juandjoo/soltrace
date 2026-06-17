@@ -93,9 +93,10 @@ _grant_log_access() {
         _p=$(dirname "$_p")
         [ "$_p" != "/" ] && setfacl -m "u:${DAEMON_USER}:x" "$_p" 2>/dev/null || true
     done
-    setfacl -m  "u:${DAEMON_USER}:rx" "$FTP_LOG_DIR"
-    setfacl -R  -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR"
-    setfacl -d  -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR"
+    setfacl -m "u:${DAEMON_USER}:rx" "$FTP_LOG_DIR"
+    # 파일에만 r 적용 (-R은 디렉터리 자체도 덮어써서 x를 제거하므로 사용 불가)
+    find "$FTP_LOG_DIR" -maxdepth 1 -type f -exec setfacl -m "u:${DAEMON_USER}:r" {} +
+    setfacl -d -m "u:${DAEMON_USER}:r" "$FTP_LOG_DIR"
 }
 
 if [ -d "$FTP_LOG_DIR" ]; then
