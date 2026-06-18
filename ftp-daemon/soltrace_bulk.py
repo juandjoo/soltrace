@@ -76,9 +76,13 @@ def iter_file(path: str, parser, date_from: Optional[datetime], date_to: Optiona
     total = 0
     skipped_date = 0
     parse_errors = 0
+    fname = p.name
     opener = gzip.open if path.endswith(".gz") else open
+    log.info(">>> 파일 읽기 시작: %s", fname)
     with opener(path, "rt", encoding="utf-8", errors="replace") as f:
         for lineno, line in enumerate(f, 1):
+            if lineno % 50000 == 0:
+                log.info("  %s: %d줄 읽음 (파싱 %d건)", fname, lineno, total)
             entry = parser(line)
             if entry is None:
                 parse_errors += 1
@@ -96,8 +100,8 @@ def iter_file(path: str, parser, date_from: Optional[datetime], date_to: Optiona
                 skipped_date += 1
                 continue
             yield entry
-    log.info("File %s: parsed=%d skipped_date=%d parse_errors=%d",
-             path, total, skipped_date, parse_errors)
+    log.info("<<< 완료: %s — 파싱 %d건 / 날짜제외 %d건 / 파싱오류 %d건",
+             fname, total, skipped_date, parse_errors)
 
 
 def iter_files(pattern: str, parser, date_from: Optional[datetime], date_to: Optional[datetime]):
@@ -118,7 +122,7 @@ def send_batch(was_url: str, device_key: str, batch: list, session: requests.Ses
         r = session.post(url, json={"device_key": device_key, "logs": batch}, timeout=30)
         r.raise_for_status()
         data = r.json()
-        log.debug("Batch sent: accepted=%d rejected=%d", data.get("accepted", 0), data.get("rejected", 0))
+        log.info("  배치 전송: accepted=%d rejected=%d", data.get("accepted", 0), data.get("rejected", 0))
         return True
     except requests.exceptions.RequestException as e:
         log.error("Send failed: %s", e)
@@ -176,12 +180,13 @@ def run_bulk(args):
         if not batch:
             return
         if args.dry_run:
-            log.info("[DRY RUN] Would send %d entries", len(batch))
             total_sent += len(batch)
+            log.info("[DRY RUN] %d건 (누적 %d건)", len(batch), total_sent)
         else:
             ok = send_batch(was_url, device_key, list(batch), sess)
             if ok:
                 total_sent += len(batch)
+                log.info("  누적 전송: %d건", total_sent)
             else:
                 total_failed += len(batch)
                 log.error("Failed to send batch of %d, retrying once...", len(batch))
