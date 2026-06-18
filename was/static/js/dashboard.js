@@ -118,7 +118,7 @@ async function loadDashboard() {
 
   destroyChart('topUsers');
   // 내림차순 정렬 (많은 사용자 → 시계방향 첫 슬라이스)
-  const tu = (data.top_users || []).slice().sort((a, b) => b.bytes - a.bytes).slice(0, 10);
+  const tu = (data.top_users || []).slice().sort((a, b) => b.bytes - a.bytes).slice(0, 8);
   const totalUserBytes = tu.reduce((s, u) => s + (u.bytes || 0), 0);
   charts.topUsers = new Chart(document.getElementById('chartTopUsers'), {
     type: 'doughnut',
@@ -133,13 +133,15 @@ async function loadDashboard() {
       },
     },
   });
-  // 커스텀 범례: 이름(좌) + 용량(우) 그리드 정렬
+  // 커스텀 범례: 이름(상) + 용량(하) 2줄 레이아웃
   const legendEl = document.getElementById('topUsersLegend');
   legendEl.innerHTML = tu.map((u, i) => `
-    <li class="mb-1 small" style="display:grid;grid-template-columns:10px 1fr auto;column-gap:6px;align-items:center;min-width:0">
-      <span style="width:10px;height:10px;border-radius:2px;background:${PALETTE[i]}"></span>
-      <span class="text-truncate" title="${u.label}">${u.label}</span>
-      <span class="text-muted" style="white-space:nowrap">${fmtBytes(u.bytes)}</span>
+    <li class="mb-1" style="display:grid;grid-template-columns:10px 1fr;column-gap:5px;align-items:start;min-width:0">
+      <span style="width:10px;height:10px;border-radius:2px;background:${PALETTE[i]};margin-top:2px;flex-shrink:0"></span>
+      <div style="min-width:0">
+        <div class="text-truncate" style="font-size:0.78rem;line-height:1.3" title="${u.label}">${u.label}</div>
+        <div class="text-muted" style="font-size:0.7rem;line-height:1.2">${fmtBytes(u.bytes)}</div>
+      </div>
     </li>`).join('');
 }
 
@@ -195,7 +197,7 @@ async function loadHourly() {
         tooltip: {callbacks: {label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}건`}},
       },
       scales: {
-        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: 24}},
+        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
         y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
