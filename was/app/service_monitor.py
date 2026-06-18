@@ -250,6 +250,7 @@ class ServiceMonitor:
 
     # ── (3) 알림 발송 ────────────────────────────────────────────────────────
     def _notify(self, db):
+        # FOR UPDATE SKIP LOCKED: 다중 워커가 동시에 실행될 때 이중 발송 방지
         rows = db.execute(text("""
             SELECT a.id, a.device_id, d.hostname, a.bucket, a.metric,
                    a.severity, a.value, a.baseline
@@ -257,6 +258,7 @@ class ServiceMonitor:
             WHERE a.notified = FALSE
             ORDER BY a.created_at
             LIMIT 100
+            FOR UPDATE OF a SKIP LOCKED
         """)).fetchall()
         if not rows:
             return

@@ -38,7 +38,7 @@ def _fmt_metric(metric: str, value: float) -> str:
     return f"{value * 100:.1f}%"
 
 
-_KST = timedelta(hours=9)
+_KST = timezone(timedelta(hours=9))
 
 
 def _alert_label(alert: dict) -> str:
@@ -55,7 +55,7 @@ def build_summary(alert: dict) -> str:
     metric = _METRIC_LABEL.get(alert["metric"], alert["metric"])
     base = alert.get("baseline")
     base_str = f" (평소 {_fmt_metric(alert['metric'], base)})" if base is not None else ""
-    kst = alert["bucket"] + _KST
+    kst = alert["bucket"].astimezone(_KST)
     return (
         f"[{sev}] {_alert_label(alert)} — {metric} "
         f"{_fmt_metric(alert['metric'], alert['value'])}{base_str} "
@@ -110,7 +110,7 @@ def _slack_payload(alerts: list[dict]) -> dict:
         val = _fmt_metric(a["metric"], a["value"])
         base = a.get("baseline")
         base_str = f" (평소 {_fmt_metric(a['metric'], base)})" if base is not None else ""
-        kst = (a["bucket"] + _KST).strftime("%m/%d %H:%M")
+        kst = a["bucket"].astimezone(_KST).strftime("%m/%d %H:%M")
         lines.append(f"{icon} [{sev}] *{_alert_label(a)}* — {metric} {val}{base_str} · {kst} KST")
     text = header + "\n" + "\n".join(lines)
     return {
