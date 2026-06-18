@@ -379,7 +379,7 @@ def get_service_health(
 
     totals_row = db.execute(text(f"""
         SELECT
-            COALESCE(SUM(CASE WHEN fl.action IN ('upload','download','delete','rename','mkdir','rmdir')
+            COALESCE(SUM(CASE WHEN fl.action IN ('upload','download')
                               AND fl.status = 'fail' THEN 1 ELSE 0 END), 0)::int AS transfer_fails,
             COALESCE(SUM(CASE WHEN fl.action = 'login' AND fl.status = 'fail' THEN 1 ELSE 0 END), 0)::int AS login_fails,
             COALESCE(SUM(CASE WHEN fl.action = 'cwd_fail' THEN 1 ELSE 0 END), 0)::int AS cwd_fails
