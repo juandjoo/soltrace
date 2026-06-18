@@ -224,12 +224,21 @@ async function loadUserHourly() {
     },
   });
 
-  legendEl.innerHTML = active.map((u, i) => `
-    <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer"
-         onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}">
-      <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
-      <div class="small text-truncate" style="min-width:0" title="${u.username}">${u.username}</div>
-    </div>`).join('');
+  legendEl.innerHTML = active.map((u, i) => {
+    const vals = datasets[i].data;
+    const maxVal = Math.max(0, ...vals);
+    const curVal = vals[vals.length - 1] ?? 0;
+    return `
+    <div class="mb-2" style="cursor:pointer" onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}">
+      <div class="d-flex align-items-center gap-1">
+        <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
+        <div class="small text-truncate" style="min-width:0" title="${u.username}">${u.username}</div>
+      </div>
+      <div style="font-size:0.68rem;color:#888;padding-left:22px">
+        최대 <b>${maxVal.toLocaleString()}</b>건 · 현재 <b>${curVal.toLocaleString()}</b>건
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function resetUserHourlyZoom() {
@@ -332,12 +341,21 @@ async function loadHourly() {
     },
   });
 
-  legendEl.innerHTML = active.map((g, i) => `
-    <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer"
-         onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}">
-      <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
-      <div class="small text-truncate" style="min-width:0" title="${g.name}">${g.name}</div>
-    </div>`).join('');
+  legendEl.innerHTML = active.map((g, i) => {
+    const vals = datasets[i].data;
+    const maxVal = Math.max(0, ...vals);
+    const curVal = vals[vals.length - 1] ?? 0;
+    return `
+    <div class="mb-2" style="cursor:pointer" onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}">
+      <div class="d-flex align-items-center gap-1">
+        <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
+        <div class="small text-truncate" style="min-width:0" title="${g.name}">${g.name}</div>
+      </div>
+      <div style="font-size:0.68rem;color:#888;padding-left:22px">
+        최대 <b>${maxVal.toLocaleString()}</b>건 · 현재 <b>${curVal.toLocaleString()}</b>건
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function resetHourlyZoom() {
