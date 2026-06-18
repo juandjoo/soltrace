@@ -7,26 +7,34 @@ proftpd 로그 파일의 과거 데이터를 WAS에 일괄 전송한다.
   python3 soltrace_bulk.py [옵션]
 
 옵션:
-  --transfer-log PATH  TransferLog 파일 경로 (기본: config.ini 값)
-  --extended-log PATH  ExtendedAllLog 파일 경로 (기본: config.ini 값)
+  --transfer-log PATH  TransferLog 파일 경로 또는 glob 패턴 (기본: config.ini 값)
+  --extended-log PATH  ExtendedAllLog 파일 경로 또는 glob 패턴 (기본: config.ini 값)
   --date-from YYYY-MM-DD  이 날짜 이후 데이터만 전송 (선택)
   --date-to   YYYY-MM-DD  이 날짜 이전 데이터만 전송 (선택)
   --batch-size N       한 번에 전송할 건수 (기본: 500)
   --dry-run            실제 전송 없이 파싱 결과만 확인
   --no-extended        ExtendedAllLog 무시
+  --no-transfer        TransferLog 무시
 
 예시:
-  # 2026-06-01 이후 전체 전송
-  python3 soltrace_bulk.py --date-from 2026-06-01
+  # 압축 일별 로그만 복구 (glob 패턴)
+  python3 soltrace_bulk.py --no-transfer \
+      --extended-log "/usr/service/logs/proftpd/ExtendedAllLog.*.gz"
+
+  # 특정 기간 압축 로그
+  python3 soltrace_bulk.py --no-transfer --date-from 2026-05-01 --date-to 2026-05-31 \
+      --extended-log "/usr/service/logs/proftpd/ExtendedAllLog.*.gz"
 
   # TransferLog만 특정 기간
   python3 soltrace_bulk.py --no-extended --date-from 2026-05-01 --date-to 2026-05-31
 
   # 파싱 테스트 (전송 안 함)
-  python3 soltrace_bulk.py --dry-run --date-from 2026-06-01
+  python3 soltrace_bulk.py --dry-run --no-transfer \
+      --extended-log "/usr/service/logs/proftpd/ExtendedAllLog.*.gz"
 """
 import argparse
 import configparser
+import glob as _glob
 import gzip
 import hashlib
 import json
@@ -90,6 +98,18 @@ def iter_file(path: str, parser, date_from: Optional[datetime], date_to: Optiona
             yield entry
     log.info("File %s: parsed=%d skipped_date=%d parse_errors=%d",
              path, total, skipped_date, parse_errors)
+
+
+def iter_files(pattern: str, parser, date_from: Optional[datetime], date_to: Optional[datetime]):
+    """glob 패턴 또는 단일 파일 경로를 받아 이름순으로 처리."""
+    matched = sorted(_glob.glob(pattern))
+    if not matched:
+        # glob 매칭 없으면 그대로 단일 파일로 시도
+        yield from iter_file(pattern, parser, date_from, date_to)
+        return
+    log.info("glob '%s' → %d 파일", pattern, len(matched))
+    for path in matched:
+        yield from iter_file(path, parser, date_from, date_to)
 
 
 def send_batch(was_url: str, device_key: str, batch: list, session: requests.Session) -> bool:
@@ -175,25 +195,24 @@ def run_bulk(args):
         batch.clear()
 
     # Process TransferLog
-    log.info("Processing TransferLog: %s", transfer_log)
-    for entry in iter_file(transfer_log, parse_transfer_log, date_from, date_to):
-        batch.append(entry)
-        if len(batch) >= batch_size:
-            flush_batch()
-            time.sleep(0.2)   # throttle
-
-    flush_batch()
+    if not args.no_transfer and transfer_log:
+        log.info("Processing TransferLog: %s", transfer_log)
+        for entry in iter_files(transfer_log, parse_transfer_log, date_from, date_to):
+            batch.append(entry)
+            if len(batch) >= batch_size:
+                flush_batch()
+                time.sleep(0.2)   # throttle
+        flush_batch()
 
     # Process ExtendedAllLog
     if not args.no_extended and extended_log:
         log.info("Processing ExtendedAllLog: %s", extended_log)
-        for entry in iter_file(extended_log, parse_extended_log, date_from, date_to):
+        for entry in iter_files(extended_log, parse_extended_log, date_from, date_to):
             batch.append(entry)
             if len(batch) >= batch_size:
                 flush_batch()
                 time.sleep(0.2)
-
-    flush_batch()
+        flush_batch()
 
     log.info("=== Bulk import complete ===")
     log.info("Total sent: %d  Failed: %d", total_sent, total_failed)
@@ -209,6 +228,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=500, help="배치 크기 (기본: 500)")
     parser.add_argument("--dry-run", action="store_true", help="전송 없이 테스트")
     parser.add_argument("--no-extended", action="store_true", help="ExtendedAllLog 무시")
+    parser.add_argument("--no-transfer", action="store_true", help="TransferLog 무시")
     args = parser.parse_args()
 
     success = run_bulk(args)
