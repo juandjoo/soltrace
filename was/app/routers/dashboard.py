@@ -9,7 +9,8 @@ from app.database import get_db
 from app.deps import require_admin
 from app.models import Device, DeviceGroup, FtpLog, Group
 from app.schemas import (
-    DashboardDetail, DashboardStats, TimeSeriesPoint, TopItem, HourlyPoint,
+    DashboardDetail, DashboardStats, TimeSeriesPoint, TopItem,
+    HourlyPoint, GroupHourlySeries,
     ServiceHealthResponse, ServiceHealthDevice, ServiceAlertItem, ServiceTrendPoint, FailTotals,
 )
 
@@ -167,34 +168,8 @@ def get_dashboard(
     )
 
 
-def _build_hourly(base_q) -> list[HourlyPoint]:
-    rows = (
-        base_q.with_entities(
-            func.date_trunc("hour", FtpLog.log_time).label("bucket"),
-            func.coalesce(func.sum(case((FtpLog.action == "upload", 1), else_=0)), 0).label("uploads"),
-            func.coalesce(func.sum(case((FtpLog.action == "download", 1), else_=0)), 0).label("downloads"),
-            func.coalesce(func.sum(case((FtpLog.action == "upload", FtpLog.file_size), else_=0)), 0).label("bytes_in"),
-            func.coalesce(func.sum(case((FtpLog.action == "download", FtpLog.file_size), else_=0)), 0).label("bytes_out"),
-        )
-        .group_by(text("bucket"))
-        .order_by(text("bucket"))
-        .all()
-    )
-    return [
-        HourlyPoint(
-            bucket=r.bucket.strftime("%Y-%m-%dT%H:00:00Z"),
-            uploads=int(r.uploads),
-            downloads=int(r.downloads),
-            bytes_in=int(r.bytes_in),
-            bytes_out=int(r.bytes_out),
-        )
-        for r in rows
-    ]
-
-
-@router.get("/hourly", response_model=list[HourlyPoint])
+@router.get("/hourly", response_model=list[GroupHourlySeries])
 def get_hourly(
-    group_id: Optional[int] = None,
     days: int = Query(default=7, ge=1, le=366),
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
@@ -209,15 +184,32 @@ def get_hourly(
         since = now - timedelta(days=days)
         until = now
 
-    base_q = db.query(FtpLog).filter(FtpLog.log_time >= since, FtpLog.log_time <= until)
-    if group_id:
-        base_q = (
-            base_q.join(Device, FtpLog.device_id == Device.id)
-            .join(DeviceGroup, DeviceGroup.device_id == Device.id)
-            .filter(DeviceGroup.group_id == group_id)
-        )
+    rows = db.execute(text("""
+        SELECT g.id AS group_id, g.name, g.telco,
+               DATE_TRUNC('hour', fl.log_time) AS bucket,
+               COALESCE(SUM(CASE WHEN fl.action='upload'   THEN 1 ELSE 0 END), 0)::int AS uploads,
+               COALESCE(SUM(CASE WHEN fl.action='download' THEN 1 ELSE 0 END), 0)::int AS downloads,
+               COALESCE(SUM(CASE WHEN fl.action='upload'   THEN fl.file_size ELSE 0 END), 0)::int AS bytes_in,
+               COALESCE(SUM(CASE WHEN fl.action='download' THEN fl.file_size ELSE 0 END), 0)::int AS bytes_out
+        FROM ftp_logs fl
+        JOIN devices d ON d.id = fl.device_id
+        JOIN device_groups dg ON dg.device_id = d.id
+        JOIN groups g ON g.id = dg.group_id
+        WHERE fl.log_time >= :since AND fl.log_time <= :until
+        GROUP BY g.id, g.name, g.telco, bucket
+        ORDER BY g.name, bucket
+    """), {"since": since, "until": until}).fetchall()
 
-    return _build_hourly(base_q)
+    groups: dict[int, dict] = {}
+    for r in rows:
+        if r.group_id not in groups:
+            groups[r.group_id] = {"group_id": r.group_id, "name": r.name, "telco": r.telco, "data": []}
+        groups[r.group_id]["data"].append(HourlyPoint(
+            bucket=r.bucket.strftime("%Y-%m-%dT%H:00:00Z"),
+            uploads=r.uploads, downloads=r.downloads,
+            bytes_in=r.bytes_in, bytes_out=r.bytes_out,
+        ))
+    return [GroupHourlySeries(**v) for v in groups.values()]
 
 
 _MB = 1024 * 1024

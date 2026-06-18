@@ -133,57 +133,65 @@ async function loadDashboard() {
       },
     },
   });
-  // 커스텀 범례: 사용자명 + 용량 (많은 순)
+  // 커스텀 범례: 이름(좌) + 용량(우) 그리드 정렬
   const legendEl = document.getElementById('topUsersLegend');
   legendEl.innerHTML = tu.map((u, i) => `
-    <li class="d-flex align-items-center gap-2 mb-1" style="min-width:0">
-      <span style="width:10px;height:10px;border-radius:2px;background:${PALETTE[i]};flex-shrink:0"></span>
-      <span class="text-truncate small" style="min-width:0" title="${u.label}: ${fmtBytes(u.bytes)}">${u.label}<span class="text-muted ms-1">${fmtBytes(u.bytes)}</span></span>
+    <li class="mb-1 small" style="display:grid;grid-template-columns:10px 1fr auto;column-gap:6px;align-items:center;min-width:0">
+      <span style="width:10px;height:10px;border-radius:2px;background:${PALETTE[i]}"></span>
+      <span class="text-truncate" title="${u.label}">${u.label}</span>
+      <span class="text-muted" style="white-space:nowrap">${fmtBytes(u.bytes)}</span>
     </li>`).join('');
-
 }
 
+const HOURLY_PALETTE = ['#0d6efd','#198754','#dc3545','#fd7e14','#6f42c1','#20c997','#0dcaf0','#ffc107','#e83e8c','#6c757d'];
+
 async function loadHourly() {
-  const sel = document.getElementById('hourlyGroupFilter');
-  if (sel.options.length <= 1) {
-    const groups = await api('GET', '/groups');
-    if (groups && groups.length) {
-      sel.innerHTML = '<option value="">전체 그룹</option>' +
-        groups.map(g => `<option value="${g.id}">${g.telco ? g.telco + ' · ' : ''}${g.name}</option>`).join('');
-    }
-  }
-  const groupId = sel.value;
-  const params = `${_dashDateParams()}${groupId ? '&group_id=' + groupId : ''}`;
-  const data = await api('GET', `/dashboard/hourly?${params}`);
+  const data = await api('GET', `/dashboard/hourly?${_dashDateParams()}`);
   if (!data) return;
 
-  destroyChart('hourly');
-  const isLine = data.length > 48;
+  const legendEl = document.getElementById('hourlyGroupLegend');
+  if (!data.length) {
+    destroyChart('hourly');
+    legendEl.innerHTML = '<div class="text-muted small">그룹 데이터 없음</div>';
+    return;
+  }
+
+  const bucketSet = new Set(data.flatMap(g => g.data.map(h => h.bucket)));
+  const allBuckets = [...bucketSet].sort();
+
   const fmtBucket = b => {
     const d = new Date(b);
     const hh = String(d.getUTCHours()).padStart(2, '0');
-    if (data.length <= 25) return hh + '시';
+    if (allBuckets.length <= 25) return hh + '시';
     const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
     const dd = String(d.getUTCDate()).padStart(2, '0');
     return `${mm}/${dd} ${hh}시`;
   };
-  const dsBase = isLine
-    ? {fill: false, tension: 0.3, pointRadius: 1, borderWidth: 1.5}
-    : {borderWidth: 0};
+
+  const datasets = data.map((g, i) => {
+    const map = Object.fromEntries(g.data.map(h => [h.bucket, h]));
+    return {
+      label: g.name,
+      data: allBuckets.map(b => (map[b]?.uploads || 0) + (map[b]?.downloads || 0)),
+      borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
+      backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
+      borderWidth: 1.5,
+      tension: 0.3,
+      pointRadius: allBuckets.length > 48 ? 0 : 2,
+      fill: false,
+    };
+  });
+
+  destroyChart('hourly');
   charts.hourly = new Chart(document.getElementById('chartHourly'), {
-    type: isLine ? 'line' : 'bar',
-    data: {
-      labels: data.map(h => fmtBucket(h.bucket)),
-      datasets: [
-        {...dsBase, label: '업로드',   data: data.map(h => h.uploads),   backgroundColor: '#0d6efd99', borderColor: '#0d6efd'},
-        {...dsBase, label: '다운로드', data: data.map(h => h.downloads), backgroundColor: '#19875499', borderColor: '#198754'},
-      ],
-    },
+    type: 'line',
+    data: {labels: allBuckets.map(fmtBucket), datasets},
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: {mode: 'index', intersect: false},
       plugins: {
-        legend: {labels: {boxWidth: 12, font: {size: 11}}},
+        legend: {display: false},
         tooltip: {callbacks: {label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}건`}},
       },
       scales: {
@@ -192,6 +200,25 @@ async function loadHourly() {
       },
     },
   });
+
+  legendEl.innerHTML = data.map((g, i) => `
+    <div class="d-flex align-items-start gap-2 mb-2" style="cursor:pointer"
+         onclick="toggleHourlySeries(${i})" id="hourlyLegendItem${i}">
+      <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0;margin-top:8px"></span>
+      <div style="min-width:0">
+        <div class="small text-truncate" title="${g.name}">${g.name}</div>
+        ${g.telco ? `<div class="text-muted" style="font-size:0.7rem">${g.telco}</div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+function toggleHourlySeries(idx) {
+  if (!charts.hourly) return;
+  const visible = charts.hourly.isDatasetVisible(idx);
+  charts.hourly.setDatasetVisibility(idx, !visible);
+  charts.hourly.update();
+  const item = document.getElementById('hourlyLegendItem' + idx);
+  if (item) item.style.opacity = visible ? '0.3' : '1';
 }
 
 function _dashPeriodLabel() {

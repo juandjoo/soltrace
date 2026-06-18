@@ -87,7 +87,7 @@
           <button class="btn btn-sm btn-outline-primary" onclick="loadAll()"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
-      <!-- 1행: 사용량 2개 -->
+      <!-- 1행: 사용자별 사용량 -->
       <div class="row g-3 mb-3">
         <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
@@ -98,15 +98,16 @@
             </div>
           </div>
         </div>
-        <div class="col-lg-6">
-          <div class="card dash-card p-3 h-100">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-              <span class="fw-semibold small">시간대별 사용량 (UTC)</span>
-              <select class="form-select form-select-sm" id="hourlyGroupFilter" onchange="loadHourly()" style="width:auto;max-width:160px">
-                <option value="">전체 그룹</option>
-              </select>
+      </div>
+      <!-- 2행: 시간대별 사용량 (그룹별 선) -->
+      <div class="row g-3 mb-3">
+        <div class="col-12">
+          <div class="card dash-card p-3">
+            <div class="fw-semibold mb-2 small">시간대별 사용량 (UTC)</div>
+            <div class="d-flex gap-3">
+              <div style="position:relative;flex:1;min-width:0;height:250px"><canvas id="chartHourly"></canvas></div>
+              <div id="hourlyGroupLegend" style="width:155px;overflow-y:auto;max-height:250px;flex-shrink:0"></div>
             </div>
-            <div style="position:relative;height:230px"><canvas id="chartHourly"></canvas></div>
           </div>
         </div>
       </div>

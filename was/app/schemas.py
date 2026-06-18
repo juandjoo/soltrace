@@ -244,6 +244,12 @@ class HourlyPoint(BaseModel):
     bytes_in: int
     bytes_out: int
 
+class GroupHourlySeries(BaseModel):
+    group_id: int
+    name: str
+    telco: Optional[str] = None
+    data: List[HourlyPoint]
+
 class DashboardDetail(BaseModel):
     stats: DashboardStats
     timeseries: List[TimeSeriesPoint]
