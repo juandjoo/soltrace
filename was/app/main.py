@@ -17,7 +17,7 @@ from app import service_monitor as sm
 
 
 def _ensure_partitions(db):
-    """당월 + 향후 2개월 파티션이 없으면 생성 (create_all 경로 대응)."""
+    """과거 12개월 + 당월 + 향후 2개월 파티션이 없으면 생성."""
     is_partitioned = db.execute(text(
         "SELECT COUNT(*) FROM pg_class c "
         "JOIN pg_namespace n ON n.oid = c.relnamespace "
@@ -27,7 +27,8 @@ def _ensure_partitions(db):
         return
 
     now = datetime.now(timezone.utc)
-    for offset in range(3):
+    # -12 ~ +2 월 범위 (총 15개월)
+    for offset in range(-12, 3):
         total = now.month - 1 + offset
         year, month = now.year + total // 12, total % 12 + 1
         next_total = total + 1
@@ -142,6 +143,28 @@ def _run_migrations(conn):
           END IF;
         END $$
     """))
+
+
+# ftp_logs_default 재배치 (수동 1회 실행):
+# 과거 bulk import 데이터가 ftp_logs_default에 쌓인 경우,
+# _ensure_partitions로 월 파티션 생성 후 아래 SQL로 직접 이동한다.
+# 행 수에 따라 부하가 크므로 서비스 저시간대에 수동 실행 권장.
+#
+# DO $$
+# DECLARE r RECORD; s DATE; e DATE; pname TEXT;
+# BEGIN
+#   FOR r IN
+#     SELECT DISTINCT date_trunc('month', log_time)::date AS ms
+#     FROM ftp_logs_default
+#     WHERE log_time < date_trunc('month', now())
+#   LOOP
+#     s := r.ms; e := s + interval '1 month';
+#     pname := 'ftp_logs_' || to_char(s, 'YYYY_MM');
+#     EXECUTE format(
+#       'WITH d AS (DELETE FROM ftp_logs_default WHERE log_time>=%L AND log_time<%L RETURNING *)
+#        INSERT INTO ftp_logs SELECT * FROM d ON CONFLICT DO NOTHING', s, e);
+#   END LOOP;
+# END $$;
 
 
 @asynccontextmanager

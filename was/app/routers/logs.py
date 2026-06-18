@@ -18,7 +18,7 @@ from app.schemas import FtpLogResponse, LogListResponse
 
 router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
 
-DEFAULT_RANGE_DAYS = 30
+DEFAULT_RANGE_DAYS = 90
 
 
 def _apply_filters(
