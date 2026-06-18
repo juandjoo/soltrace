@@ -647,7 +647,7 @@ class SolTraceDaemon:
                 log.warning("Heartbeat failed")
 
     def _flush_startup_buffer(self) -> bool:
-        """시작 시 이전 실패 버퍼를 먼저 전송한다. 실패 시 False 반환."""
+        """시작 시 이전 실패 버퍼를 먼저 전송한다. WAS 미응답 시에도 True를 반환해 계속 실행한다."""
         if not self.buffer.exists():
             return True
         buffered = self.buffer.read_and_clear()
@@ -656,10 +656,10 @@ class SolTraceDaemon:
         if result:
             log.info("Startup buffer flushed: accepted=%d", result.get("accepted", 0))
             return True
-        # 버퍼 재전송 3회 실패 → 다시 저장 후 종료
+        # WAS 미응답 — 버퍼 유지 후 계속 실행 (점검/재기동 후 sender_loop에서 재시도)
         self.buffer.write(buffered)
-        log.critical("Failed to flush startup buffer after %d retries - safe shutdown", WasClient.RETRY_MAX)
-        return False
+        log.warning("Startup buffer resend failed (%d entries), will retry later", len(buffered))
+        return True
 
     def _safe_shutdown(self, unsent: list):
         """미전송 항목을 버퍼에 저장하고 위치를 확정한 뒤 종료한다."""
@@ -680,8 +680,40 @@ class SolTraceDaemon:
         self._exit_code = 1
         self.running = False
 
-    def _sender_loop(self):
+    def _wait_interruptible(self, seconds: float):
+        """self.running이 False가 되면 즉시 반환, 최대 seconds 동안 대기."""
+        end = time.monotonic() + seconds
         while self.running:
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(1.0, remaining))
+
+    def _sender_loop(self):
+        _BACKOFF_BASE = 30    # 첫 실패 후 30초
+        _BACKOFF_MAX  = 300   # 최대 5분
+
+        backoff = 0
+
+        while self.running:
+            # 버퍼에 미전송 항목이 있으면 우선 재시도
+            if self.buffer.exists():
+                buffered = self.buffer.read_and_clear()
+                if buffered:
+                    result = self.client.send_logs(buffered)
+                    if result:
+                        log.info("Buffer resent: accepted=%d", result.get("accepted", 0))
+                        self._consecutive_failures = 0
+                        self._error_message = None
+                        self._daemon_status = "running"
+                        backoff = 0
+                    else:
+                        self.buffer.write(buffered)
+                        backoff = min(backoff * 2 if backoff else _BACKOFF_BASE, _BACKOFF_MAX)
+                        log.warning("Buffer resend failed (%d entries), retry in %ds", len(buffered), backoff)
+                        self._wait_interruptible(backoff)
+                        continue
+
             _flush_stale_rnfr()
             # 로그 파일 폴링
             all_entries = []
@@ -709,27 +741,31 @@ class SolTraceDaemon:
                 self._consecutive_failures = 0
                 self._error_message = None
                 self._daemon_status = "running"
+                backoff = 0
                 for tailer in self.tailers:
                     tailer.commit()
                 log.debug("Sent %d entries: accepted=%d rejected=%d",
                           len(all_entries), result.get("accepted", 0), result.get("rejected", 0))
             else:
-                # 3회 모두 실패
+                # 3회 모두 실패 — 종료 대신 버퍼 저장 후 백오프
                 self._consecutive_failures += 1
-                self._error_message = f"전송 {WasClient.RETRY_MAX}회 실패 ({len(all_entries)}건 미전송)"
-                self._daemon_status = "error"
-                log.critical("Send failed after %d retries (%d entries)",
-                             WasClient.RETRY_MAX, len(all_entries))
-                self._safe_shutdown(all_entries)
-                return
+                backoff = min(backoff * 2 if backoff else _BACKOFF_BASE, _BACKOFF_MAX)
+                self._error_message = f"전송 실패 ({len(all_entries)}건 버퍼됨, {backoff}초 후 재시도)"
+                self._daemon_status = "degraded"
+                log.warning("Send failed after %d retries (%d entries), buffering, retry in %ds (consecutive=%d)",
+                            WasClient.RETRY_MAX, len(all_entries), backoff, self._consecutive_failures)
+                # 버퍼에 저장하고 tailer 위치 확정 (재시작 시 중복 방지)
+                self.buffer.write(all_entries)
+                for tailer in self.tailers:
+                    tailer.advance()
+                self._wait_interruptible(backoff)
 
     def start(self):
         self.running = True
         log.info("SolTrace daemon starting (WAS: %s)", self.cfg["was_url"])
 
-        # 시작 시 이전 버퍼 먼저 전송
-        if not self._flush_startup_buffer():
-            sys.exit(1)
+        # 시작 시 이전 버퍼 먼저 전송 (WAS 미응답 시에도 계속 실행)
+        self._flush_startup_buffer()
 
         self._register()
 
