@@ -182,6 +182,7 @@ async function loadUserHourly() {
     };
   });
 
+  document.getElementById('resetUserZoomBtn')?.classList.add('d-none');
   destroyChart('userHourly');
   charts.userHourly = new Chart(document.getElementById('chartUserHourly'), {
     type: 'line',
@@ -193,6 +194,13 @@ async function loadUserHourly() {
       plugins: {
         legend: {display: false},
         tooltip: {callbacks: {label: c => `${c.dataset.label}: ${fmtBytes(c.parsed.y)}`}},
+        zoom: {
+          zoom: {
+            drag: {enabled: true, backgroundColor: 'rgba(13,110,253,0.08)', borderColor: 'rgba(13,110,253,0.4)', borderWidth: 1},
+            mode: 'x',
+            onZoomComplete: () => document.getElementById('resetUserZoomBtn')?.classList.remove('d-none'),
+          },
+        },
       },
       scales: {
         x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
@@ -207,6 +215,11 @@ async function loadUserHourly() {
       <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
       <div class="small text-truncate" style="min-width:0" title="${u.username}">${u.username}</div>
     </div>`).join('');
+}
+
+function resetUserHourlyZoom() {
+  charts.userHourly?.resetZoom();
+  document.getElementById('resetUserZoomBtn')?.classList.add('d-none');
 }
 
 function focusUserSeries(idx) {
@@ -271,6 +284,7 @@ async function loadHourly() {
     };
   });
 
+  document.getElementById('resetHourlyZoomBtn')?.classList.add('d-none');
   destroyChart('hourly');
   charts.hourly = new Chart(document.getElementById('chartHourly'), {
     type: 'line',
@@ -282,6 +296,13 @@ async function loadHourly() {
       plugins: {
         legend: {display: false},
         tooltip: {callbacks: {label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}건`}},
+        zoom: {
+          zoom: {
+            drag: {enabled: true, backgroundColor: 'rgba(13,110,253,0.08)', borderColor: 'rgba(13,110,253,0.4)', borderWidth: 1},
+            mode: 'x',
+            onZoomComplete: () => document.getElementById('resetHourlyZoomBtn')?.classList.remove('d-none'),
+          },
+        },
       },
       scales: {
         x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
@@ -296,6 +317,11 @@ async function loadHourly() {
       <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
       <div class="small text-truncate" style="min-width:0" title="${g.name}">${g.name}</div>
     </div>`).join('');
+}
+
+function resetHourlyZoom() {
+  charts.hourly?.resetZoom();
+  document.getElementById('resetHourlyZoomBtn')?.classList.add('d-none');
 }
 
 let _hourlyFocusIdx = null;
