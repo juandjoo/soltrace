@@ -156,7 +156,13 @@ async function loadUserHourly() {
     return;
   }
 
-  const bucketSet = new Set(data.flatMap(u => u.data.map(h => h.bucket)));
+  const active = data.filter(u => u.data.some(h => (h.bytes_in || 0) + (h.bytes_out || 0) > 0));
+  if (!active.length) {
+    destroyChart('userHourly');
+    legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
+    return;
+  }
+  const bucketSet = new Set(active.flatMap(u => u.data.map(h => h.bucket)));
   const allBuckets = [...bucketSet].sort();
 
   const fmtBucket = b => {
@@ -168,7 +174,7 @@ async function loadUserHourly() {
     return `${mm}/${dd} ${hh}시`;
   };
 
-  const datasets = data.map((u, i) => {
+  const datasets = active.map((u, i) => {
     const map = Object.fromEntries(u.data.map(h => [h.bucket, h]));
     return {
       label: u.username,
@@ -209,7 +215,7 @@ async function loadUserHourly() {
     },
   });
 
-  legendEl.innerHTML = data.map((u, i) => `
+  legendEl.innerHTML = active.map((u, i) => `
     <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer"
          onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}">
       <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
@@ -258,7 +264,13 @@ async function loadHourly() {
     return;
   }
 
-  const bucketSet = new Set(data.flatMap(g => g.data.map(h => h.bucket)));
+  const active = data.filter(g => g.data.some(h => (h.uploads || 0) + (h.downloads || 0) > 0));
+  if (!active.length) {
+    destroyChart('hourly');
+    legendEl.innerHTML = '<div class="text-muted small">그룹 데이터 없음</div>';
+    return;
+  }
+  const bucketSet = new Set(active.flatMap(g => g.data.map(h => h.bucket)));
   const allBuckets = [...bucketSet].sort();
 
   const fmtBucket = b => {
@@ -270,7 +282,7 @@ async function loadHourly() {
     return `${mm}/${dd} ${hh}시`;
   };
 
-  const datasets = data.map((g, i) => {
+  const datasets = active.map((g, i) => {
     const map = Object.fromEntries(g.data.map(h => [h.bucket, h]));
     return {
       label: g.name,
@@ -311,7 +323,7 @@ async function loadHourly() {
     },
   });
 
-  legendEl.innerHTML = data.map((g, i) => `
+  legendEl.innerHTML = active.map((g, i) => `
     <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer"
          onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}">
       <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
