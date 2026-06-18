@@ -151,7 +151,7 @@ async function loadUserHourly() {
       borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
       backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
       borderWidth: 1.5,
-      tension: 0.3,
+      tension: 0,
       pointRadius: allBuckets.length > 48 ? 0 : 2,
       fill: false,
     };
@@ -240,7 +240,7 @@ async function loadHourly() {
       borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
       backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
       borderWidth: 1.5,
-      tension: 0.3,
+      tension: 0,
       pointRadius: allBuckets.length > 48 ? 0 : 2,
       fill: false,
     };
