@@ -5,10 +5,8 @@
 import json
 import logging
 import re
-import smtplib
 import urllib.request
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 from html import escape as _esc
 
 from sqlalchemy import text
@@ -26,9 +24,7 @@ _METRIC_LABEL = {
     "cwd_fail_spike": "CWD 실패 급증",
 }
 _NOTIFY_KEYS = [
-    "notify_smtp_host", "notify_smtp_port", "notify_smtp_user",
-    "notify_smtp_password", "notify_smtp_from", "notify_smtp_tls",
-    "notify_email_to", "notify_webhook_url",
+    "notify_webhook_url",
     "notify_hms_url",
 ]
 _HTTP_RE = re.compile(r"^https?://", re.IGNORECASE)
@@ -78,15 +74,8 @@ def _load_cfg(db) -> dict:
         return rows.get(key) or default
 
     return {
-        "smtp_host":     _g("notify_smtp_host",     settings.smtp_host),
-        "smtp_port":     int(_g("notify_smtp_port", str(settings.smtp_port))),
-        "smtp_user":     _g("notify_smtp_user",     settings.smtp_user),
-        "smtp_password": _g("notify_smtp_password", settings.smtp_password),
-        "smtp_from":     _g("notify_smtp_from",     settings.smtp_from),
-        "smtp_tls":      _g("notify_smtp_tls", "true" if settings.smtp_tls else "false").lower() != "false",
-        "email_to":      _g("notify_email_to",      settings.alert_email_to),
-        "webhook_url":   _g("notify_webhook_url",   settings.alert_webhook_url),
-        "hms_url":       _g("notify_hms_url",       settings.alert_hms_url),
+        "webhook_url": _g("notify_webhook_url", settings.alert_webhook_url),
+        "hms_url":     _g("notify_hms_url",     settings.alert_hms_url),
     }
 
 
@@ -102,32 +91,8 @@ def is_muted(db) -> bool:
 
 def channels_configured(db) -> bool:
     cfg = _load_cfg(db)
-    recipients = [a.strip() for a in cfg["email_to"].split(",") if a.strip()]
-    email_ok = bool(cfg["smtp_host"] and cfg["smtp_from"] and recipients)
-    return email_ok or bool(cfg["webhook_url"]) or bool(cfg["hms_url"])
+    return bool(cfg["webhook_url"]) or bool(cfg["hms_url"])
 
-
-def _send_email(alerts: list[dict], cfg: dict, db=None) -> bool:
-    recipients = [a.strip() for a in cfg["email_to"].split(",") if a.strip()]
-    if not (cfg["smtp_host"] and cfg["smtp_from"] and recipients):
-        return False
-    lines = [build_summary(a) for a in alerts]
-    msg = EmailMessage()
-    is_test = any(a.get("test") for a in alerts)
-    crit = sum(1 for a in alerts if a["severity"] == "critical")
-    prefix = "[테스트] " if is_test else ""
-    msg["Subject"] = f"{prefix}[SolTrace] 서비스 영향 감지 {len(alerts)}건" + (f" (심각 {crit})" if crit else "")
-    msg["From"] = cfg["smtp_from"]
-    msg["To"] = ", ".join(recipients)
-    msg.set_content("FTP 서버 부하로 인한 서비스 영향이 감지되었습니다.\n\n" + "\n".join(lines))
-    with smtplib.SMTP(cfg["smtp_host"], cfg["smtp_port"], timeout=10) as srv:
-        if cfg["smtp_tls"]:
-            srv.starttls()
-        if cfg["smtp_user"]:
-            srv.login(cfg["smtp_user"], cfg["smtp_password"])
-        srv.send_message(msg)
-    log.info("Alert email sent: %d alert(s) → %s", len(alerts), msg["To"])
-    return True
 
 
 def _slack_payload(alerts: list[dict]) -> dict:
@@ -259,7 +224,6 @@ def _send_hms(alerts: list[dict], cfg: dict, db=None) -> bool:
 
 
 _CHANNEL_MAP = {
-    "email":   _send_email,
     "webhook": _send_webhook,
     "hms":     _send_hms,
 }

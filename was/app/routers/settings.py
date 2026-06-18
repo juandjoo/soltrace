@@ -131,23 +131,12 @@ def update_allowed_ips(
     set_office_ips(db, ips)
 
 
-_PW_MASK = "***"
-
-
 @router.get("/notify", response_model=NotifySettings)
 def get_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
     def _g(key, default=""):
         return get_config(db, key) or default
-    pw_stored = bool(get_config(db, "notify_smtp_password"))
     return NotifySettings(
         webhook_url=_g("notify_webhook_url"),
-        smtp_host=_g("notify_smtp_host"),
-        smtp_port=int(_g("notify_smtp_port", "587")),
-        smtp_tls=_g("notify_smtp_tls", "true").lower() != "false",
-        smtp_user=_g("notify_smtp_user"),
-        smtp_password=_PW_MASK if pw_stored else "",   # 평문 미노출
-        smtp_from=_g("notify_smtp_from"),
-        email_to=_g("notify_email_to"),
         hms_url=_g("notify_hms_url"),
     )
 
@@ -161,22 +150,8 @@ def save_notify(body: NotifySettings, db: Session = Depends(get_db), _: str = De
                 validate_webhook_url(url_field)
             except ValueError as e:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{label} {e}")
-
-    pairs = {
-        "notify_webhook_url":  body.webhook_url,
-        "notify_smtp_host":    body.smtp_host,
-        "notify_smtp_port":    str(body.smtp_port),
-        "notify_smtp_tls":     "true" if body.smtp_tls else "false",
-        "notify_smtp_user":    body.smtp_user,
-        "notify_smtp_from":    body.smtp_from,
-        "notify_email_to":     body.email_to,
-        "notify_hms_url":      body.hms_url,
-    }
-    for k, v in pairs.items():
+    for k, v in {"notify_webhook_url": body.webhook_url, "notify_hms_url": body.hms_url}.items():
         set_config(db, k, v)
-    # 마스크값이면 기존 비밀번호 유지, 변경된 경우만 저장
-    if body.smtp_password and body.smtp_password != _PW_MASK:
-        set_config(db, "notify_smtp_password", body.smtp_password)
 
 
 @router.post("/notify/test", status_code=status.HTTP_204_NO_CONTENT)
@@ -185,10 +160,10 @@ def test_notify(
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    """channel: 'all' | 'webhook' | 'hms' | 'email'"""
+    """channel: 'all' | 'webhook' | 'hms'"""
     from datetime import datetime, timezone
     from app import notifier
-    if channel not in ("all", "webhook", "hms", "email"):
+    if channel not in ("all", "webhook", "hms"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"알 수 없는 채널: {channel!r}")
     dummy = [{
         "device_id": None,

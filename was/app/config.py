@@ -31,19 +31,8 @@ class Settings(BaseSettings):
     alert_throughput_drop: float = 0.5     # baseline 대비 throughput 하락 비율 (50%↓)
 
     # 알림 채널 (미설정 시 해당 채널 비활성)
-    smtp_host: str = ""
-    smtp_port: int = 587
-    smtp_user: str = ""
-    smtp_password: str = ""
-    smtp_from: str = ""
-    smtp_tls: bool = True
-    alert_email_to: str = ""               # 쉼표 구분 수신자
     alert_webhook_url: str = ""            # POST(JSON) 발송 대상
     alert_hms_url: str = ""               # HMS 메일 게이트웨이 URL
-
-    @property
-    def alert_email_recipients(self) -> list[str]:
-        return [a.strip() for a in self.alert_email_to.split(",") if a.strip()]
 
     @field_validator("secret_key")
     @classmethod

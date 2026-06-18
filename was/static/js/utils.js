@@ -1,5 +1,9 @@
 const API = '/api/v1';
 let token = localStorage.getItem('soltrace_token');
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 let charts = {};
 let allGroups = [];
 let allTelcos = [];

@@ -153,14 +153,6 @@ async function loadNotify() {
   if (!d) return;
   document.getElementById('notifyWebhookUrl').value = d.webhook_url || '';
   document.getElementById('notifyHmsUrl').value     = d.hms_url || '';
-  document.getElementById('notifySmtpHost').value   = d.smtp_host || '';
-  document.getElementById('notifySmtpPort').value   = d.smtp_port || 587;
-  document.getElementById('notifySmtpUser').value   = d.smtp_user || '';
-  document.getElementById('notifySmtpPassword').value = d.smtp_password || '';
-  document.getElementById('notifySmtpFrom').value   = d.smtp_from || '';
-  document.getElementById('notifyEmailTo').value    = d.email_to || '';
-  document.getElementById('notifySmtpTls').checked  = d.smtp_tls !== false;
-  document.getElementById('notifySmtpPassword').placeholder = d.smtp_password === '***' ? '설정됨 (변경 시 새 값 입력)' : '';
   if (m) _applyMuteState(m.muted);
 }
 
@@ -179,15 +171,8 @@ async function toggleMute(muted) {
 
 async function saveNotify() {
   const body = {
-    webhook_url:   document.getElementById('notifyWebhookUrl').value.trim(),
-    hms_url:       document.getElementById('notifyHmsUrl').value.trim(),
-    smtp_host:     document.getElementById('notifySmtpHost').value.trim(),
-    smtp_port:     parseInt(document.getElementById('notifySmtpPort').value) || 587,
-    smtp_tls:      document.getElementById('notifySmtpTls').checked,
-    smtp_user:     document.getElementById('notifySmtpUser').value.trim(),
-    smtp_password: document.getElementById('notifySmtpPassword').value,
-    smtp_from:     document.getElementById('notifySmtpFrom').value.trim(),
-    email_to:      document.getElementById('notifyEmailTo').value.trim(),
+    webhook_url: document.getElementById('notifyWebhookUrl').value.trim(),
+    hms_url:     document.getElementById('notifyHmsUrl').value.trim(),
   };
   const msg = document.getElementById('notifyMsg');
   try {
@@ -200,7 +185,7 @@ async function saveNotify() {
 }
 
 async function testNotify(channel = 'all') {
-  const label = {webhook:'웹훅', hms:'HMS', email:'이메일', all:'전체'}[channel] || channel;
+  const label = {webhook:'웹훅', hms:'HMS', all:'전체'}[channel] || channel;
   const msg = document.getElementById('notifyMsg');
   msg.innerHTML = `<span class="text-muted">${label} 테스트 발송 중...</span>`;
   try {

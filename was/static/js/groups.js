@@ -26,7 +26,7 @@ async function loadGroups() {
   const filterEl = document.getElementById('groupFilter');
   const filterKeys = [null, ...telcoKeys.filter(k => k !== '\x00'), '\x00'];
   filterEl.innerHTML = filterKeys.map(key => {
-    const label = key === null ? '전체' : key === '\x00' ? '미지정' : key;
+    const label = key === null ? '전체' : key === '\x00' ? '미지정' : esc(key);
     const icon  = key === null ? 'bi-list-ul' : key === '\x00' ? 'bi-dash-circle' : 'bi-broadcast-pin-fill';
     const active = (_groupFilter === (key ?? '__all__')) ? 'active' : '';
     return `<button class="btn btn-sm btn-outline-secondary ${active}" data-filter="${key ?? '__all__'}" onclick="filterGroups(this)"><i class="bi ${icon} me-1"></i>${label}</button>`;
@@ -64,12 +64,12 @@ function renderGroupPage(page) {
   const pageIds = new Set(pageItems.map(g => g.id));
 
   const groupRowHtml = g => `
-      <td class="fw-semibold" style="word-break:break-word">${g.name}</td>
+      <td class="fw-semibold" style="word-break:break-word">${esc(g.name)}</td>
       <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
-      <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer || '<span class="text-muted">-</span>'}</td>
-      <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains || '-'}</td>
-      <td class="small" style="word-break:break-word">${g.application || '<span class="text-muted">-</span>'}</td>
-      <td class="small text-muted" style="word-break:break-word">${g.description || '-'}</td>
+      <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer ? esc(g.customer) : '<span class="text-muted">-</span>'}</td>
+      <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains ? esc(g.upload_domains) : '-'}</td>
+      <td class="small" style="word-break:break-word">${g.application ? esc(g.application) : '<span class="text-muted">-</span>'}</td>
+      <td class="small text-muted" style="word-break:break-word">${g.description ? esc(g.description) : '-'}</td>
       <td><div class="d-flex gap-1 justify-content-end">
         <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
         <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
@@ -82,7 +82,7 @@ function renderGroupPage(page) {
     if (!list.length) return '';
     const total = list.reduce((s, g) => s + g.device_count, 0);
     const headerLabel = telco
-      ? `<i class="bi bi-broadcast-pin-fill me-2 text-brand"></i><span class="fw-semibold">${telco}</span>`
+      ? `<i class="bi bi-broadcast-pin-fill me-2 text-brand"></i><span class="fw-semibold">${esc(telco)}</span>`
       : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-semibold text-muted">통신사 미지정</span>`;
     const spacer = isFirst ? '' : `<tr><td colspan="${GROUP_COLS}" style="height:10px;padding:0;background:#f5f7fa;border-top:2px solid #dee2e6"></td></tr>`;
     isFirst = false;

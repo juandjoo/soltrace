@@ -53,9 +53,9 @@ function _initGroupTooltip() {
     const g = _logGroupMap[sel.value];
     if (!g || (!g.application && !g.description && !g.customer)) { tip.classList.add('d-none'); return; }
     const rows = [];
-    if (g.application) rows.push(`<span class="text-muted">서비스:</span> <b>${g.application}</b>`);
-    if (g.customer)    rows.push(`<span class="text-muted">고객사:</span> ${g.customer}`);
-    if (g.description) rows.push(`<span class="text-muted">설명:</span> ${g.description}`);
+    if (g.application) rows.push(`<span class="text-muted">서비스:</span> <b>${esc(g.application)}</b>`);
+    if (g.customer)    rows.push(`<span class="text-muted">고객사:</span> ${esc(g.customer)}`);
+    if (g.description) rows.push(`<span class="text-muted">설명:</span> ${esc(g.description)}`);
     tip.innerHTML = rows.join('<br>');
     tip.classList.remove('d-none');
   });
@@ -196,11 +196,11 @@ async function searchLogs(page) {
     const timeDisplay = l.transfer_time && l.transfer_time > 0 ? l.transfer_time.toFixed(1)+'s' : '-';
     return `<tr>
       <td class="small text-center text-nowrap">${dt}</td>
-      <td class="small text-center text-truncate" style="overflow:hidden;font-family:monospace" title="${hostname}">${deviceIp}</td>
-      <td class="small text-center text-truncate" style="overflow:hidden">${l.username||'-'}</td>
-      <td class="small text-center text-muted text-nowrap">${l.client_ip||'-'}</td>
-      <td class="text-center text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||action}</span></td>
-      <td class="small" style="word-break:break-all;overflow:hidden" title="${filePath.replace(/"/g,'&quot;')}">${fileDisplay||'-'}</td>
+      <td class="small text-center text-truncate" style="overflow:hidden;font-family:monospace" title="${esc(hostname)}">${esc(deviceIp)}</td>
+      <td class="small text-center text-truncate" style="overflow:hidden">${esc(l.username||'-')}</td>
+      <td class="small text-center text-muted text-nowrap">${esc(l.client_ip||'-')}</td>
+      <td class="text-center text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||esc(action)}</span></td>
+      <td class="small" style="word-break:break-all;overflow:hidden" title="${esc(filePath)}">${esc(fileDisplay||'-')}</td>
       <td class="size-val small text-center text-nowrap">${sizeDisplay}</td>
       <td class="small text-center text-nowrap">${timeDisplay}</td>
       <td class="text-center"><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>

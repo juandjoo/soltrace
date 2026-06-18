@@ -13,7 +13,7 @@ function daemonBadge(s, errMsg) {
     unknown:  {cls:'light',    icon:'bi-question-circle', label:'미확인'},
   };
   const c = cfg[s] || cfg.unknown;
-  const tip = errMsg ? ` title="${errMsg.replace(/"/g,'&quot;')}" data-bs-toggle="tooltip"` : '';
+  const tip = errMsg ? ` title="${esc(errMsg)}" data-bs-toggle="tooltip"` : '';
   return `<span class="badge bg-${c.cls} text-${s==='unknown'?'dark':''}"${tip}><i class="bi ${c.icon} me-1"></i>${c.label}</span>`;
 }
 
@@ -54,10 +54,10 @@ async function loadDevices() {
 
     return `<tr class="${dStatus==='error'?'table-danger-subtle':''}">
       <td>
-        <strong>${d.hostname}</strong>
-        <div class="text-muted" style="font-size:11px">${d.daemon_version||''}</div>
+        <strong>${esc(d.hostname)}</strong>
+        <div class="text-muted" style="font-size:11px">${esc(d.daemon_version||'')}</div>
       </td>
-      <td class="text-center text-muted small">${d.ip_address||'-'}</td>
+      <td class="text-center text-muted small">${esc(d.ip_address||'-')}</td>
       <td class="text-center">${statusBadge(d.status)}</td>
       <td class="text-center">
         ${daemonBadge(dStatus, errMsg)}
@@ -75,13 +75,13 @@ async function loadDevices() {
         ${d.queue_size > 0 ? `<span class="badge bg-info text-dark ms-1">Q:${d.queue_size}</span>` : ''}
       </td>
       <td class="text-center text-muted small">${timeAgo(d.last_heartbeat)}</td>
-      <td>${d.groups.map(g=>`<span class="badge bg-light text-dark border me-1">${g.name}</span>`).join('')||'<span class="text-muted small">-</span>'}</td>
+      <td>${d.groups.map(g=>`<span class="badge bg-light text-dark border me-1">${esc(g.name)}</span>`).join('')||'<span class="text-muted small">-</span>'}</td>
       <td class="text-end text-nowrap">
         ${d.status === 'pending' ? `<button class="btn btn-xs btn-success me-1" onclick="confirmDevice(${d.id})">확인</button>` : ''}
         ${d.status === 'confirmed' ? `<button class="btn btn-xs btn-warning me-1" onclick="disableDevice(${d.id})">비활성</button>` : ''}
         ${d.status === 'disabled' ? `<button class="btn btn-xs btn-success me-1" onclick="enableDevice(${d.id})">활성화</button>` : ''}
         <button class="btn btn-xs btn-outline-info me-1" onclick="showDeviceStatus(${d.id})"><i class="bi bi-activity"></i></button>
-        <button class="btn btn-xs btn-outline-secondary me-1" onclick="openDeviceGroups(${d.id},'${d.hostname}',${JSON.stringify(d.groups.map(g=>g.id))})">그룹</button>
+        <button class="btn btn-xs btn-outline-secondary me-1" onclick="openDeviceGroups(${d.id})">그룹</button>
         <button class="btn btn-xs ${d.update_requested ? 'btn-warning' : 'btn-outline-success'} me-1" onclick="requestDaemonUpdate(${d.id})" title="데몬 업데이트"><i class="bi bi-arrow-repeat"></i></button>
         <button class="btn btn-xs btn-outline-danger" onclick="deleteDevice(${d.id})"><i class="bi bi-trash"></i></button>
       </td>
@@ -99,7 +99,7 @@ function showDeviceStatus(id) {
   document.getElementById('dsHostname').textContent = d.hostname;
   const rows = [
     ['데몬 상태',       daemonBadge(d.daemon_status||'unknown', d.error_message)],
-    ['에러 메시지',     d.error_message ? `<span class="text-danger">${d.error_message}</span>` : '-'],
+    ['에러 메시지',     d.error_message ? `<span class="text-danger">${esc(d.error_message)}</span>` : '-'],
     ['마지막 전송',     d.last_send_time ? new Date(d.last_send_time).toLocaleString('ko-KR') : '-'],
     ['연속 실패',       d.consecutive_failures != null ? `${d.consecutive_failures}회` : '-'],
     ['버퍼 대기',       d.buffer_lines != null ? `${d.buffer_lines.toLocaleString()}건` : '-'],
@@ -109,10 +109,10 @@ function showDeviceStatus(id) {
     ['디스크 여유',     d.disk_free_gb != null ? `${d.disk_free_gb.toFixed(2)} GB` : '-'],
     ['데몬 가동시간',   fmtUptime(d.daemon_uptime)],
     ['마지막 하트비트', d.last_heartbeat ? new Date(d.last_heartbeat).toLocaleString('ko-KR') : '-'],
-    ['OS',              d.os_info || '-'],
-    ['커널',            d.kernel_version || '-'],
-    ['proftpd',         d.proftpd_version || '-'],
-    ['데몬 버전',       d.daemon_version || '-'],
+    ['OS',              esc(d.os_info || '-')],
+    ['커널',            esc(d.kernel_version || '-')],
+    ['proftpd',         esc(d.proftpd_version || '-')],
+    ['데몬 버전',       esc(d.daemon_version || '-')],
   ];
   document.getElementById('dsBody').innerHTML = `
     <table class="table table-sm">
@@ -150,9 +150,12 @@ async function requestDaemonUpdate(id) {
   } catch(e) { alert('업데이트 요청 실패: ' + e.message); }
 }
 
-async function openDeviceGroups(deviceId, hostname, currentGroupIds) {
+async function openDeviceGroups(deviceId) {
+  const d = _deviceCache.find(x => x.id === deviceId);
+  if (!d) return;
   document.getElementById('dgDeviceId').value = deviceId;
-  document.getElementById('dgDeviceName').textContent = hostname;
+  document.getElementById('dgDeviceName').textContent = d.hostname;
+  const currentGroupIds = d.groups.map(g => g.id);
   const groups = await api('GET', '/groups');
   if (!groups) return;
   allGroups = groups;
@@ -162,8 +165,8 @@ async function openDeviceGroups(deviceId, hostname, currentGroupIds) {
       <input class="form-check-input" type="checkbox" id="dgg${g.id}" value="${g.id}"
         ${currentGroupIds.includes(g.id)?'checked':''}>
       <label class="form-check-label" for="dgg${g.id}">
-        ${g.telco ? `<span class="badge bg-info text-dark me-1">${g.telco}</span>` : ''}
-        ${g.name}
+        ${g.telco ? `<span class="badge bg-info text-dark me-1">${esc(g.telco)}</span>` : ''}
+        ${esc(g.name)}
       </label>
     </div>
   `).join('');
