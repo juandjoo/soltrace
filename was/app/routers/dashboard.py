@@ -317,11 +317,11 @@ def get_service_health(
         dev_open[r.device_id] = dev_open.get(r.device_id, 0) + 1
 
     # 기준: 모든 confirmed 장비 (기간 내 활동 없어도 표시)
-    dev_filter = "AND d.id = :did" if device_id else ""
+    dev_f_devices = "AND d.id = :did" if device_id else ""
     all_devices = db.execute(text(f"""
         SELECT d.id, d.hostname, d.daemon_status
         FROM devices d
-        WHERE d.status = 'confirmed' {dev_filter}
+        WHERE d.status = 'confirmed' {dev_f_devices}
         ORDER BY d.id
     """), params).fetchall()
 

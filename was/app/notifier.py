@@ -165,7 +165,7 @@ def _build_hms_body(alerts: list[dict]) -> str:
         f"<td style='padding:4px 8px'>{_esc(_METRIC_LABEL.get(a['metric'], a['metric']))}</td>"
         f"<td style='padding:4px 8px'>{_esc(_SEVERITY_LABEL.get(a['severity'], a['severity']))}</td>"
         f"<td style='padding:4px 8px'>{_esc(_fmt_metric(a['metric'], a['value']))}</td>"
-        f"<td style='padding:4px 8px'>{a['bucket']:%Y-%m-%d %H:%M} UTC</td></tr>"
+        f"<td style='padding:4px 8px'>{a['bucket'].astimezone(_KST):%Y-%m-%d %H:%M} KST</td></tr>"
         for a in alerts
     )
     return (

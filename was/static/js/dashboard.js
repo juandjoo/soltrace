@@ -31,7 +31,7 @@ const HEALTH_STATUS = {
 const METRIC_LABEL = {fail_rate:'전송 실패율', throughput:'전송 속도', login_fail_rate:'로그인 실패율', cwd_fail_spike:'CWD 실패 급증'};
 
 function fmtPct(v) { return v == null ? '-' : (v*100).toFixed(1) + '%'; }
-function fmtMbps(v) { return v == null ? '-' : (v / 1024 / 1024).toFixed(2) + ' MB/s'; }
+function fmtBytesPerSec(v) { return v == null ? '-' : (v / 1024 / 1024).toFixed(2) + ' MB/s'; }
 function fmtTime(s) {
   if (!s) return '-';
   const d = new Date(s);
@@ -40,7 +40,7 @@ function fmtTime(s) {
     String(d.getDate()).padStart(2,'0')].join('-') + ' ' +
     [String(d.getHours()).padStart(2,'0'), String(d.getMinutes()).padStart(2,'0')].join(':');
 }
-function fmtMetricVal(metric, v) { return metric === 'throughput' ? fmtMbps(v) : fmtPct(v); }
+function fmtMetricVal(metric, v) { return metric === 'throughput' ? fmtBytesPerSec(v) : fmtPct(v); }
 
 function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
