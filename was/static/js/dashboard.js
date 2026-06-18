@@ -77,6 +77,7 @@ function dashCustom() {
 function loadAll() {
   loadDashboard();
   loadServiceHealth();
+  loadUserHourly();
   loadHourly();
 }
 
@@ -114,35 +115,95 @@ async function loadDashboard() {
     scales: {x: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}}},
   };
 
-  const PALETTE = ['#0d6efd','#198754','#fd7e14','#6f42c1','#dc3545','#20c997','#0dcaf0','#ffc107','#e83e8c','#6c757d'];
+}
 
-  destroyChart('topUsers');
-  // 내림차순 정렬 (많은 사용자 → 시계방향 첫 슬라이스)
-  const tu = (data.top_users || []).slice().sort((a, b) => b.bytes - a.bytes).slice(0, 8);
-  const totalUserBytes = tu.reduce((s, u) => s + (u.bytes || 0), 0);
-  charts.topUsers = new Chart(document.getElementById('chartTopUsers'), {
-    type: 'doughnut',
-    data: {labels: tu.map(u => u.label), datasets: [{data: tu.map(u => u.bytes), backgroundColor: PALETTE, hoverOffset: 12, borderWidth: 1}]},
+let _userHourlyFocusIdx = null;
+
+async function loadUserHourly() {
+  _userHourlyFocusIdx = null;
+  const data = await api('GET', `/dashboard/users-hourly?${_dashDateParams()}`);
+  if (!data) return;
+
+  const legendEl = document.getElementById('userHourlyLegend');
+  if (!data.length) {
+    destroyChart('userHourly');
+    legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
+    return;
+  }
+
+  const bucketSet = new Set(data.flatMap(u => u.data.map(h => h.bucket)));
+  const allBuckets = [...bucketSet].sort();
+
+  const fmtBucket = b => {
+    const d = new Date(b);
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    if (allBuckets.length <= 25) return hh + '시';
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    return `${mm}/${dd} ${hh}시`;
+  };
+
+  const datasets = data.map((u, i) => {
+    const map = Object.fromEntries(u.data.map(h => [h.bucket, h]));
+    return {
+      label: u.username,
+      data: allBuckets.map(b => (map[b]?.bytes_in || 0) + (map[b]?.bytes_out || 0)),
+      borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
+      backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
+      borderWidth: 1.5,
+      tension: 0.3,
+      pointRadius: allBuckets.length > 48 ? 0 : 2,
+      fill: false,
+    };
+  });
+
+  destroyChart('userHourly');
+  charts.userHourly = new Chart(document.getElementById('chartUserHourly'), {
+    type: 'line',
+    data: {labels: allBuckets.map(fmtBucket), datasets},
     options: {
-      responsive: true, maintainAspectRatio: false,
-      rotation: 0,         // Chart.js 4: 0 = 12시 방향 시작
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {mode: 'index', intersect: false},
       plugins: {
         legend: {display: false},
-        tooltip: {callbacks: {label: c => `${c.label}: ${fmtBytes(c.parsed)}`}},
-        centerText: totalUserBytes > 0 ? {line1: fmtBytes(totalUserBytes), line2: '총 사용량', size: 13} : null,
+        tooltip: {callbacks: {label: c => `${c.dataset.label}: ${fmtBytes(c.parsed.y)}`}},
+      },
+      scales: {
+        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
+        y: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}},
       },
     },
   });
-  // 커스텀 범례: 이름(상) + 용량(하) 2줄 레이아웃
-  const legendEl = document.getElementById('topUsersLegend');
-  legendEl.innerHTML = tu.map((u, i) => `
-    <li class="mb-1" style="display:grid;grid-template-columns:10px 1fr;column-gap:5px;align-items:start;min-width:0">
-      <span style="width:10px;height:10px;border-radius:2px;background:${PALETTE[i]};margin-top:2px;flex-shrink:0"></span>
-      <div style="min-width:0">
-        <div class="text-truncate" style="font-size:0.78rem;line-height:1.3" title="${u.label}">${u.label}</div>
-        <div class="text-muted" style="font-size:0.7rem;line-height:1.2">${fmtBytes(u.bytes)}</div>
-      </div>
-    </li>`).join('');
+
+  legendEl.innerHTML = data.map((u, i) => `
+    <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer"
+         onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}">
+      <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
+      <div class="small text-truncate" style="min-width:0" title="${u.username}">${u.username}</div>
+    </div>`).join('');
+}
+
+function focusUserSeries(idx) {
+  if (!charts.userHourly) return;
+  const total = charts.userHourly.data.datasets.length;
+  if (_userHourlyFocusIdx === idx) {
+    _userHourlyFocusIdx = null;
+    for (let i = 0; i < total; i++) {
+      charts.userHourly.setDatasetVisibility(i, true);
+      const el = document.getElementById('userHourlyLegendItem' + i);
+      if (el) el.style.opacity = '1';
+    }
+  } else {
+    _userHourlyFocusIdx = idx;
+    for (let i = 0; i < total; i++) {
+      const show = i === idx;
+      charts.userHourly.setDatasetVisibility(i, show);
+      const el = document.getElementById('userHourlyLegendItem' + i);
+      if (el) el.style.opacity = show ? '1' : '0.3';
+    }
+  }
+  charts.userHourly.update();
 }
 
 const HOURLY_PALETTE = ['#0d6efd','#198754','#dc3545','#fd7e14','#6f42c1','#20c997','#0dcaf0','#ffc107','#e83e8c','#6c757d'];

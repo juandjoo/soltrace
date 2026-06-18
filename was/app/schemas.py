@@ -250,6 +250,10 @@ class GroupHourlySeries(BaseModel):
     telco: Optional[str] = None
     data: List[HourlyPoint]
 
+class UserHourlySeries(BaseModel):
+    username: str
+    data: List[HourlyPoint]
+
 class DashboardDetail(BaseModel):
     stats: DashboardStats
     timeseries: List[TimeSeriesPoint]

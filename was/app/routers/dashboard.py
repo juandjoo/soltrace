@@ -10,7 +10,7 @@ from app.deps import require_admin
 from app.models import Device, DeviceGroup, FtpLog, Group
 from app.schemas import (
     DashboardDetail, DashboardStats, TimeSeriesPoint, TopItem,
-    HourlyPoint, GroupHourlySeries,
+    HourlyPoint, GroupHourlySeries, UserHourlySeries,
     ServiceHealthResponse, ServiceHealthDevice, ServiceAlertItem, ServiceTrendPoint, FailTotals,
 )
 
@@ -210,6 +210,57 @@ def get_hourly(
             bytes_in=r.bytes_in, bytes_out=r.bytes_out,
         ))
     return [GroupHourlySeries(**v) for v in groups.values()]
+
+
+@router.get("/users-hourly", response_model=list[UserHourlySeries])
+def get_users_hourly(
+    days: int = Query(default=7, ge=1, le=366),
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    now = datetime.now(timezone.utc)
+    if start_date and end_date:
+        since = start_date if start_date.tzinfo else start_date.replace(tzinfo=timezone.utc)
+        until = end_date if end_date.tzinfo else end_date.replace(tzinfo=timezone.utc)
+    else:
+        since = now - timedelta(days=days)
+        until = now
+
+    rows = db.execute(text("""
+        WITH top_users AS (
+            SELECT username
+            FROM ftp_logs
+            WHERE log_time >= :since AND log_time <= :until
+              AND username IS NOT NULL
+            GROUP BY username
+            ORDER BY SUM(file_size) DESC NULLS LAST
+            LIMIT 10
+        )
+        SELECT fl.username,
+               DATE_TRUNC('hour', fl.log_time) AS bucket,
+               COALESCE(SUM(CASE WHEN fl.action='upload'   THEN 1 ELSE 0 END), 0)::int AS uploads,
+               COALESCE(SUM(CASE WHEN fl.action='download' THEN 1 ELSE 0 END), 0)::int AS downloads,
+               COALESCE(SUM(CASE WHEN fl.action='upload'   THEN fl.file_size ELSE 0 END), 0)::int AS bytes_in,
+               COALESCE(SUM(CASE WHEN fl.action='download' THEN fl.file_size ELSE 0 END), 0)::int AS bytes_out
+        FROM ftp_logs fl
+        WHERE fl.log_time >= :since AND fl.log_time <= :until
+          AND fl.username IN (SELECT username FROM top_users)
+        GROUP BY fl.username, bucket
+        ORDER BY fl.username, bucket
+    """), {"since": since, "until": until}).fetchall()
+
+    users: dict[str, dict] = {}
+    for r in rows:
+        if r.username not in users:
+            users[r.username] = {"username": r.username, "data": []}
+        users[r.username]["data"].append(HourlyPoint(
+            bucket=r.bucket.strftime("%Y-%m-%dT%H:00:00Z"),
+            uploads=r.uploads, downloads=r.downloads,
+            bytes_in=r.bytes_in, bytes_out=r.bytes_out,
+        ))
+    return [UserHourlySeries(**v) for v in users.values()]
 
 
 _MB = 1024 * 1024
