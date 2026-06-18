@@ -224,21 +224,31 @@ async function loadUserHourly() {
     },
   });
 
-  legendEl.innerHTML = active.map((u, i) => {
+  const userRows = active.map((u, i) => {
     const vals = datasets[i].data;
     const maxVal = Math.max(0, ...vals);
     const curVal = vals[vals.length - 1] ?? 0;
-    return `
-    <div class="mb-2" style="cursor:pointer" onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}">
-      <div class="d-flex align-items-center gap-1">
-        <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
-        <div class="small text-truncate" style="min-width:0" title="${u.username}">${u.username}</div>
-      </div>
-      <div style="font-size:0.68rem;color:#888;padding-left:22px">
-        최대 <b>${maxVal.toLocaleString()}</b>건 · 현재 <b>${curVal.toLocaleString()}</b>건
-      </div>
-    </div>`;
+    const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
+    return `<tr onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}" style="cursor:pointer">
+      <td style="padding:3px 4px;min-width:0;max-width:0">
+        <div class="d-flex align-items-center gap-1" style="min-width:0">
+          <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
+          <span class="text-truncate" style="font-size:0.75rem" title="${u.username}">${u.username}</span>
+        </div>
+      </td>
+      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${maxVal.toLocaleString()}</td>
+      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
+    </tr>`;
   }).join('');
+  legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
+    <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
+    <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
+      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left">사용자</th>
+      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right">최대</th>
+      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right">현재</th>
+    </tr></thead>
+    <tbody>${userRows}</tbody>
+  </table>`;
 }
 
 function resetUserHourlyZoom() {
@@ -341,21 +351,31 @@ async function loadHourly() {
     },
   });
 
-  legendEl.innerHTML = active.map((g, i) => {
+  const groupRows = active.map((g, i) => {
     const vals = datasets[i].data;
     const maxVal = Math.max(0, ...vals);
     const curVal = vals[vals.length - 1] ?? 0;
-    return `
-    <div class="mb-2" style="cursor:pointer" onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}">
-      <div class="d-flex align-items-center gap-1">
-        <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
-        <div class="small text-truncate" style="min-width:0" title="${g.name}">${g.name}</div>
-      </div>
-      <div style="font-size:0.68rem;color:#888;padding-left:22px">
-        최대 <b>${maxVal.toLocaleString()}</b>건 · 현재 <b>${curVal.toLocaleString()}</b>건
-      </div>
-    </div>`;
+    const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
+    return `<tr onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}" style="cursor:pointer">
+      <td style="padding:3px 4px;min-width:0;max-width:0">
+        <div class="d-flex align-items-center gap-1" style="min-width:0">
+          <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
+          <span class="text-truncate" style="font-size:0.75rem" title="${g.name}">${g.name}</span>
+        </div>
+      </td>
+      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${maxVal.toLocaleString()}</td>
+      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
+    </tr>`;
   }).join('');
+  legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
+    <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
+    <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
+      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left">그룹</th>
+      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right">최대</th>
+      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right">현재</th>
+    </tr></thead>
+    <tbody>${groupRows}</tbody>
+  </table>`;
 }
 
 function resetHourlyZoom() {
