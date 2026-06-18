@@ -283,11 +283,14 @@ def get_service_health(
     now = datetime.now(timezone.utc)
     if start_date and end_date:
         since = start_date if start_date.tzinfo else start_date.replace(tzinfo=timezone.utc)
+        until = end_date if end_date.tzinfo else end_date.replace(tzinfo=timezone.utc)
     else:
         since = now - timedelta(hours=hours)
-    params = {"since": since, "did": device_id}
+        until = now
+    params = {"since": since, "until": until, "did": device_id}
     dev_f = "AND m.device_id = :did" if device_id else ""
     adev_f = "AND a.device_id = :did" if device_id else ""
+    dev_f_log = "AND fl.device_id = :did" if device_id else ""
 
     # 최근 알림 (장비 상태 판정에도 사용)
     alert_rows = db.execute(text(f"""
@@ -369,11 +372,13 @@ def get_service_health(
     ) for r in trend_rows]
 
     totals_row = db.execute(text(f"""
-        SELECT COALESCE(SUM(m.transfer_fails), 0)::int AS transfer_fails,
-               COALESCE(SUM(m.login_fails), 0)::int    AS login_fails,
-               COALESCE(SUM(m.cwd_fails), 0)::int      AS cwd_fails
-        FROM service_metrics m
-        WHERE m.bucket >= :since {dev_f}
+        SELECT
+            COALESCE(SUM(CASE WHEN fl.action IN ('upload','download','delete','rename','mkdir','rmdir')
+                              AND fl.status = 'fail' THEN 1 ELSE 0 END), 0)::int AS transfer_fails,
+            COALESCE(SUM(CASE WHEN fl.action = 'login' AND fl.status = 'fail' THEN 1 ELSE 0 END), 0)::int AS login_fails,
+            COALESCE(SUM(CASE WHEN fl.action = 'cwd_fail' THEN 1 ELSE 0 END), 0)::int AS cwd_fails
+        FROM ftp_logs fl
+        WHERE fl.log_time >= :since AND fl.log_time <= :until {dev_f_log}
     """), params).fetchone()
     fail_totals = FailTotals(
         transfer_fails=totals_row.transfer_fails,
