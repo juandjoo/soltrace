@@ -148,6 +148,7 @@ async function loadDashboard() {
 const HOURLY_PALETTE = ['#0d6efd','#198754','#dc3545','#fd7e14','#6f42c1','#20c997','#0dcaf0','#ffc107','#e83e8c','#6c757d'];
 
 async function loadHourly() {
+  _hourlyFocusIdx = null;
   const data = await api('GET', `/dashboard/hourly?${_dashDateParams()}`);
   if (!data) return;
 
@@ -204,23 +205,37 @@ async function loadHourly() {
   });
 
   legendEl.innerHTML = data.map((g, i) => `
-    <div class="d-flex align-items-start gap-2 mb-2" style="cursor:pointer"
-         onclick="toggleHourlySeries(${i})" id="hourlyLegendItem${i}">
-      <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0;margin-top:8px"></span>
-      <div style="min-width:0">
-        <div class="small text-truncate" title="${g.name}">${g.name}</div>
-        ${g.telco ? `<div class="text-muted" style="font-size:0.7rem">${g.telco}</div>` : ''}
-      </div>
+    <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer"
+         onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}">
+      <span style="display:inline-block;width:18px;height:3px;background:${HOURLY_PALETTE[i % HOURLY_PALETTE.length]};border-radius:1px;flex-shrink:0"></span>
+      <div class="small text-truncate" style="min-width:0" title="${g.name}">${g.name}</div>
     </div>`).join('');
 }
 
-function toggleHourlySeries(idx) {
+let _hourlyFocusIdx = null;
+
+function focusHourlySeries(idx) {
   if (!charts.hourly) return;
-  const visible = charts.hourly.isDatasetVisible(idx);
-  charts.hourly.setDatasetVisibility(idx, !visible);
+  const total = charts.hourly.data.datasets.length;
+  if (_hourlyFocusIdx === idx) {
+    // 같은 그룹 재클릭 → 전체 표시 복원
+    _hourlyFocusIdx = null;
+    for (let i = 0; i < total; i++) {
+      charts.hourly.setDatasetVisibility(i, true);
+      const el = document.getElementById('hourlyLegendItem' + i);
+      if (el) el.style.opacity = '1';
+    }
+  } else {
+    // 선택 그룹만 표시, 나머지 숨김
+    _hourlyFocusIdx = idx;
+    for (let i = 0; i < total; i++) {
+      const show = i === idx;
+      charts.hourly.setDatasetVisibility(i, show);
+      const el = document.getElementById('hourlyLegendItem' + i);
+      if (el) el.style.opacity = show ? '1' : '0.3';
+    }
+  }
   charts.hourly.update();
-  const item = document.getElementById('hourlyLegendItem' + idx);
-  if (item) item.style.opacity = visible ? '0.3' : '1';
 }
 
 function _dashPeriodLabel() {
