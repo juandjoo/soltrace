@@ -229,7 +229,7 @@ async function loadUserHourly() {
     const maxVal = Math.max(0, ...vals);
     const curVal = vals[vals.length - 1] ?? 0;
     const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
-    return `<tr onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}" style="cursor:pointer">
+    return `<tr onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}" style="cursor:pointer" data-name="${u.username}" data-max="${maxVal}" data-cur="${curVal}">
       <td style="padding:3px 4px;min-width:0;max-width:0">
         <div class="d-flex align-items-center gap-1" style="min-width:0">
           <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
@@ -240,15 +240,53 @@ async function loadUserHourly() {
       <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
     </tr>`;
   }).join('');
+  _userLegendSort = {col: null, asc: true};
   legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
     <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
     <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
-      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left">사용자</th>
-      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right">최대</th>
-      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right">현재</th>
+      <th data-col="name" onclick="sortUserLegend('name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">사용자<span class="sort-arrow"></span></th>
+      <th data-col="max" onclick="sortUserLegend('max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
+      <th data-col="cur" onclick="sortUserLegend('cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
     </tr></thead>
     <tbody>${userRows}</tbody>
   </table>`;
+}
+
+let _userLegendSort   = {col: null, asc: true};
+let _hourlyLegendSort = {col: null, asc: true};
+
+function _applyLegendSort(legendId, state) {
+  const legendEl = document.getElementById(legendId);
+  const tbody = legendEl?.querySelector('tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort((a, b) => {
+    if (state.col === 'name') {
+      const cmp = (a.dataset.name || '').localeCompare(b.dataset.name || '');
+      return state.asc ? cmp : -cmp;
+    }
+    const av = parseFloat(a.dataset[state.col]) || 0;
+    const bv = parseFloat(b.dataset[state.col]) || 0;
+    return state.asc ? av - bv : bv - av;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+  legendEl.querySelectorAll('thead th').forEach(th => {
+    const arrow = th.querySelector('.sort-arrow');
+    if (!arrow) return;
+    arrow.textContent = th.dataset.col === state.col ? (state.asc ? ' ▲' : ' ▼') : '';
+  });
+}
+
+function sortUserLegend(col) {
+  if (_userLegendSort.col === col) _userLegendSort.asc = !_userLegendSort.asc;
+  else _userLegendSort = {col, asc: col === 'name'};
+  _applyLegendSort('userHourlyLegend', _userLegendSort);
+}
+
+function sortHourlyLegend(col) {
+  if (_hourlyLegendSort.col === col) _hourlyLegendSort.asc = !_hourlyLegendSort.asc;
+  else _hourlyLegendSort = {col, asc: col === 'name'};
+  _applyLegendSort('hourlyGroupLegend', _hourlyLegendSort);
 }
 
 function resetUserHourlyZoom() {
@@ -356,7 +394,7 @@ async function loadHourly() {
     const maxVal = Math.max(0, ...vals);
     const curVal = vals[vals.length - 1] ?? 0;
     const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
-    return `<tr onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}" style="cursor:pointer">
+    return `<tr onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}" style="cursor:pointer" data-name="${g.name}" data-max="${maxVal}" data-cur="${curVal}">
       <td style="padding:3px 4px;min-width:0;max-width:0">
         <div class="d-flex align-items-center gap-1" style="min-width:0">
           <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
@@ -367,12 +405,13 @@ async function loadHourly() {
       <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
     </tr>`;
   }).join('');
+  _hourlyLegendSort = {col: null, asc: true};
   legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
     <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
     <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
-      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left">그룹</th>
-      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right">최대</th>
-      <th style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right">현재</th>
+      <th data-col="name" onclick="sortHourlyLegend('name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">그룹<span class="sort-arrow"></span></th>
+      <th data-col="max" onclick="sortHourlyLegend('max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
+      <th data-col="cur" onclick="sortHourlyLegend('cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
     </tr></thead>
     <tbody>${groupRows}</tbody>
   </table>`;
