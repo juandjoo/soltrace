@@ -157,8 +157,18 @@ def get_dashboard(
     )
     by_action = {r.action: r.cnt for r in action_rows}
 
-    # ── Hourly pattern (시간대별, UTC 기준) ──────────────────────────────────
-    hourly_rows = (
+    return DashboardDetail(
+        stats=stats,
+        timeseries=timeseries,
+        top_users=top_users,
+        top_devices=top_devices,
+        top_groups=top_groups,
+        by_action=by_action,
+    )
+
+
+def _build_hourly(base_q) -> list[HourlyPoint]:
+    rows = (
         base_q.with_entities(
             func.extract("hour", FtpLog.log_time).label("hour"),
             func.coalesce(func.sum(case((FtpLog.action == "upload", 1), else_=0)), 0).label("uploads"),
@@ -170,27 +180,45 @@ def get_dashboard(
         .order_by(text("hour"))
         .all()
     )
-    hourly_map = {int(r.hour): r for r in hourly_rows}
-    hourly = [
+    m = {int(r.hour): r for r in rows}
+    return [
         HourlyPoint(
             hour=h,
-            uploads=int(hourly_map[h].uploads) if h in hourly_map else 0,
-            downloads=int(hourly_map[h].downloads) if h in hourly_map else 0,
-            bytes_in=int(hourly_map[h].bytes_in) if h in hourly_map else 0,
-            bytes_out=int(hourly_map[h].bytes_out) if h in hourly_map else 0,
+            uploads=int(m[h].uploads) if h in m else 0,
+            downloads=int(m[h].downloads) if h in m else 0,
+            bytes_in=int(m[h].bytes_in) if h in m else 0,
+            bytes_out=int(m[h].bytes_out) if h in m else 0,
         )
         for h in range(24)
     ]
 
-    return DashboardDetail(
-        stats=stats,
-        timeseries=timeseries,
-        top_users=top_users,
-        top_devices=top_devices,
-        top_groups=top_groups,
-        hourly=hourly,
-        by_action=by_action,
-    )
+
+@router.get("/hourly", response_model=list[HourlyPoint])
+def get_hourly(
+    group_id: Optional[int] = None,
+    days: int = Query(default=7, ge=1, le=366),
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    now = datetime.now(timezone.utc)
+    if start_date and end_date:
+        since = start_date if start_date.tzinfo else start_date.replace(tzinfo=timezone.utc)
+        until = end_date if end_date.tzinfo else end_date.replace(tzinfo=timezone.utc)
+    else:
+        since = now - timedelta(days=days)
+        until = now
+
+    base_q = db.query(FtpLog).filter(FtpLog.log_time >= since, FtpLog.log_time <= until)
+    if group_id:
+        base_q = (
+            base_q.join(Device, FtpLog.device_id == Device.id)
+            .join(DeviceGroup, DeviceGroup.device_id == Device.id)
+            .filter(DeviceGroup.group_id == group_id)
+        )
+
+    return _build_hourly(base_q)
 
 
 _MB = 1024 * 1024

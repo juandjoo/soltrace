@@ -250,7 +250,6 @@ class DashboardDetail(BaseModel):
     top_users: List[TopItem]
     top_devices: List[TopItem]
     top_groups: List[TopItem] = []
-    hourly: List[HourlyPoint] = []
     by_action: dict
 
 

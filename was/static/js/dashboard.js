@@ -77,6 +77,7 @@ function dashCustom() {
 function loadAll() {
   loadDashboard();
   loadServiceHealth();
+  loadHourly();
 }
 
 // 슬라이스 인덱스 0=전송 실패, 1=로그인 실패, 2=CWD 실패
@@ -140,15 +141,30 @@ async function loadDashboard() {
       <span class="text-truncate small" style="min-width:0" title="${u.label}: ${fmtBytes(u.bytes)}">${u.label}<span class="text-muted ms-1">${fmtBytes(u.bytes)}</span></span>
     </li>`).join('');
 
+}
+
+async function loadHourly() {
+  const sel = document.getElementById('hourlyGroupFilter');
+  if (sel.options.length <= 1) {
+    const groups = await api('GET', '/groups');
+    if (groups && groups.length) {
+      sel.innerHTML = '<option value="">전체 그룹</option>' +
+        groups.map(g => `<option value="${g.id}">${g.telco ? g.telco + ' · ' : ''}${g.name}</option>`).join('');
+    }
+  }
+  const groupId = sel.value;
+  const params = `${_dashDateParams()}${groupId ? '&group_id=' + groupId : ''}`;
+  const data = await api('GET', `/dashboard/hourly?${params}`);
+  if (!data) return;
+
   destroyChart('hourly');
-  const hl = data.hourly || [];
   charts.hourly = new Chart(document.getElementById('chartHourly'), {
     type: 'bar',
     data: {
-      labels: hl.map(h => `${String(h.hour).padStart(2,'0')}시`),
+      labels: data.map(h => `${String(h.hour).padStart(2, '0')}시`),
       datasets: [
-        {label: '업로드', data: hl.map(h => h.uploads), backgroundColor: '#0d6efd99'},
-        {label: '다운로드', data: hl.map(h => h.downloads), backgroundColor: '#19875499'},
+        {label: '업로드', data: data.map(h => h.uploads), backgroundColor: '#0d6efd99'},
+        {label: '다운로드', data: data.map(h => h.downloads), backgroundColor: '#19875499'},
       ],
     },
     options: {
