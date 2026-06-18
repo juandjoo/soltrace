@@ -34,7 +34,8 @@ function fmtPct(v) { return v == null ? '-' : (v*100).toFixed(1) + '%'; }
 function fmtBytesPerSec(v) { return v == null ? '-' : (v / 1024 / 1024).toFixed(2) + ' MB/s'; }
 function fmtTime(s) {
   if (!s) return '-';
-  const d = new Date(s);
+  // timezone 없는 문자열은 브라우저가 로컬시간으로 파싱하므로 Z 추가해 UTC 강제
+  const d = new Date(/[Z+]/.test(s) ? s : s + 'Z');
   return [d.getFullYear(),
     String(d.getMonth()+1).padStart(2,'0'),
     String(d.getDate()).padStart(2,'0')].join('-') + ' ' +
