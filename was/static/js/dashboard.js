@@ -115,10 +115,19 @@ const RATE_DRILL_FILTERS = [
 
 // 대시보드 날짜 범위를 유지하면서 로그 조회 페이지로 드릴다운
 function navToLogsFilters({action = '', status = ''} = {}) {
-  const s = document.getElementById('dashStart').value;
-  const e = document.getElementById('dashEnd').value;
-  if (s) document.getElementById('logStartTime').value = s + 'T00:00';
-  if (e) document.getElementById('logEndTime').value   = e + 'T23:59';
+  if (_dashExactStart && _dashExactEnd) {
+    const toLocal = iso => {
+      const d = new Date(iso);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    };
+    document.getElementById('logStartTime').value = toLocal(_dashExactStart);
+    document.getElementById('logEndTime').value   = toLocal(_dashExactEnd);
+  } else {
+    const s = document.getElementById('dashStart').value;
+    const e = document.getElementById('dashEnd').value;
+    if (s) document.getElementById('logStartTime').value = s + 'T00:00';
+    if (e) document.getElementById('logEndTime').value   = e + 'T23:59';
+  }
   document.getElementById('logActionFilter').value = action;
   document.getElementById('logStatusFilter').value  = status;
   _pendingSearch = true;  // initLogsPage 완료 후 자동 검색 (logs.js)
