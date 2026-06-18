@@ -189,8 +189,8 @@ def get_hourly(
                DATE_TRUNC('hour', fl.log_time) AS bucket,
                COALESCE(SUM(CASE WHEN fl.action='upload'   THEN 1 ELSE 0 END), 0)::int AS uploads,
                COALESCE(SUM(CASE WHEN fl.action='download' THEN 1 ELSE 0 END), 0)::int AS downloads,
-               COALESCE(SUM(CASE WHEN fl.action='upload'   THEN fl.file_size ELSE 0 END), 0)::int AS bytes_in,
-               COALESCE(SUM(CASE WHEN fl.action='download' THEN fl.file_size ELSE 0 END), 0)::int AS bytes_out
+               COALESCE(SUM(CASE WHEN fl.action='upload'   THEN fl.file_size ELSE 0 END), 0)::bigint AS bytes_in,
+               COALESCE(SUM(CASE WHEN fl.action='download' THEN fl.file_size ELSE 0 END), 0)::bigint AS bytes_out
         FROM ftp_logs fl
         JOIN devices d ON d.id = fl.device_id
         JOIN device_groups dg ON dg.device_id = d.id
@@ -242,8 +242,8 @@ def get_users_hourly(
                DATE_TRUNC('hour', fl.log_time) AS bucket,
                COALESCE(SUM(CASE WHEN fl.action='upload'   THEN 1 ELSE 0 END), 0)::int AS uploads,
                COALESCE(SUM(CASE WHEN fl.action='download' THEN 1 ELSE 0 END), 0)::int AS downloads,
-               COALESCE(SUM(CASE WHEN fl.action='upload'   THEN fl.file_size ELSE 0 END), 0)::int AS bytes_in,
-               COALESCE(SUM(CASE WHEN fl.action='download' THEN fl.file_size ELSE 0 END), 0)::int AS bytes_out
+               COALESCE(SUM(CASE WHEN fl.action='upload'   THEN fl.file_size ELSE 0 END), 0)::bigint AS bytes_in,
+               COALESCE(SUM(CASE WHEN fl.action='download' THEN fl.file_size ELSE 0 END), 0)::bigint AS bytes_out
         FROM ftp_logs fl
         WHERE fl.log_time >= :since AND fl.log_time <= :until
           AND fl.username IN (SELECT username FROM top_users)
