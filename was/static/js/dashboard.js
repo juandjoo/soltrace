@@ -55,7 +55,7 @@ function _dashDateParams() {
   if (s && e) {
     return `start_date=${encodeURIComponent(new Date(s + 'T00:00:00').toISOString())}&end_date=${encodeURIComponent(new Date(e + 'T23:59:59').toISOString())}`;
   }
-  return 'days=1';
+  return 'days=7';
 }
 
 function dashLast24() {

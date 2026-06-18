@@ -316,24 +316,30 @@ def get_service_health(
         dev_sev[r.device_id] = max(dev_sev.get(r.device_id, 0), sev_rank.get(r.severity, 1))
         dev_open[r.device_id] = dev_open.get(r.device_id, 0) + 1
 
-    # 장비별 최신 닫힌 버킷 스냅샷
+    # 장비별 최신 닫힌 버킷 스냅샷 + 데몬 상태
     snap_rows = db.execute(text(f"""
         SELECT DISTINCT ON (m.device_id)
             m.device_id, d.hostname, m.bucket,
             m.transfers, m.transfer_fails, m.bytes, m.transfer_secs,
-            m.login_attempts, m.login_fails, m.cwd_fails
+            m.login_attempts, m.login_fails, m.cwd_fails,
+            d.daemon_status
         FROM service_metrics m JOIN devices d ON d.id = m.device_id
         WHERE m.bucket >= :since {dev_f}
         ORDER BY m.device_id, m.bucket DESC
     """), params).fetchall()
 
+    # degraded/disabled/error 데몬 상태는 최소 warning 등급으로 처리
+    _daemon_sev = {"degraded": 1, "error": 1, "disabled": 1}
+
     rank_status = {0: "ok", 1: "warning", 2: "critical"}
     devices = []
     for r in snap_rows:
         tp = _ratio(r.bytes, r.transfer_secs)
+        daemon_rank = _daemon_sev.get(r.daemon_status or "", 0)
+        sev = max(dev_sev.get(r.device_id, 0), daemon_rank)
         devices.append(ServiceHealthDevice(
             device_id=r.device_id, hostname=r.hostname, last_bucket=r.bucket,
-            status=rank_status[dev_sev.get(r.device_id, 0)],
+            status=rank_status[sev],
             fail_rate=_ratio(r.transfer_fails, r.transfers),
             throughput_mb=(tp / _MB) if tp is not None else None,
             login_fail_rate=_ratio(r.login_fails, r.login_attempts),

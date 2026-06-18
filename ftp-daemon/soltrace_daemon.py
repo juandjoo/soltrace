@@ -585,7 +585,7 @@ class SolTraceDaemon:
 
     def _self_update(self):
         """GitHub에서 최신 파일 다운로드 후 서비스 재시작."""
-        update_url = self.cfg["daemon"].get("update_url", "").rstrip("/")
+        update_url = self.cfg.get("update_url", "").rstrip("/")
         if not update_url:
             log.warning("update_url not configured — skipping self-update")
             return
