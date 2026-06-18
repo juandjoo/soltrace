@@ -49,7 +49,10 @@ async function loadDevices() {
   tbody.innerHTML = devices.map(d => {
     const hbDiff = d.last_heartbeat ? (Date.now() - new Date(d.last_heartbeat)) / 1000 : 9999;
     const offline = hbDiff > 120;
-    const dStatus = offline && d.daemon_status === 'running' ? 'degraded' : (d.daemon_status || 'unknown');
+    const _offlineOverride = {running: 'degraded', stopping: 'unknown', degraded: 'degraded'};
+    const dStatus = offline && d.daemon_status in _offlineOverride
+        ? _offlineOverride[d.daemon_status]
+        : (d.daemon_status || 'unknown');
     const errMsg = d.error_message || (offline ? `마지막 하트비트: ${timeAgo(d.last_heartbeat)}` : null);
 
     return `<tr class="${dStatus==='error'?'table-danger-subtle':''}">
