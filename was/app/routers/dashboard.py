@@ -170,26 +170,25 @@ def get_dashboard(
 def _build_hourly(base_q) -> list[HourlyPoint]:
     rows = (
         base_q.with_entities(
-            func.extract("hour", FtpLog.log_time).label("hour"),
+            func.date_trunc("hour", FtpLog.log_time).label("bucket"),
             func.coalesce(func.sum(case((FtpLog.action == "upload", 1), else_=0)), 0).label("uploads"),
             func.coalesce(func.sum(case((FtpLog.action == "download", 1), else_=0)), 0).label("downloads"),
             func.coalesce(func.sum(case((FtpLog.action == "upload", FtpLog.file_size), else_=0)), 0).label("bytes_in"),
             func.coalesce(func.sum(case((FtpLog.action == "download", FtpLog.file_size), else_=0)), 0).label("bytes_out"),
         )
-        .group_by(text("hour"))
-        .order_by(text("hour"))
+        .group_by(text("bucket"))
+        .order_by(text("bucket"))
         .all()
     )
-    m = {int(r.hour): r for r in rows}
     return [
         HourlyPoint(
-            hour=h,
-            uploads=int(m[h].uploads) if h in m else 0,
-            downloads=int(m[h].downloads) if h in m else 0,
-            bytes_in=int(m[h].bytes_in) if h in m else 0,
-            bytes_out=int(m[h].bytes_out) if h in m else 0,
+            bucket=r.bucket.strftime("%Y-%m-%dT%H:00:00Z"),
+            uploads=int(r.uploads),
+            downloads=int(r.downloads),
+            bytes_in=int(r.bytes_in),
+            bytes_out=int(r.bytes_out),
         )
-        for h in range(24)
+        for r in rows
     ]
 
 

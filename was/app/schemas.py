@@ -238,7 +238,7 @@ class TopItem(BaseModel):
     customer: Optional[str] = None
 
 class HourlyPoint(BaseModel):
-    hour: int
+    bucket: str  # "2026-06-18T14:00:00Z"
     uploads: int
     downloads: int
     bytes_in: int

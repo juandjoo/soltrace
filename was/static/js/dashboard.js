@@ -158,13 +158,25 @@ async function loadHourly() {
   if (!data) return;
 
   destroyChart('hourly');
+  const isLine = data.length > 48;
+  const fmtBucket = b => {
+    const d = new Date(b);
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    if (data.length <= 25) return hh + '시';
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    return `${mm}/${dd} ${hh}시`;
+  };
+  const dsBase = isLine
+    ? {fill: false, tension: 0.3, pointRadius: 1, borderWidth: 1.5}
+    : {borderWidth: 0};
   charts.hourly = new Chart(document.getElementById('chartHourly'), {
-    type: 'bar',
+    type: isLine ? 'line' : 'bar',
     data: {
-      labels: data.map(h => `${String(h.hour).padStart(2, '0')}시`),
+      labels: data.map(h => fmtBucket(h.bucket)),
       datasets: [
-        {label: '업로드', data: data.map(h => h.uploads), backgroundColor: '#0d6efd99'},
-        {label: '다운로드', data: data.map(h => h.downloads), backgroundColor: '#19875499'},
+        {...dsBase, label: '업로드',   data: data.map(h => h.uploads),   backgroundColor: '#0d6efd99', borderColor: '#0d6efd'},
+        {...dsBase, label: '다운로드', data: data.map(h => h.downloads), backgroundColor: '#19875499', borderColor: '#198754'},
       ],
     },
     options: {
@@ -175,7 +187,7 @@ async function loadHourly() {
         tooltip: {callbacks: {label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}건`}},
       },
       scales: {
-        x: {ticks: {font: {size: 10}}},
+        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: 24}},
         y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
