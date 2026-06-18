@@ -156,7 +156,7 @@ async function loadUserHourly() {
     return;
   }
 
-  const active = data.filter(u => u.data.some(h => (h.bytes_in || 0) + (h.bytes_out || 0) > 0));
+  const active = data.filter(u => u.data.some(h => (h.uploads || 0) + (h.downloads || 0) > 0));
   if (!active.length) {
     destroyChart('userHourly');
     legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
@@ -178,7 +178,7 @@ async function loadUserHourly() {
     const map = Object.fromEntries(u.data.map(h => [h.bucket, h]));
     return {
       label: u.username,
-      data: allBuckets.map(b => (map[b]?.bytes_in || 0) + (map[b]?.bytes_out || 0)),
+      data: allBuckets.map(b => (map[b]?.uploads || 0) + (map[b]?.downloads || 0)),
       borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
       backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
       borderWidth: 1.5,
@@ -199,7 +199,7 @@ async function loadUserHourly() {
       interaction: {mode: 'index', intersect: false},
       plugins: {
         legend: {display: false},
-        tooltip: {callbacks: {label: c => `${c.dataset.label}: ${fmtBytes(c.parsed.y)}`}},
+        tooltip: {callbacks: {label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}건`}},
         zoom: {
           zoom: {
             drag: {enabled: true, backgroundColor: 'rgba(13,110,253,0.08)', borderColor: 'rgba(13,110,253,0.4)', borderWidth: 1},
@@ -210,7 +210,7 @@ async function loadUserHourly() {
       },
       scales: {
         x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
-        y: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}},
+        y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
   });
