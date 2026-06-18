@@ -340,6 +340,13 @@ class FileTailer:
 
 # ── HTTP Client ───────────────────────────────────────────────────────────────
 
+class DeviceDisabledError(Exception):
+    """WAS가 이 장비를 disabled 처리함 — 재활성화 시까지 전송 보류."""
+
+class DeviceRemovedError(Exception):
+    """WAS에서 이 장비 키를 알 수 없음 (삭제 또는 키 변경) — 데몬 종료."""
+
+
 class WasClient:
     RETRY_MAX = 3
     RETRY_DELAY = 10  # 고정 10초 대기
@@ -357,8 +364,14 @@ class WasClient:
         for attempt in range(1, self.RETRY_MAX + 1):
             try:
                 r = self.session.post(url, json=payload)
+                if r.status_code == 403:
+                    raise DeviceDisabledError()
+                if r.status_code in (401, 404):
+                    raise DeviceRemovedError()
                 r.raise_for_status()
                 return r.json() if r.text else {}
+            except (DeviceDisabledError, DeviceRemovedError):
+                raise  # 재시도 없이 즉시 전파
             except requests.exceptions.RequestException as e:
                 log.warning("POST %s attempt %d/%d failed: %s", path, attempt, self.RETRY_MAX, e)
                 if attempt < self.RETRY_MAX:
@@ -633,18 +646,27 @@ class SolTraceDaemon:
             if not self.running:
                 break
             status_payload = self._collect_status()
-            result = self.client.heartbeat(self.hostname, self.ip, status_payload)
-            if result:
-                log.debug("Heartbeat OK status=%s daemon=%s cpu=%.1f%% mem=%.0fMB",
-                          result.get("status"),
-                          status_payload.get("daemon_status"),
-                          status_payload.get("cpu_percent") or 0,
-                          status_payload.get("mem_mb") or 0)
-                if result.get("update"):
-                    log.info("Update requested by WAS — starting self-update")
-                    threading.Thread(target=self._self_update, daemon=True).start()
+            try:
+                result = self.client.heartbeat(self.hostname, self.ip, status_payload)
+            except DeviceRemovedError:
+                log.critical("Device removed from WAS (401/404) — shutting down daemon")
+                self._safe_shutdown([])
+                return
+            except DeviceDisabledError:
+                # heartbeat는 비활성 장비에도 200 반환하므로 여기 도달하지 않음
+                pass
             else:
-                log.warning("Heartbeat failed")
+                if result:
+                    log.debug("Heartbeat OK status=%s daemon=%s cpu=%.1f%% mem=%.0fMB",
+                              result.get("status"),
+                              status_payload.get("daemon_status"),
+                              status_payload.get("cpu_percent") or 0,
+                              status_payload.get("mem_mb") or 0)
+                    if result.get("update"):
+                        log.info("Update requested by WAS — starting self-update")
+                        threading.Thread(target=self._self_update, daemon=True).start()
+                else:
+                    log.warning("Heartbeat failed")
 
     def _flush_startup_buffer(self) -> bool:
         """시작 시 이전 실패 버퍼를 먼저 전송한다. WAS 미응답 시에도 True를 반환해 계속 실행한다."""
@@ -652,7 +674,15 @@ class SolTraceDaemon:
             return True
         buffered = self.buffer.read_and_clear()
         log.info("Sending %d buffered entries from previous run", len(buffered))
-        result = self.client.send_logs(buffered)
+        try:
+            result = self.client.send_logs(buffered)
+        except DeviceRemovedError:
+            log.critical("Device removed (401/404) — discarding startup buffer and exiting")
+            sys.exit(1)
+        except DeviceDisabledError:
+            self.buffer.write(buffered)
+            log.warning("Device disabled — startup buffer held, sender_loop will retry")
+            return True
         if result:
             log.info("Startup buffer flushed: accepted=%d", result.get("accepted", 0))
             return True
@@ -700,7 +730,19 @@ class SolTraceDaemon:
             if self.buffer.exists():
                 buffered = self.buffer.read_and_clear()
                 if buffered:
-                    result = self.client.send_logs(buffered)
+                    try:
+                        result = self.client.send_logs(buffered)
+                    except DeviceRemovedError:
+                        log.critical("Device removed (401/404) — discarding buffer and shutting down")
+                        self._safe_shutdown([])
+                        return
+                    except DeviceDisabledError:
+                        self.buffer.write(buffered)
+                        self._daemon_status = "disabled"
+                        self._error_message = "WAS에서 비활성화됨 — 재활성화 대기 중"
+                        log.warning("Device disabled — buffer held, retrying in %ds", _BACKOFF_MAX)
+                        self._wait_interruptible(_BACKOFF_MAX)
+                        continue
                     if result:
                         log.info("Buffer resent: accepted=%d", result.get("accepted", 0))
                         self._consecutive_failures = 0
@@ -733,7 +775,21 @@ class SolTraceDaemon:
                 continue
 
             # 전송 시도 (최대 3회, WasClient 내부에서 처리)
-            result = self.client.send_logs(all_entries)
+            try:
+                result = self.client.send_logs(all_entries)
+            except DeviceRemovedError:
+                log.critical("Device removed (401/404) — shutting down daemon")
+                self._safe_shutdown([])
+                return
+            except DeviceDisabledError:
+                # 비활성화: 버퍼 없이 타일러 롤백 → 재활성화 후 재전송
+                for tailer in self.tailers:
+                    tailer.rollback()
+                self._daemon_status = "disabled"
+                self._error_message = "WAS에서 비활성화됨 — 재활성화 대기 중"
+                log.warning("Device disabled — holding %d entries, retrying in %ds", len(all_entries), _BACKOFF_MAX)
+                self._wait_interruptible(_BACKOFF_MAX)
+                continue
 
             if result:
                 # 성공
