@@ -9,7 +9,7 @@ from app.database import get_db
 from app.deps import require_admin
 from app.models import Device, DeviceGroup, FtpLog, Group
 from app.schemas import (
-    DashboardDetail, DashboardStats, TimeSeriesPoint, TopItem,
+    DashboardDetail, DashboardStats, TimeSeriesPoint, TopItem, HourlyPoint,
     ServiceHealthResponse, ServiceHealthDevice, ServiceAlertItem, ServiceTrendPoint, FailTotals,
 )
 
@@ -157,12 +157,38 @@ def get_dashboard(
     )
     by_action = {r.action: r.cnt for r in action_rows}
 
+    # ── Hourly pattern (시간대별, UTC 기준) ──────────────────────────────────
+    hourly_rows = (
+        base_q.with_entities(
+            func.extract("hour", FtpLog.log_time).label("hour"),
+            func.coalesce(func.sum(case((FtpLog.action == "upload", 1), else_=0)), 0).label("uploads"),
+            func.coalesce(func.sum(case((FtpLog.action == "download", 1), else_=0)), 0).label("downloads"),
+            func.coalesce(func.sum(case((FtpLog.action == "upload", FtpLog.file_size), else_=0)), 0).label("bytes_in"),
+            func.coalesce(func.sum(case((FtpLog.action == "download", FtpLog.file_size), else_=0)), 0).label("bytes_out"),
+        )
+        .group_by(text("hour"))
+        .order_by(text("hour"))
+        .all()
+    )
+    hourly_map = {int(r.hour): r for r in hourly_rows}
+    hourly = [
+        HourlyPoint(
+            hour=h,
+            uploads=int(hourly_map[h].uploads) if h in hourly_map else 0,
+            downloads=int(hourly_map[h].downloads) if h in hourly_map else 0,
+            bytes_in=int(hourly_map[h].bytes_in) if h in hourly_map else 0,
+            bytes_out=int(hourly_map[h].bytes_out) if h in hourly_map else 0,
+        )
+        for h in range(24)
+    ]
+
     return DashboardDetail(
         stats=stats,
         timeseries=timeseries,
         top_users=top_users,
         top_devices=top_devices,
         top_groups=top_groups,
+        hourly=hourly,
         by_action=by_action,
     )
 

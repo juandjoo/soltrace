@@ -110,7 +110,7 @@ async function loadDashboard() {
       legend: {display: false},
       tooltip: {callbacks: {label: c => fmtBytes(c.parsed.x)}},
     },
-    scales: {x: {beginAtZero: true, ticks: {callback: v => fmtBytes(v)}}},
+    scales: {x: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}}},
   };
 
   const PALETTE = ['#0d6efd','#198754','#fd7e14','#6f42c1','#dc3545','#20c997','#0dcaf0','#ffc107','#e83e8c','#6c757d'];
@@ -137,37 +137,33 @@ async function loadDashboard() {
   legendEl.innerHTML = tu.map((u, i) => `
     <li class="d-flex align-items-center gap-2 mb-1" style="min-width:0">
       <span style="width:10px;height:10px;border-radius:2px;background:${PALETTE[i]};flex-shrink:0"></span>
-      <span class="text-truncate" style="flex:1;min-width:0" title="${u.label}">${u.label}</span>
-      <span class="text-muted ms-1" style="flex-shrink:0;white-space:nowrap">${fmtBytes(u.bytes)}</span>
+      <span class="text-truncate small" style="min-width:0" title="${u.label}: ${fmtBytes(u.bytes)}">${u.label}<span class="text-muted ms-1">${fmtBytes(u.bytes)}</span></span>
     </li>`).join('');
 
-  destroyChart('topGroups');
-  const tg = (data.top_groups || []).slice(0, 8);
-  const gEl = document.getElementById('chartTopGroups');
-  if (!tg.length) {
-    destroyChart('topGroups');
-    gEl.parentElement.querySelector('.no-group')?.remove();
-    const p = document.createElement('div');
-    p.className = 'no-group text-muted small';
-    p.textContent = '그룹에 속한 장비의 사용량이 없습니다.';
-    gEl.after(p);
-  } else {
-    gEl.parentElement.querySelector('.no-group')?.remove();
-    charts.topGroups = new Chart(gEl, {
-      type: 'bar',
-      data: {labels: tg.map(g => g.label), datasets: [{label: '사용량', data: tg.map(g => g.bytes), backgroundColor: '#6f42c188'}]},
-      options: {
-        ...bytesBarOpts,
-        plugins: {
-          ...bytesBarOpts.plugins,
-          tooltip: {callbacks: {
-            label: c => fmtBytes(c.parsed.x),
-            afterLabel: c => { const t = tg[c.dataIndex]?.customer; return t ? `고객사: ${t}` : ''; },
-          }},
-        },
+  destroyChart('hourly');
+  const hl = data.hourly || [];
+  charts.hourly = new Chart(document.getElementById('chartHourly'), {
+    type: 'bar',
+    data: {
+      labels: hl.map(h => `${String(h.hour).padStart(2,'0')}시`),
+      datasets: [
+        {label: '업로드', data: hl.map(h => h.uploads), backgroundColor: '#0d6efd99'},
+        {label: '다운로드', data: hl.map(h => h.downloads), backgroundColor: '#19875499'},
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {labels: {boxWidth: 12, font: {size: 11}}},
+        tooltip: {callbacks: {label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}건`}},
       },
-    });
-  }
+      scales: {
+        x: {ticks: {font: {size: 10}}},
+        y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
+      },
+    },
+  });
 }
 
 function _dashPeriodLabel() {

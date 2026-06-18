@@ -237,12 +237,20 @@ class TopItem(BaseModel):
     bytes: int
     customer: Optional[str] = None
 
+class HourlyPoint(BaseModel):
+    hour: int
+    uploads: int
+    downloads: int
+    bytes_in: int
+    bytes_out: int
+
 class DashboardDetail(BaseModel):
     stats: DashboardStats
     timeseries: List[TimeSeriesPoint]
     top_users: List[TopItem]
     top_devices: List[TopItem]
     top_groups: List[TopItem] = []
+    hourly: List[HourlyPoint] = []
     by_action: dict
 
 
