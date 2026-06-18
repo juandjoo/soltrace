@@ -34,10 +34,19 @@ def _ensure_partitions(db):
         next_total = total + 1
         ny, nm = now.year + next_total // 12, next_total % 12 + 1
         part = f"ftp_logs_{year:04d}_{month:02d}"
-        db.execute(text(
-            f"CREATE TABLE IF NOT EXISTS {part} PARTITION OF ftp_logs "
-            f"FOR VALUES FROM ('{year:04d}-{month:02d}-01') TO ('{ny:04d}-{nm:02d}-01')"
-        ))
+        start = f"{year:04d}-{month:02d}-01"
+        end   = f"{ny:04d}-{nm:02d}-01"
+        # ftp_logs_default에 해당 월 데이터가 있으면 파티션 생성 불가 (CheckViolation)
+        # → 데이터가 없는 월만 파티션 생성, 있는 월은 rebalance_default_partition.sql 실행 후 적용
+        has_data = db.execute(text(
+            "SELECT EXISTS(SELECT 1 FROM ftp_logs_default "
+            "WHERE log_time >= :s AND log_time < :e LIMIT 1)"
+        ), {"s": start, "e": end}).scalar()
+        if not has_data:
+            db.execute(text(
+                f"CREATE TABLE IF NOT EXISTS {part} PARTITION OF ftp_logs "
+                f"FOR VALUES FROM ('{start}') TO ('{end}')"
+            ))
 
     db.execute(text(
         "CREATE TABLE IF NOT EXISTS ftp_logs_default PARTITION OF ftp_logs DEFAULT"
