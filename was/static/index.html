@@ -109,13 +109,19 @@
       <div class="row g-3 mb-3">
         <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
-            <div class="fw-semibold mb-2 small">서비스 영향도 (상태)</div>
+            <div class="d-flex align-items-baseline gap-2 mb-2">
+              <span class="fw-semibold small">서비스 영향도 (상태)</span>
+              <span id="healthStatusPeriod" class="text-muted" style="font-size:0.75rem"></span>
+            </div>
             <div style="position:relative;height:220px"><canvas id="chartHealthStatus"></canvas></div>
           </div>
         </div>
         <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
-            <div class="fw-semibold mb-2 small">전송/로그인 실패 건수</div>
+            <div class="d-flex align-items-baseline gap-2 mb-2">
+              <span class="fw-semibold small">전송/로그인 실패 건수</span>
+              <span id="healthRatePeriod" class="text-muted" style="font-size:0.75rem"></span>
+            </div>
             <div style="position:relative;height:220px"><canvas id="chartHealthRate"></canvas></div>
           </div>
         </div>

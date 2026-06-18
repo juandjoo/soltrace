@@ -39,11 +39,15 @@ function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
+function _localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 function _dashDateParams() {
   const s = document.getElementById('dashStart').value;
   const e = document.getElementById('dashEnd').value;
   if (s && e) {
-    return `start_date=${encodeURIComponent(new Date(s).toISOString())}&end_date=${encodeURIComponent(new Date(e + 'T23:59:59').toISOString())}`;
+    return `start_date=${encodeURIComponent(new Date(s + 'T00:00:00').toISOString())}&end_date=${encodeURIComponent(new Date(e + 'T23:59:59').toISOString())}`;
   }
   return 'days=7';
 }
@@ -52,8 +56,8 @@ function dashQuick(days) {
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - days + 1);
-  document.getElementById('dashStart').value = start.toISOString().slice(0, 10);
-  document.getElementById('dashEnd').value = end.toISOString().slice(0, 10);
+  document.getElementById('dashStart').value = _localDateStr(start);
+  document.getElementById('dashEnd').value = _localDateStr(end);
   document.querySelectorAll('.dash-quick').forEach(b => {
     const active = parseInt(b.dataset.days) === days;
     b.classList.toggle('btn-primary', active);
@@ -166,7 +170,19 @@ async function loadDashboard() {
   }
 }
 
+function _dashPeriodLabel() {
+  const s = document.getElementById('dashStart').value;
+  const e = document.getElementById('dashEnd').value;
+  if (s && e) return `${s} ~ ${e}`;
+  return '';
+}
+
 async function loadServiceHealth() {
+  const periodLabel = _dashPeriodLabel();
+  ['healthStatusPeriod', 'healthRatePeriod'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = periodLabel;
+  });
   const data = await api('GET', `/dashboard/service-health?${_dashDateParams()}`);
   if (!data) return;
 
