@@ -143,6 +143,7 @@ function _logParams() {
   if (ip) params.set('client_ip', ip);
   if (filePath) params.set('file_path', filePath);
   if (action === '__exclude_login_logout__') params.set('exclude_actions', 'login,logout');
+  else if (action === '__transfer_only__') params.set('exclude_actions', 'login,logout,cwd_fail,rename,mkdir,rmdir,delete');
   else if (action) params.set('action', action);
   if (status) params.set('status', status);
   if (start) params.set('start_time', new Date(start).toISOString());

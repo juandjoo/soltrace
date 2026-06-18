@@ -108,7 +108,7 @@ function loadAll() {
 
 // 슬라이스 인덱스 0=전송 실패, 1=로그인 실패, 2=CWD 실패
 const RATE_DRILL_FILTERS = [
-  {action: '', status: 'fail'},
+  {action: '__transfer_only__', status: 'fail'},
   {action: 'login', status: 'fail'},
   {action: 'cwd_fail', status: ''},
 ];
