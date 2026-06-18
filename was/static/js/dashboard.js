@@ -43,21 +43,44 @@ function _localDateStr(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+let _dashExactStart = null;
+let _dashExactEnd   = null;
+
 function _dashDateParams() {
+  if (_dashExactStart && _dashExactEnd) {
+    return `start_date=${encodeURIComponent(_dashExactStart)}&end_date=${encodeURIComponent(_dashExactEnd)}`;
+  }
   const s = document.getElementById('dashStart').value;
   const e = document.getElementById('dashEnd').value;
   if (s && e) {
     return `start_date=${encodeURIComponent(new Date(s + 'T00:00:00').toISOString())}&end_date=${encodeURIComponent(new Date(e + 'T23:59:59').toISOString())}`;
   }
-  return 'days=7';
+  return 'days=1';
+}
+
+function dashLast24() {
+  const end   = new Date();
+  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+  _dashExactStart = start.toISOString();
+  _dashExactEnd   = end.toISOString();
+  document.getElementById('dashStart').value = _localDateStr(start);
+  document.getElementById('dashEnd').value   = _localDateStr(end);
+  document.querySelectorAll('.dash-quick').forEach(b => {
+    const active = b.dataset.h24 === 'true';
+    b.classList.toggle('btn-primary', active);
+    b.classList.toggle('btn-outline-secondary', !active);
+  });
+  loadAll();
 }
 
 function dashQuick(days) {
+  _dashExactStart = null;
+  _dashExactEnd   = null;
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - days + 1);
   document.getElementById('dashStart').value = _localDateStr(start);
-  document.getElementById('dashEnd').value = _localDateStr(end);
+  document.getElementById('dashEnd').value   = _localDateStr(end);
   document.querySelectorAll('.dash-quick').forEach(b => {
     const active = parseInt(b.dataset.days) === days;
     b.classList.toggle('btn-primary', active);
@@ -67,6 +90,8 @@ function dashQuick(days) {
 }
 
 function dashCustom() {
+  _dashExactStart = null;
+  _dashExactEnd   = null;
   document.querySelectorAll('.dash-quick').forEach(b => {
     b.classList.remove('btn-primary');
     b.classList.add('btn-outline-secondary');

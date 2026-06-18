@@ -76,8 +76,8 @@ body        { background: #f5f7fa; font-size: 14px; }
 #loginModal .modal-dialog { max-width: 380px; margin-top: 15vh; }
 
 /* ── 대시보드 ──────────────────────────────────────────────────── */
-.dash-card       { transition: box-shadow .15s ease, transform .15s ease; }
-.dash-card:hover { box-shadow: 0 8px 22px rgba(13,110,253,.18); transform: translateY(-3px); }
+.dash-card       { border: 1px solid rgba(13,110,253,.15) !important; transition: box-shadow .15s ease, transform .15s ease; }
+.dash-card:hover { box-shadow: 0 8px 22px rgba(13,110,253,.18); transform: translateY(-3px); border-color: rgba(13,110,253,.35) !important; }
 .stat-card              { border-left: 4px solid; }
 .stat-card.upload       { border-color: #0d6efd; }
 .stat-card.download     { border-color: #198754; }

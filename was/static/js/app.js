@@ -8,7 +8,7 @@ function nav(page) {
   document.querySelectorAll('#topbar .nav-link').forEach(el => el.classList.remove('active'));
   const link = document.querySelector(`#topbar [onclick="nav('${page}')"]`);
   if (link) link.classList.add('active');
-  if (page === 'dashboard') { dashQuick(7); }
+  if (page === 'dashboard') { dashLast24(); }
   else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
   if (page === 'logs') initLogsPage();
   if (page === 'settings') settingsTab(currentSettingsTab);
