@@ -415,8 +415,8 @@ class DiskBuffer:
         """버퍼 전체를 읽고 삭제한다."""
         with self._lock:
             entries = self._read_raw()
-            if entries:
-                self.path.unlink(missing_ok=True)
+            if entries and self.path.exists():
+                self.path.unlink()
             return entries
 
     def exists(self) -> bool:
@@ -621,7 +621,7 @@ class SolTraceDaemon:
             log.error("Self-update failed: %s", e)
             for tmp, _ in tmps:
                 try:
-                    tmp.unlink(missing_ok=True)
+                    if tmp.exists(): tmp.unlink()
                 except Exception:
                     pass
 
