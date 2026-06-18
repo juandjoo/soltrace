@@ -316,44 +316,51 @@ def get_service_health(
         dev_sev[r.device_id] = max(dev_sev.get(r.device_id, 0), sev_rank.get(r.severity, 1))
         dev_open[r.device_id] = dev_open.get(r.device_id, 0) + 1
 
-    # 장비별 최신 닫힌 버킷 스냅샷 + 데몬 상태
+    # 기준: 모든 confirmed 장비 (기간 내 활동 없어도 표시)
+    dev_filter = "AND d.id = :did" if device_id else ""
+    all_devices = db.execute(text(f"""
+        SELECT d.id, d.hostname, d.daemon_status
+        FROM devices d
+        WHERE d.status = 'confirmed' {dev_filter}
+        ORDER BY d.id
+    """), params).fetchall()
+
+    # 장비별 최신 닫힌 버킷 스냅샷
     snap_rows = db.execute(text(f"""
         SELECT DISTINCT ON (m.device_id)
-            m.device_id, d.hostname, m.bucket,
+            m.device_id, m.bucket,
             m.transfers, m.transfer_fails, m.bytes, m.transfer_secs,
-            m.login_attempts, m.login_fails, m.cwd_fails,
-            d.daemon_status
-        FROM service_metrics m JOIN devices d ON d.id = m.device_id
+            m.login_attempts, m.login_fails, m.cwd_fails
+        FROM service_metrics m
         WHERE m.bucket >= :since {dev_f}
         ORDER BY m.device_id, m.bucket DESC
     """), params).fetchall()
+    snap_map = {r.device_id: r for r in snap_rows}
 
     # degraded/disabled/error 데몬 상태는 최소 warning 등급으로 처리
     _daemon_sev = {"degraded": 1, "error": 1, "disabled": 1}
 
     rank_status = {0: "ok", 1: "warning", 2: "critical"}
     devices = []
-    for r in snap_rows:
-        tp = _ratio(r.bytes, r.transfer_secs)
-        daemon_rank = _daemon_sev.get(r.daemon_status or "", 0)
-        sev = max(dev_sev.get(r.device_id, 0), daemon_rank)
-        devices.append(ServiceHealthDevice(
-            device_id=r.device_id, hostname=r.hostname, last_bucket=r.bucket,
-            status=rank_status[sev],
-            fail_rate=_ratio(r.transfer_fails, r.transfers),
-            throughput_mb=(tp / _MB) if tp is not None else None,
-            login_fail_rate=_ratio(r.login_fails, r.login_attempts),
-            open_alerts=dev_open.get(r.device_id, 0),
-        ))
-    # 알림은 있으나 최신 스냅샷이 없는 장비도 노출
-    seen = {d.device_id for d in devices}
-    for r in alert_rows:
-        if r.device_id not in seen:
-            seen.add(r.device_id)
+    for d in all_devices:
+        snap = snap_map.get(d.id)
+        daemon_rank = _daemon_sev.get(d.daemon_status or "", 0)
+        sev = max(dev_sev.get(d.id, 0), daemon_rank)
+        if snap:
+            tp = _ratio(snap.bytes, snap.transfer_secs)
             devices.append(ServiceHealthDevice(
-                device_id=r.device_id, hostname=r.hostname,
-                status=rank_status[dev_sev.get(r.device_id, 0)],
-                open_alerts=dev_open.get(r.device_id, 0),
+                device_id=d.id, hostname=d.hostname, last_bucket=snap.bucket,
+                status=rank_status[sev],
+                fail_rate=_ratio(snap.transfer_fails, snap.transfers),
+                throughput_mb=(tp / _MB) if tp is not None else None,
+                login_fail_rate=_ratio(snap.login_fails, snap.login_attempts),
+                open_alerts=dev_open.get(d.id, 0),
+            ))
+        else:
+            devices.append(ServiceHealthDevice(
+                device_id=d.id, hostname=d.hostname,
+                status=rank_status[sev],
+                open_alerts=dev_open.get(d.id, 0),
             ))
     devices.sort(key=lambda d: (-sev_rank.get(d.status, 0) if d.status in sev_rank else 0,
                                 -(d.fail_rate or 0)))
