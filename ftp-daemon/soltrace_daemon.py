@@ -241,6 +241,8 @@ def parse_extended_log(line: str) -> Optional[dict]:
         entry["file_path"] = path
         return entry
     if command == "CWD" and status_code == 550:
+        if path in ("/", ""):   # chroot 환경에서 클라이언트 초기화 루틴 노이즈
+            return None
         entry["action"] = "cwd_fail"
         entry["status"] = "fail"
         entry["file_path"] = path
