@@ -124,6 +124,10 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
         if entry.action not in VALID_ACTIONS:
             rejected += 1
             continue
+        # CWD / : chroot 환경 클라이언트 초기화 루틴 노이즈 — 저장 제외
+        if entry.action == "cwd_fail" and entry.file_path in ("/", "", None):
+            rejected += 1
+            continue
         obj = FtpLog(
             device_id=device.id,
             log_time=entry.log_time,
