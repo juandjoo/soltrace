@@ -6,7 +6,7 @@ from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import require_admin
+from app.deps import device_scope
 from app.models import Device, DeviceGroup, FtpLog, Group
 from app.schemas import (
     DashboardDetail, DashboardStats, TimeSeriesPoint, TopItem,
@@ -24,7 +24,7 @@ def get_dashboard(
     end_date: Optional[datetime] = None,
     device_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _: str = Depends(require_admin),
+    scope: Optional[list[int]] = Depends(device_scope),
 ):
     now = datetime.now(timezone.utc)
     if start_date and end_date:
@@ -36,6 +36,8 @@ def get_dashboard(
     days = max(1, (until - since).days or 1)
 
     base_q = db.query(FtpLog).filter(FtpLog.log_time >= since, FtpLog.log_time <= until)
+    if scope is not None:  # 고객 계정 격리
+        base_q = base_q.filter(FtpLog.device_id.in_(scope))
     if device_id:
         base_q = base_q.filter(FtpLog.device_id == device_id)
 
@@ -174,7 +176,7 @@ def get_hourly(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     db: Session = Depends(get_db),
-    _: str = Depends(require_admin),
+    scope: Optional[list[int]] = Depends(device_scope),
 ):
     now = datetime.now(timezone.utc)
     if start_date and end_date:
@@ -184,7 +186,12 @@ def get_hourly(
         since = now - timedelta(days=days)
         until = now
 
-    rows = db.execute(text("""
+    params = {"since": since, "until": until}
+    scope_f = ""
+    if scope is not None:  # 고객 계정 격리
+        params["allowed_ids"] = scope
+        scope_f = "AND fl.device_id = ANY(CAST(:allowed_ids AS int[]))"
+    rows = db.execute(text(f"""
         SELECT g.id AS group_id, g.name, g.telco,
                DATE_TRUNC('hour', fl.log_time) AS bucket,
                COALESCE(SUM(CASE WHEN fl.action='upload'   THEN 1 ELSE 0 END), 0)::int AS uploads,
@@ -195,10 +202,10 @@ def get_hourly(
         JOIN devices d ON d.id = fl.device_id
         JOIN device_groups dg ON dg.device_id = d.id
         JOIN groups g ON g.id = dg.group_id
-        WHERE fl.log_time >= :since AND fl.log_time <= :until
+        WHERE fl.log_time >= :since AND fl.log_time <= :until {scope_f}
         GROUP BY g.id, g.name, g.telco, bucket
         ORDER BY g.name, bucket
-    """), {"since": since, "until": until}).fetchall()
+    """), params).fetchall()
 
     groups: dict[int, dict] = {}
     for r in rows:
@@ -218,7 +225,7 @@ def get_users_hourly(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     db: Session = Depends(get_db),
-    _: str = Depends(require_admin),
+    scope: Optional[list[int]] = Depends(device_scope),
 ):
     now = datetime.now(timezone.utc)
     if start_date and end_date:
@@ -228,12 +235,19 @@ def get_users_hourly(
         since = now - timedelta(days=days)
         until = now
 
-    rows = db.execute(text("""
+    params = {"since": since, "until": until}
+    cte_f = ""    # top_users CTE 내부 (별칭 없음)
+    main_f = ""   # 본 쿼리 (fl 별칭)
+    if scope is not None:  # 고객 계정 격리
+        params["allowed_ids"] = scope
+        cte_f = "AND device_id = ANY(CAST(:allowed_ids AS int[]))"
+        main_f = "AND fl.device_id = ANY(CAST(:allowed_ids AS int[]))"
+    rows = db.execute(text(f"""
         WITH top_users AS (
             SELECT username
             FROM ftp_logs
             WHERE log_time >= :since AND log_time <= :until
-              AND username IS NOT NULL
+              AND username IS NOT NULL {cte_f}
             GROUP BY username
             ORDER BY SUM(file_size) DESC NULLS LAST
             LIMIT 10
@@ -245,11 +259,11 @@ def get_users_hourly(
                COALESCE(SUM(CASE WHEN fl.action='upload'   THEN fl.file_size ELSE 0 END), 0)::bigint AS bytes_in,
                COALESCE(SUM(CASE WHEN fl.action='download' THEN fl.file_size ELSE 0 END), 0)::bigint AS bytes_out
         FROM ftp_logs fl
-        WHERE fl.log_time >= :since AND fl.log_time <= :until
+        WHERE fl.log_time >= :since AND fl.log_time <= :until {main_f}
           AND fl.username IN (SELECT username FROM top_users)
         GROUP BY fl.username, bucket
         ORDER BY fl.username, bucket
-    """), {"since": since, "until": until}).fetchall()
+    """), params).fetchall()
 
     users: dict[str, dict] = {}
     for r in rows:
@@ -277,7 +291,7 @@ def get_service_health(
     end_date: Optional[datetime] = None,
     device_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _: str = Depends(require_admin),
+    scope: Optional[list[int]] = Depends(device_scope),
 ):
     """부하로 인한 서비스 영향도 — 장비별 최신 상태 + 최근 알림 + 추이."""
     now = datetime.now(timezone.utc)
@@ -291,6 +305,14 @@ def get_service_health(
     dev_f = "AND m.device_id = :did" if device_id else ""
     adev_f = "AND a.device_id = :did" if device_id else ""
     dev_f_log = "AND fl.device_id = :did" if device_id else ""
+    # 고객 계정 격리: 모든 하위 쿼리에 허용 device 제한 추가
+    scope_d = ""  # devices 별칭(d) 용 — all_devices 쿼리에서 사용
+    if scope is not None:
+        params["allowed_ids"] = scope
+        dev_f += " AND m.device_id = ANY(CAST(:allowed_ids AS int[]))"
+        adev_f += " AND a.device_id = ANY(CAST(:allowed_ids AS int[]))"
+        dev_f_log += " AND fl.device_id = ANY(CAST(:allowed_ids AS int[]))"
+        scope_d = " AND d.id = ANY(CAST(:allowed_ids AS int[]))"
 
     # 최근 알림 (장비 상태 판정에도 사용)
     alert_rows = db.execute(text(f"""
@@ -321,7 +343,7 @@ def get_service_health(
     all_devices = db.execute(text(f"""
         SELECT d.id, d.hostname, d.daemon_status
         FROM devices d
-        WHERE d.status = 'confirmed' {dev_f_devices}
+        WHERE d.status = 'confirmed' {dev_f_devices}{scope_d}
         ORDER BY d.id
     """), params).fetchall()
 

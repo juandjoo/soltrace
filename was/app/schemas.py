@@ -12,6 +12,35 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    role: str = "admin"
+    customer: Optional[str] = None
+
+
+# ── 사용자(고객 계정) 관리 ──────────────────────────────────────────────────────
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=8, max_length=128)
+    customer: str = Field(min_length=1)
+    allowed_ips: List[str] = []
+
+class UserUpdate(BaseModel):
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    customer: Optional[str] = None
+    allowed_ips: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    role: str
+    customer: Optional[str] = None
+    allowed_ips: List[str] = []
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────

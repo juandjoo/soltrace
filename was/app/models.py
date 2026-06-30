@@ -22,6 +22,26 @@ class AppConfig(Base):
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
+class User(Base):
+    """웹 로그인 계정.
+
+    admin은 기존대로 app_config(admin_username/admin_password_hash)로 부트스트랩되며
+    이 테이블에는 고객사(customer) 계정을 저장한다.
+    - role='customer' : customer 값과 일치하는 groups.customer 그룹의 장비 데이터만 조회 가능
+    - allowed_ips     : 이 계정에 한해 허용할 IP/CIDR 목록(줄바꿈/쉼표 구분). 비어있으면 제한 없음
+    """
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String(64), unique=True, nullable=False)
+    password_hash = Column(Text, nullable=False)
+    role = Column(String(16), nullable=False, default="customer")
+    customer = Column(Text)              # role=customer일 때 groups.customer 와 매칭
+    allowed_ips = Column(Text)           # 계정별 허용 IP/CIDR (비어있으면 제한 없음)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+
 class Telco(Base):
     """통신사 목록 (그룹의 telco 유형에서 선택)."""
     __tablename__ = "telcos"

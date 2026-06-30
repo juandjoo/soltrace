@@ -125,3 +125,40 @@ def check_ip_allowed(db: Session, client_ip: str) -> bool:
     if not allowed:
         return True  # 목록 미설정 시 모두 허용
     return any(_ip_matches(client_ip, entry) for entry in allowed)
+
+
+# ── 고객 계정(users) ─────────────────────────────────────────────────────────
+# 더미 해시: 존재하지 않는 사용자에 대해서도 항상 검증을 수행해 타이밍 차이로
+# 계정 존재 여부가 새지 않게 한다.
+_DUMMY_HASH = hash_password("soltrace-nonexistent-account")
+
+
+def get_active_user(db: Session, username: str):
+    """username 으로 활성 사용자(User) 조회. 없거나 비활성이면 None."""
+    from app.models import User  # 순환 import 방지
+    return (
+        db.query(User)
+        .filter(User.username == username, User.is_active.is_(True))
+        .first()
+    )
+
+
+def check_user_ip_allowed(allowed_ips_raw: str | None, client_ip: str) -> bool:
+    """계정별 허용 IP 검사. 목록이 비어있으면 모두 허용."""
+    entries = _parse_ips(allowed_ips_raw or "")
+    if not entries:
+        return True
+    return any(_ip_matches(client_ip, e) for e in entries)
+
+
+def client_ip_from_request(request) -> str:
+    """리버스 프록시(nginx) 뒤에서는 client.host 가 127.0.0.1 이므로 XFF 우선 참조.
+
+    settings.get_security 와 동일한 우선순위: X-Forwarded-For → X-Real-IP → client.host.
+    """
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.headers.get("x-real-ip") or (
+        request.client.host if request.client else "0.0.0.0"
+    )

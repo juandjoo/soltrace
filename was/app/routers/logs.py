@@ -12,7 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import require_admin
+from app.deps import device_scope
 from app.models import Device, DeviceGroup, FtpLog
 from app.schemas import FtpLogResponse, LogListResponse
 
@@ -35,7 +35,11 @@ def _apply_filters(
     log_status: Optional[str],
     start_time: Optional[datetime],
     end_time: Optional[datetime],
+    allowed_ids: Optional[list[int]] = None,
 ):
+    # 테넌트 격리: 고객 계정이면 본인 device 로만 제한 (admin 은 None → 제한 없음)
+    if allowed_ids is not None:
+        q = q.filter(FtpLog.device_id.in_(allowed_ids))
     if device_id:
         q = q.filter(FtpLog.device_id == device_id)
     if group_id:
@@ -75,7 +79,7 @@ def query_logs(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=50, ge=1, le=500),
     db: Session = Depends(get_db),
-    _: str = Depends(require_admin),
+    scope: Optional[list[int]] = Depends(device_scope),
 ):
     # 기간 미지정 시 최근 30일로 제한 — 전체 테이블 COUNT 방지
     if start_time is None and end_time is None:
@@ -85,7 +89,7 @@ def query_logs(
         db.query(FtpLog), db,
         device_id=device_id, group_id=group_id, username=username, client_ip=client_ip,
         file_path=file_path, action=action, exclude_actions=exclude_actions, log_status=log_status,
-        start_time=start_time, end_time=end_time,
+        start_time=start_time, end_time=end_time, allowed_ids=scope,
     )
     total = q.with_entities(func.count()).scalar()
     items = (
@@ -119,7 +123,7 @@ def export_csv(
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
     db: Session = Depends(get_db),
-    _: str = Depends(require_admin),
+    scope: Optional[list[int]] = Depends(device_scope),
 ):
     # 기간 미지정 시 최근 30일로 제한
     if start_time is None and end_time is None:
@@ -145,7 +149,7 @@ def export_csv(
             q, db,
             device_id=device_id, group_id=group_id, username=username, client_ip=client_ip,
             file_path=file_path, action=action, exclude_actions=exclude_actions, log_status=log_status,
-            start_time=start_time, end_time=end_time,
+            start_time=start_time, end_time=end_time, allowed_ids=scope,
         )
 
         for row in q.order_by(FtpLog.log_time.desc()).yield_per(1000):
@@ -186,7 +190,7 @@ def export_xlsx(
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
     db: Session = Depends(get_db),
-    _: str = Depends(require_admin),
+    scope: Optional[list[int]] = Depends(device_scope),
 ):
     if start_time is None and end_time is None:
         start_time = datetime.now(timezone.utc) - timedelta(days=DEFAULT_RANGE_DAYS)
@@ -216,7 +220,7 @@ def export_xlsx(
         q, db,
         device_id=device_id, group_id=group_id, username=username, client_ip=client_ip,
         file_path=file_path, action=action, exclude_actions=exclude_actions, log_status=log_status,
-        start_time=start_time, end_time=end_time,
+        start_time=start_time, end_time=end_time, allowed_ids=scope,
     )
 
     for row in q.order_by(FtpLog.log_time.desc()).yield_per(1000):
