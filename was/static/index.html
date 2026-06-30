@@ -54,7 +54,7 @@
     <ul class="nav gap-1 flex-nowrap" style="position:absolute;left:50%;transform:translateX(-50%)">
       <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i>대시보드</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear-fill"></i>설정</a></li>
+      <li class="nav-item" data-admin-only><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear-fill"></i>설정</a></li>
     </ul>
     <div class="ms-auto d-flex align-items-center gap-2">
       <span id="sessionTimerDisplay" class="session-timer d-flex align-items-center gap-1 small">
@@ -279,6 +279,7 @@
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack-fill me-2"></i>장비 관리</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3-fill me-2"></i>그룹 관리</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('notify')"><i class="bi bi-bell-fill me-2"></i>알림 설정</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('users')"><i class="bi bi-people-fill me-2"></i>고객 계정</a></li>
           </ul>
         </div>
 
@@ -458,6 +459,49 @@
               <button class="btn btn-primary btn-sm" onclick="saveNotify()"><i class="bi bi-save me-1"></i>저장</button>
             </div>
             <div id="notifyMsg" class="mt-2 small"></div>
+          </div>
+
+          <!-- 고객 계정 -->
+          <div id="settings-users" class="settings-pane d-none" style="max-width:760px">
+            <div class="card mb-3">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-person-plus me-1"></i>고객 계정 추가</div>
+              <div class="card-body">
+                <div id="userMsg" class="alert d-none py-2 small"></div>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <label class="form-label small fw-semibold">아이디</label>
+                    <input class="form-control form-control-sm" id="newUserName" placeholder="예: customerA">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-semibold">비밀번호 (8자 이상)</label>
+                    <input type="password" class="form-control form-control-sm" id="newUserPwd">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-semibold">고객사 (그룹의 customer 와 일치)</label>
+                    <input class="form-control form-control-sm" id="newUserCustomer" list="customerOptions" placeholder="예: ACME">
+                    <datalist id="customerOptions"></datalist>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-semibold">허용 IP/CIDR (선택, 줄바꿈 구분)</label>
+                    <textarea class="form-control form-control-sm" id="newUserIps" rows="2" placeholder="비우면 IP 제한 없음&#10;예: 203.0.113.0/24"></textarea>
+                  </div>
+                </div>
+                <button class="btn btn-sm btn-primary mt-3" onclick="createUser()"><i class="bi bi-plus-lg me-1"></i>계정 생성</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-people me-1"></i>고객 계정 목록</div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover mb-0 align-middle">
+                    <thead><tr class="small text-muted">
+                      <th class="ps-3">아이디</th><th>고객사</th><th>허용 IP</th><th>상태</th><th class="text-end pe-3">작업</th>
+                    </tr></thead>
+                    <tbody id="userList"><tr><td colspan="5" class="text-muted small p-3">불러오는 중…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
 
         </div><!-- /col -->

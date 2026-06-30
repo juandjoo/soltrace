@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import require_admin
+from app.deps import Principal, get_current_user, require_admin
 from app.models import Device, DeviceGroup, Group
 from app.schemas import GroupCreate, GroupResponse, GroupUpdate
 
@@ -20,9 +20,13 @@ def _to_response(group: Group, db: Session) -> GroupResponse:
 
 
 @router.get("", response_model=List[GroupResponse])
-def list_groups(db: Session = Depends(get_db), _: str = Depends(require_admin)):
+def list_groups(db: Session = Depends(get_db), user: Principal = Depends(get_current_user)):
     # 통신사 > 서비스 순: 소속 통신사로 묶고(미지정은 뒤로) 그 안에서 이름순
-    groups = db.query(Group).order_by(Group.telco.nullslast(), Group.name).all()
+    q = db.query(Group)
+    if not user.is_admin:
+        # 고객 계정은 본인 customer 그룹만
+        q = q.filter(Group.customer == (user.customer or ""))
+    groups = q.order_by(Group.telco.nullslast(), Group.name).all()
     return [_to_response(g, db) for g in groups]
 
 

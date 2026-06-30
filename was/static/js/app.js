@@ -3,6 +3,8 @@ const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {k
 let currentSettingsTab = 'telco';
 
 function nav(page) {
+  // 고객 계정은 설정 접근 불가 (서버에서도 차단되지만 UI에서도 막는다)
+  if (page === 'settings' && getRole() !== 'admin') page = 'dashboard';
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelectorAll('#topbar .nav-link').forEach(el => el.classList.remove('active'));
@@ -29,6 +31,7 @@ function settingsTab(tab) {
   if (tab === 'devices') loadDevices();
   if (tab === 'groups') loadGroups();
   if (tab === 'notify') loadNotify();
+  if (tab === 'users') loadUsers();
   if (tab === 'security') loadSecurity();
 }
 
@@ -64,6 +67,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     token = data.access_token;
     localStorage.setItem('soltrace_token', token);
     startSessionTimers(token);
+    applyRoleUI();
     loginModal.hide();
     document.getElementById('appLayout').classList.remove('app-hidden');
     initApp();
@@ -82,6 +86,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
 (function init() {
   if (token) {
     startSessionTimers(token);
+    applyRoleUI();
     document.getElementById('appLayout').classList.remove('app-hidden');
     initApp();
   } else {

@@ -8,6 +8,19 @@ CREATE TABLE IF NOT EXISTS app_config (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- 웹 로그인 계정 (admin은 app_config로 부트스트랩, 고객사 계정만 여기에 저장)
+CREATE TABLE IF NOT EXISTS users (
+    id            SERIAL PRIMARY KEY,
+    username      VARCHAR(64) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role          VARCHAR(16) NOT NULL DEFAULT 'customer'
+                  CHECK (role IN ('admin','customer')),
+    customer      TEXT,              -- role=customer일 때 groups.customer 와 매칭
+    allowed_ips   TEXT,              -- 계정별 허용 IP/CIDR (비어있으면 제한 없음)
+    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
     hostname VARCHAR(255) NOT NULL,

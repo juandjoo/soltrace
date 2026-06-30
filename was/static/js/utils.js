@@ -14,11 +14,29 @@ let logPageSize = 50;
 let _expireTimer = null;
 let _countdownInterval = null;
 
-function _parseJwtExp(tok) {
+function _parseJwt(tok) {
   try {
-    const payload = JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return payload.exp || null;
+    return JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
   } catch { return null; }
+}
+
+function _parseJwtExp(tok) {
+  const p = _parseJwt(tok);
+  return p?.exp || null;
+}
+
+// 현재 토큰의 role ('admin' | 'customer'). role 클레임 없는 구버전 토큰은 admin 취급.
+function getRole() {
+  const p = token ? _parseJwt(token) : null;
+  return p?.role || (p?.sub === 'admin' ? 'admin' : 'customer');
+}
+
+// role 에 따라 admin 전용 UI(설정 등) 표시/숨김. data-admin-only 요소를 토글한다.
+function applyRoleUI() {
+  const isAdmin = getRole() === 'admin';
+  document.querySelectorAll('[data-admin-only]').forEach(el => {
+    el.classList.toggle('d-none', !isAdmin);
+  });
 }
 
 function _updateTopbarTimer(expiresAt) {

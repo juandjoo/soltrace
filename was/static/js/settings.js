@@ -232,3 +232,85 @@ async function saveAllowedIps() {
     settingsMsg('ipMsg', 'success', '접속 허용 IP가 저장되었습니다.');
   } catch(e) { settingsMsg('ipMsg', 'danger', e.message); }
 }
+
+// ── 고객 계정 관리 (admin 전용) ───────────────────────────────────────────────
+async function loadUsers() {
+  const tbody = document.getElementById('userList');
+  try {
+    const [users, groups] = await Promise.all([
+      api('GET', '/users'),
+      api('GET', '/groups').catch(() => []),
+    ]);
+    // 고객사 자동완성: 그룹의 customer 값 중복 제거
+    const customers = [...new Set((groups || []).map(g => g.customer).filter(Boolean))].sort();
+    document.getElementById('customerOptions').innerHTML =
+      customers.map(c => `<option value="${esc(c)}">`).join('');
+
+    if (!users || users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-muted small p-3">등록된 고객 계정이 없습니다.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = users.map(u => {
+      const ips = u.allowed_ips && u.allowed_ips.length ? u.allowed_ips.join(', ') : '<span class="text-muted">제한 없음</span>';
+      const badge = u.is_active
+        ? '<span class="badge bg-success-subtle text-success">활성</span>'
+        : '<span class="badge bg-secondary-subtle text-secondary">비활성</span>';
+      return `<tr>
+        <td class="ps-3 fw-semibold">${esc(u.username)}</td>
+        <td>${esc(u.customer || '-')}</td>
+        <td class="small">${ips}</td>
+        <td>${badge}</td>
+        <td class="text-end pe-3">
+          <button class="btn btn-xs btn-outline-secondary" onclick="resetUserPwd(${u.id}, '${esc(u.username)}')" title="비밀번호 재설정"><i class="bi bi-key"></i></button>
+          <button class="btn btn-xs btn-outline-secondary" onclick="toggleUser(${u.id}, ${u.is_active ? 'false' : 'true'})">${u.is_active ? '비활성화' : '활성화'}</button>
+          <button class="btn btn-xs btn-outline-danger" onclick="deleteUser(${u.id}, '${esc(u.username)}')"><i class="bi bi-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-danger small p-3">${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function createUser() {
+  const username = document.getElementById('newUserName').value.trim();
+  const password = document.getElementById('newUserPwd').value;
+  const customer = document.getElementById('newUserCustomer').value.trim();
+  const allowed_ips = _taLines('newUserIps');
+  if (!username || !customer) { settingsMsg('userMsg', 'danger', '아이디와 고객사는 필수입니다.'); return; }
+  if (password.length < 8) { settingsMsg('userMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  try {
+    await api('POST', '/users', {username, password, customer, allowed_ips});
+    settingsMsg('userMsg', 'success', `'${username}' 계정이 생성되었습니다.`);
+    document.getElementById('newUserName').value = '';
+    document.getElementById('newUserPwd').value = '';
+    document.getElementById('newUserCustomer').value = '';
+    document.getElementById('newUserIps').value = '';
+    loadUsers();
+  } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+}
+
+async function toggleUser(id, active) {
+  try {
+    await api('PUT', `/users/${id}`, {is_active: active});
+    loadUsers();
+  } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+}
+
+async function resetUserPwd(id, username) {
+  const pw = prompt(`'${username}' 계정의 새 비밀번호 (8자 이상):`);
+  if (pw === null) return;
+  if (pw.length < 8) { settingsMsg('userMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  try {
+    await api('PUT', `/users/${id}`, {password: pw});
+    settingsMsg('userMsg', 'success', `'${username}' 비밀번호가 변경되었습니다.`);
+  } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+}
+
+async function deleteUser(id, username) {
+  if (!confirm(`'${username}' 계정을 삭제하시겠습니까?`)) return;
+  try {
+    await api('DELETE', `/users/${id}`);
+    loadUsers();
+  } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+}

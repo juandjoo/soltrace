@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import require_admin
+from app.deps import device_scope, require_admin
 from app.models import Device, DeviceGroup, Group
 from app.schemas import DeviceConfirm, DeviceGroupAssign, DeviceResponse
 
@@ -15,9 +15,11 @@ router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 def list_devices(
     status_filter: Optional[str] = Query(default=None, alias="status"),
     db: Session = Depends(get_db),
-    _: str = Depends(require_admin),
+    scope: Optional[List[int]] = Depends(device_scope),
 ):
     q = db.query(Device)
+    if scope is not None:
+        q = q.filter(Device.id.in_(scope))
     if status_filter:
         q = q.filter(Device.status == status_filter)
     return q.order_by(Device.created_at.desc()).all()
