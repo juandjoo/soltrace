@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import alert_settings
-from app.service_monitor import ServiceMonitor, _like_patterns
+from app.service_monitor import ServiceMonitor, _like_patterns, cwd_not_ignored_sql
 
 MB = 1024 * 1024
 
@@ -137,3 +137,26 @@ def test_cwd_ignore_patterns_wildcard_and_escaping():
 
 def test_cwd_ignore_patterns_multiline():
     assert _like_patterns("/a/*\n/b") == ["/a/%", "/b"]
+
+
+def test_cwd_ignore_rule_lives_in_one_place():
+    """제외 조건은 cwd_not_ignored_sql() 한 곳에만 둔다.
+
+    롤업(service_metrics) · 알림 경로 분석 · 대시보드 실패 건수가 각자 조건을 적어두면
+    "제외 경로를 설정했는데 화면 숫자만 그대로" 같은 어긋남이 생긴다.
+    """
+    import inspect
+
+    from app.routers import dashboard
+    from app import service_monitor
+
+    assert cwd_not_ignored_sql() == cwd_not_ignored_sql("file_path")
+    assert "fl.file_path" in cwd_not_ignored_sql("fl.file_path")
+
+    for mod in (dashboard, service_monitor):
+        src = inspect.getsource(mod)
+        # 조건 문자열을 직접 적은 곳이 있으면(헬퍼 정의 제외) 기준이 갈라진 것
+        literal = src.count("LIKE ANY(CAST(:cwd_ignore")
+        expected = 1 if mod is service_monitor else 0  # 헬퍼 정의 1회
+        assert literal == expected, f"{mod.__name__}: 제외 조건을 직접 적지 말고 헬퍼를 쓰세요"
+        assert "cwd_not_ignored_sql(" in src

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
 
+from app import alert_settings
 from app.database import get_db
 from app.deps import device_scope
 from app.models import Device, DeviceGroup, FtpLog, Group
@@ -12,7 +13,10 @@ from app.schemas import (
     DashboardDetail, DashboardStats, TimeSeriesPoint, TopItem,
     HourlyPoint, GroupHourlySeries, UserHourlySeries,
     ServiceHealthResponse, ServiceHealthDevice, ServiceAlertItem, ServiceTrendPoint, FailTotals,
+    CwdFailBreakdown, CwdFailPath, CwdFailUser,
 )
+# cwd_fail 제외 규칙은 롤업/알림과 같은 것을 쓴다 (기준이 갈라지면 화면 숫자가 어긋난다)
+from app.service_monitor import _like_patterns, cwd_not_ignored_sql
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
@@ -387,12 +391,18 @@ def get_service_health(
         cwd_fails=r.cwd_fails,
     ) for r in trend_rows]
 
+    # cwd_fail 은 설정의 '제외 경로'를 빼고 센다 — service_metrics 롤업/알림과 같은 기준.
+    # 제외된 건수도 함께 돌려줘 화면에서 '왜 로그보다 적은지' 를 설명할 수 있게 한다.
+    params["cwd_ignore"] = _like_patterns(alert_settings.load(db)["cwd_ignore_paths"])
     totals_row = db.execute(text(f"""
         SELECT
             COALESCE(SUM(CASE WHEN fl.action IN ('upload','download')
                               AND fl.status = 'fail' THEN 1 ELSE 0 END), 0)::int AS transfer_fails,
             COALESCE(SUM(CASE WHEN fl.action = 'login' AND fl.status = 'fail' THEN 1 ELSE 0 END), 0)::int AS login_fails,
-            COALESCE(SUM(CASE WHEN fl.action = 'cwd_fail' THEN 1 ELSE 0 END), 0)::int AS cwd_fails
+            COUNT(*) FILTER (WHERE fl.action = 'cwd_fail'
+                             AND {cwd_not_ignored_sql('fl.file_path')})::int AS cwd_fails,
+            COUNT(*) FILTER (WHERE fl.action = 'cwd_fail'
+                             AND NOT ({cwd_not_ignored_sql('fl.file_path')}))::int AS cwd_ignored
         FROM ftp_logs fl
         WHERE fl.log_time >= :since AND fl.log_time <= :until {dev_f_log}
     """), params).fetchone()
@@ -400,6 +410,91 @@ def get_service_health(
         transfer_fails=totals_row.transfer_fails,
         login_fails=totals_row.login_fails,
         cwd_fails=totals_row.cwd_fails,
+        cwd_fails_ignored=totals_row.cwd_ignored,
     )
 
     return ServiceHealthResponse(devices=devices, alerts=alerts, trend=trend, fail_totals=fail_totals)
+
+
+# 상위 몇 개 경로까지를 "한곳에 몰림" 판단에 쓸지 (알림 메시지의 단일 경로 집중도와 별개로,
+# 화면에서는 상위 3개 합계로 설정 오류 성격인지 훑어본다)
+_CWD_TOP_N = 3
+
+
+@router.get("/cwd-fails", response_model=CwdFailBreakdown)
+def get_cwd_fail_breakdown(
+    hours: int = Query(default=24, ge=1, le=8760),
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    device_id: Optional[int] = None,
+    limit: int = Query(default=15, ge=1, le=100),
+    db: Session = Depends(get_db),
+    scope: Optional[list[int]] = Depends(device_scope),
+):
+    """CWD(디렉토리 이동) 실패가 '어디에' 몰려 있는지 — 경로/사용자 상위 집계.
+
+    CWD 550 은 클라이언트가 경로 존재를 떠보는 정상 동작(FileZilla/WinSCP 탐색,
+    업로드 스크립트의 CWD→MKD 순서 등)으로도 대량 발생한다. 실제 이상(침입 탐색)인지
+    설정 오류인지는 건수가 아니라 경로 분포로 갈리므로 원본 로그를 되짚어 보여준다.
+    """
+    since, until = _time_range(start_date, end_date, hours=hours)
+    params = {"since": since, "until": until, "did": device_id, "limit": limit}
+    dev_f_log = ("AND fl.device_id = :did" if device_id else "") + _scope_sql(params, scope, "fl.device_id")
+
+    ignore_raw = alert_settings.load(db)["cwd_ignore_paths"]
+    params["cwd_ignore"] = _like_patterns(ignore_raw)
+    ignored_expr = f"NOT ({cwd_not_ignored_sql('fl.file_path')})"
+
+    # 경로별 집계 1회 스캔으로 상위 목록과 전체 합계를 함께 얻는다 (윈도우 집계)
+    rows = db.execute(text(f"""
+        WITH per_path AS (
+            SELECT fl.file_path                        AS file_path,
+                   COUNT(*)::int                       AS n,
+                   COUNT(DISTINCT fl.username)::int    AS users,
+                   COUNT(DISTINCT fl.client_ip)::int   AS ips,
+                   MAX(fl.log_time)                    AS last_seen,
+                   {ignored_expr}                      AS ignored
+            FROM ftp_logs fl
+            WHERE fl.action = 'cwd_fail'
+              AND fl.log_time >= :since AND fl.log_time <= :until {dev_f_log}
+            GROUP BY fl.file_path
+        )
+        SELECT file_path, n, users, ips, last_seen, ignored,
+               SUM(n) OVER ()::int                                AS total,
+               COALESCE(SUM(n) FILTER (WHERE ignored) OVER (), 0)::int AS ignored_total,
+               COUNT(*) OVER ()::int                              AS distinct_paths
+        FROM per_path
+        ORDER BY n DESC
+        LIMIT :limit
+    """), params).fetchall()
+
+    total = rows[0].total if rows else 0
+    paths = [CwdFailPath(file_path=r.file_path, count=r.n, users=r.users, ips=r.ips,
+                         last_seen=r.last_seen, ignored=r.ignored) for r in rows]
+    top_share = (sum(p.count for p in paths[:_CWD_TOP_N]) / total) if total else 0.0
+
+    # 사용자 집계는 제외 경로를 뺀 뒤로 본다 — 남아 있는 실패가 누구에게서 나오는지가 관심사
+    user_rows = db.execute(text(f"""
+        SELECT fl.username                       AS username,
+               COUNT(*)::int                     AS n,
+               COUNT(DISTINCT fl.file_path)::int AS paths
+        FROM ftp_logs fl
+        WHERE fl.action = 'cwd_fail'
+          AND fl.log_time >= :since AND fl.log_time <= :until {dev_f_log}
+          AND {cwd_not_ignored_sql('fl.file_path')}
+        GROUP BY fl.username
+        ORDER BY n DESC
+        LIMIT :limit
+    """), params).fetchall()
+
+    return CwdFailBreakdown(
+        total=total,
+        ignored=rows[0].ignored_total if rows else 0,
+        distinct_paths=rows[0].distinct_paths if rows else 0,
+        top_share=top_share,
+        paths=paths,
+        users=[CwdFailUser(username=r.username, count=r.n, paths=r.paths) for r in user_rows],
+        # 제외 경로는 전역 설정이라 관리자에게만 노출 (고객 계정은 설정을 볼 수 없다)
+        ignore_patterns=[ln.strip() for ln in (ignore_raw or "").splitlines() if ln.strip()]
+                        if scope is None else [],
+    )

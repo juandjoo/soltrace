@@ -364,7 +364,33 @@ class ServiceTrendPoint(BaseModel):
 class FailTotals(BaseModel):
     transfer_fails: int = 0
     login_fails: int = 0
-    cwd_fails: int = 0
+    cwd_fails: int = 0            # 제외 경로를 뺀 건수 (알림/추이와 같은 기준)
+    cwd_fails_ignored: int = 0    # 제외 경로에 걸려 빠진 건수
+
+
+class CwdFailPath(BaseModel):
+    file_path: Optional[str] = None
+    count: int = 0
+    users: int = 0
+    ips: int = 0
+    last_seen: Optional[datetime] = None
+    ignored: bool = False         # 현재 제외 경로 설정에 걸리는 경로
+
+
+class CwdFailUser(BaseModel):
+    username: Optional[str] = None
+    count: int = 0
+    paths: int = 0
+
+
+class CwdFailBreakdown(BaseModel):
+    total: int = 0                # 기간 내 cwd_fail 전체 (제외 경로 포함)
+    ignored: int = 0              # 그중 제외 경로에 걸린 건수
+    distinct_paths: int = 0
+    top_share: float = 0.0        # 상위 경로 3개가 전체에서 차지하는 비율
+    paths: List[CwdFailPath] = []
+    users: List[CwdFailUser] = []
+    ignore_patterns: List[str] = []   # 관리자에게만 채워 보낸다
 
 class NotifySettings(BaseModel):
     webhook_url: str = ""

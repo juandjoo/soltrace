@@ -108,14 +108,15 @@ function loadAll() {
 }
 
 // 슬라이스 인덱스 0=전송 실패, 1=로그인 실패, 2=CWD 실패
-const RATE_DRILL_FILTERS = [
-  {action: '__transfer_only__', status: 'fail'},
-  {action: 'login', status: 'fail'},
-  {action: 'cwd_fail', status: ''},
+// CWD 는 건수보다 '어느 경로에 몰렸는지'가 판단 근거라 로그 대신 원인 분석 모달을 연다.
+const RATE_DRILL_ACTIONS = [
+  () => navToLogsFilters({action: '__transfer_only__', status: 'fail'}),
+  () => navToLogsFilters({action: 'login', status: 'fail'}),
+  () => openCwdAnalysis(),
 ];
 
 // 대시보드 날짜 범위를 유지하면서 로그 조회 페이지로 드릴다운
-function navToLogsFilters({action = '', status = ''} = {}) {
+function navToLogsFilters({action = '', status = '', filePath = ''} = {}) {
   if (_dashExactStart && _dashExactEnd) {
     document.getElementById('logStartTime').value = fmtLocalInput(new Date(_dashExactStart));
     document.getElementById('logEndTime').value   = fmtLocalInput(new Date(_dashExactEnd));
@@ -127,6 +128,8 @@ function navToLogsFilters({action = '', status = ''} = {}) {
   }
   document.getElementById('logActionFilter').value = action;
   document.getElementById('logStatusFilter').value  = status;
+  const fileEl = document.getElementById('logFileFilter');
+  if (fileEl) fileEl.value = filePath;  // 지정 없으면 이전 검색값이 남지 않게 비운다
   _pendingSearch = true;  // initLogsPage 완료 후 자동 검색 (logs.js)
   nav('logs');
 }
@@ -475,6 +478,8 @@ async function loadServiceHealth() {
   // 실패 건수 — 0건이면 이상 없음 표시
   destroyChart('healthRate');
   const ft = data.fail_totals || {};
+  // cwd_fails 는 설정의 '제외 경로'를 뺀 값 — 숨긴 건수를 범례/툴팁에 같이 밝힌다
+  const cwdIgnored = ft.cwd_fails_ignored || 0;
   const failTotal = (ft.transfer_fails || 0) + (ft.login_fails || 0) + (ft.cwd_fails || 0);
   const rateEl = document.getElementById('chartHealthRate');
   const rateWrap = rateEl.parentElement;
@@ -506,7 +511,7 @@ async function loadServiceHealth() {
         responsive: true, maintainAspectRatio: false,
         onClick: (evt, elems) => {
           if (!elems.length) return;
-          navToLogsFilters(RATE_DRILL_FILTERS[elems[0].index]);
+          RATE_DRILL_ACTIONS[elems[0].index]?.();
         },
         onHover: (evt, elems) => {
           evt.native.target.style.cursor = elems.length ? 'pointer' : 'default';
@@ -519,7 +524,8 @@ async function loadServiceHealth() {
               generateLabels: chart => {
                 const ds = chart.data.datasets[0];
                 return chart.data.labels.map((label, i) => ({
-                  text: `${label}: ${ds.data[i].toLocaleString()}건`,
+                  text: `${label}: ${ds.data[i].toLocaleString()}건`
+                        + (i === 2 && cwdIgnored ? ` (제외 ${cwdIgnored.toLocaleString()}건)` : ''),
                   fillStyle: ds.backgroundColor[i],
                   strokeStyle: ds.backgroundColor[i],
                   hidden: false, index: i,
@@ -527,7 +533,10 @@ async function loadServiceHealth() {
               },
             },
           },
-          tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 조회`}},
+          tooltip: {callbacks: {label: c => c.dataIndex === 2
+            ? `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 원인 경로 분석`
+              + (cwdIgnored ? ` (제외 경로 ${cwdIgnored.toLocaleString()}건 제외됨)` : '')
+            : `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 조회`}},
           centerText: {line1: `${failTotal.toLocaleString()}건`, line2: '총 실패', size: 13, color: '#dc3545'},
         },
       },
@@ -572,5 +581,105 @@ function toggleDashAutoRefresh() {
     btn.classList.remove('btn-outline-secondary');
     btn.title = '자동 새로고침 끄기 (60초)';
     btn.querySelector('span').textContent = '자동 ON';
+  }
+}
+
+// ── CWD 실패 원인 분석 ───────────────────────────────────────────────────────
+// 건수만으로는 정상 탐색과 설정 오류를 구분할 수 없어, 실패가 몰린 경로를 보여주고
+// 원인이 확인된 경로를 그 자리에서 제외(설정 반영)할 수 있게 한다.
+let _cwdData = null;
+
+async function openCwdAnalysis() {
+  document.getElementById('cwdPeriod').textContent = _dashPeriodLabel();
+  document.getElementById('cwdMsg').className = 'alert d-none py-2 small mt-2 mb-0';
+  document.getElementById('cwdSummary').innerHTML =
+    '<span class="spinner-border spinner-border-sm me-1" style="width:.8rem;height:.8rem"></span>집계 중…';
+  document.getElementById('cwdPaths').innerHTML = '<tr><td colspan="7" class="text-muted small">-</td></tr>';
+  document.getElementById('cwdUsers').innerHTML = '<tr><td colspan="3" class="text-muted small">-</td></tr>';
+  new bootstrap.Modal(document.getElementById('cwdAnalysisModal')).show();
+  await loadCwdAnalysis();
+}
+
+async function loadCwdAnalysis() {
+  const data = await api('GET', `/dashboard/cwd-fails?${_dashDateParams()}`);
+  if (!data) return;
+  _cwdData = data;
+  const isAdmin = getRole() === 'admin';
+
+  const counted = data.total - data.ignored;
+  const share = data.total ? Math.round(data.top_share * 100) : 0;
+  const hint = !data.total ? ''
+    : share >= 90
+      ? '<div class="alert alert-warning py-2 px-3 mt-2 mb-0">상위 3개 경로에 ' + share + '% 가 몰려 있습니다. '
+        + '침입 탐색보다 <b>홈·업로드 경로 설정 오류</b>일 가능성이 큽니다 (경로 오타, 마운트 누락, 권한).</div>'
+      : '<div class="alert alert-secondary py-2 px-3 mt-2 mb-0">실패가 여러 경로(' + data.distinct_paths.toLocaleString()
+        + '개)에 흩어져 있습니다. 사용자·IP 가 소수에 몰려 있다면 탐색성 접근일 수 있으니 오른쪽 표를 확인하세요.</div>';
+
+  document.getElementById('cwdSummary').innerHTML =
+    `총 <b>${data.total.toLocaleString()}건</b>`
+    + ` · 집계 대상 <b>${counted.toLocaleString()}건</b>`
+    + (data.ignored ? ` · 제외 경로 ${data.ignored.toLocaleString()}건` : '')
+    + ` · 경로 ${data.distinct_paths.toLocaleString()}개`
+    + hint;
+
+  const paths = data.paths || [];
+  document.getElementById('cwdPaths').innerHTML = !paths.length
+    ? '<tr><td colspan="7" class="text-muted small">기간 내 CWD 실패가 없습니다.</td></tr>'
+    : paths.map((p, i) => {
+        const pct = data.total ? (p.count / data.total * 100).toFixed(1) : '0.0';
+        const path = p.file_path || '(경로 없음)';
+        const btn = !isAdmin ? ''
+          : p.ignored
+            ? `<button class="btn btn-outline-secondary btn-xs" onclick="cwdIgnoreToggle(${i}, false)">제외 해제</button>`
+            : `<button class="btn btn-outline-warning btn-xs" onclick="cwdIgnoreToggle(${i}, true)">제외</button>`;
+        return `<tr${p.ignored ? ' class="text-muted"' : ''}>
+          <td class="small text-break">${esc(path)}${p.ignored ? ' <span class="badge bg-secondary">제외됨</span>' : ''}</td>
+          <td class="small text-end fw-semibold">${p.count.toLocaleString()}</td>
+          <td class="small text-end">${pct}%</td>
+          <td class="small text-end">${p.users.toLocaleString()}</td>
+          <td class="small text-end">${p.ips.toLocaleString()}</td>
+          <td class="small text-muted">${fmtTime(p.last_seen)}</td>
+          <td class="text-end text-nowrap">
+            <button class="btn btn-outline-primary btn-xs me-1" onclick="cwdViewLogs(${i})">로그</button>${btn}
+          </td>
+        </tr>`;
+      }).join('');
+
+  const users = data.users || [];
+  document.getElementById('cwdUsers').innerHTML = !users.length
+    ? '<tr><td colspan="3" class="text-muted small">집계 대상 실패가 없습니다.</td></tr>'
+    : users.map(u => `<tr>
+        <td class="small">${esc(u.username || '(미상)')}</td>
+        <td class="small text-end fw-semibold">${u.count.toLocaleString()}</td>
+        <td class="small text-end">${u.paths.toLocaleString()}</td>
+      </tr>`).join('');
+}
+
+// 해당 경로의 CWD 실패만 로그 조회로 드릴다운 (대시보드 기간 유지)
+function cwdViewLogs(idx) {
+  const p = _cwdData?.paths?.[idx];
+  if (!p) return;
+  bootstrap.Modal.getInstance(document.getElementById('cwdAnalysisModal'))?.hide();
+  navToLogsFilters({action: 'cwd_fail', status: '', filePath: p.file_path || ''});
+}
+
+// 경로를 설정의 'CWD 실패 제외 경로'에 넣거나 뺀다 (관리자 전용)
+async function cwdIgnoreToggle(idx, add) {
+  const p = _cwdData?.paths?.[idx];
+  if (!p || !p.file_path) return;
+  const list = (_cwdData.ignore_patterns || []).filter(x => x !== p.file_path);
+  if (add) list.push(p.file_path);
+  const msg = document.getElementById('cwdMsg');
+  try {
+    await api('PUT', '/settings/alerts', {cwd_ignore_paths: list.join('\n')});
+    msg.className = 'alert alert-success py-2 small mt-2 mb-0';
+    msg.textContent = add
+      ? `${p.file_path} 을(를) 제외했습니다. 실패 건수·추이·알림에서 빠집니다 (다음 판정 주기부터 알림 반영).`
+      : `${p.file_path} 제외를 해제했습니다.`;
+    await loadCwdAnalysis();
+    loadServiceHealth();
+  } catch (e) {
+    msg.className = 'alert alert-danger py-2 small mt-2 mb-0';
+    msg.textContent = e.message;
   }
 }

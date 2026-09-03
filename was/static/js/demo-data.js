@@ -206,7 +206,34 @@
       })),
       alerts,
       trend,
-      fail_totals: { transfer_fails: 812, login_fails: 143, cwd_fails: 291 },
+      fail_totals: { transfer_fails: 812, login_fails: 143, cwd_fails: 291, cwd_fails_ignored: 640 },
+    };
+  }
+
+  // CWD 실패 원인 분석 — 대부분이 잘못 설정된 업로드 경로 두 곳에 몰린 모양
+  function cwdFails() {
+    const paths = [
+      { file_path: '/upload/vod/2026/08', count: 412, users: 3,  ips: 4,  ignored: false },
+      { file_path: '/data/incoming/tmp',  count: 386, users: 2,  ips: 2,  ignored: true  },
+      { file_path: '/backup/daily',       count: 254, users: 1,  ips: 1,  ignored: true  },
+      { file_path: '/home/ftpuser/vod',   count: 121, users: 5,  ips: 9,  ignored: false },
+      { file_path: '/upload/thumb',       count: 44,  users: 6,  ips: 11, ignored: false },
+      { file_path: '/etc',                count: 9,   users: 2,  ips: 2,  ignored: false },
+    ].map((p, i) => ({ ...p, last_seen: new Date(now - (i + 1) * 900 * 1000).toISOString() }));
+    const total = paths.reduce((a, p) => a + p.count, 0);
+    return {
+      total,
+      ignored: paths.filter(p => p.ignored).reduce((a, p) => a + p.count, 0),
+      distinct_paths: 37,
+      top_share: (paths[0].count + paths[1].count + paths[2].count) / total,
+      paths,
+      users: [
+        { username: 'vod_batch', count: 401, paths: 6 },
+        { username: 'cdn_sync',  count: 118, paths: 9 },
+        { username: 'ops_user',  count: 44,  paths: 12 },
+        { username: null,        count: 23,  paths: 5 },
+      ],
+      ignore_patterns: ['/data/incoming/tmp', '/backup/daily'],
     };
   }
 
@@ -259,6 +286,7 @@
     }],
     [/^\/dashboard\/users-hourly/, () => USERS.slice(0, 5).map(u => ({ username: u, data: hourlyPoints(0.6 + rnd()) }))],
     [/^\/dashboard\/hourly/, () => GROUPS.map(g => ({ group_id: g.id, name: g.name, telco: g.telco, data: hourlyPoints(0.5 + rnd()) }))],
+    [/^\/dashboard\/cwd-fails/, cwdFails],
     [/^\/dashboard\/service-health/, serviceHealth],
     [/^\/dashboard/, dashboard],
     [/^\/settings\/version$/, () => ({
@@ -271,7 +299,7 @@
     [/^\/settings\/alerts$/, () => ({
       mad_k: 4.0, fail_rate_floor: 0.05, login_fail_rate_floor: 0.3, throughput_drop: 0.5,
       cwd_fail_floor: 20, min_samples: 20, min_login_samples: 10, min_cwd_samples: 5,
-      min_large_samples: 5,
+      min_large_samples: 5, cwd_ignore_paths: '/data/incoming/tmp\n/backup/daily',
       large_file_bytes: 4 * 1024 * 1024, bucket_minutes: 10, baseline_days: 7,
     })],
     [/^\/settings\/notify\/mute$/, () => ({ muted: false })],

@@ -23,10 +23,14 @@ log = logging.getLogger("soltrace.monitor")
 
 _EPOCH = "2000-01-01 00:00:00+00"  # date_bin origin (버킷 경계 고정)
 
-# cwd_fail 집계에서 제외 경로를 거르는 조건. 롤업(건수)과 알림 경로 분석이 같은 기준을
-# 봐야 "최다 경로"가 집계에서 빠진 경로로 나오는 어긋남이 생기지 않는다.
-# 빈 목록이면 LIKE ANY(ARRAY[]) 가 false → NOT false = true 로 전부 집계된다.
-_CWD_NOT_IGNORED = "NOT (COALESCE(file_path,'') LIKE ANY(CAST(:cwd_ignore AS text[])))"
+def cwd_not_ignored_sql(col: str = "file_path") -> str:
+    """cwd_fail 집계에서 제외 경로를 거르는 SQL 조건 (:cwd_ignore 바인딩 필요).
+
+    롤업(건수)·알림 경로 분석·대시보드 실패 건수가 모두 이 한 조건을 써야
+    "제외 경로를 설정했는데 화면 숫자는 그대로" 같은 어긋남이 생기지 않는다.
+    빈 목록이면 LIKE ANY(ARRAY[]) 가 false → NOT false = true 로 전부 집계된다.
+    """
+    return f"NOT (COALESCE({col},'') LIKE ANY(CAST(:cwd_ignore AS text[])))"
 
 
 def _now():
@@ -138,7 +142,7 @@ class ServiceMonitor:
                 COUNT(*) FILTER (WHERE action='login'),
                 COUNT(*) FILTER (WHERE action='login' AND status='fail'),
                 -- 원인이 밝혀진 경로(설정 오류 등)는 알림 집계에서만 제외한다.
-                COUNT(*) FILTER (WHERE action='cwd_fail' AND {_CWD_NOT_IGNORED})
+                COUNT(*) FILTER (WHERE action='cwd_fail' AND {cwd_not_ignored_sql()})
             FROM ftp_logs
             WHERE log_time >= :win_start
             GROUP BY device_id, bucket
@@ -230,7 +234,7 @@ class ServiceMonitor:
                 FROM ftp_logs
                 WHERE device_id = :device_id AND action = 'cwd_fail'
                   AND log_time >= :bucket AND log_time < :bucket_end
-                  AND {_CWD_NOT_IGNORED}
+                  AND {cwd_not_ignored_sql()}
                 GROUP BY file_path
                 ORDER BY n DESC
                 LIMIT 1

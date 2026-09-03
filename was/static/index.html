@@ -132,6 +132,10 @@
             <div class="d-flex align-items-baseline gap-2 mb-2">
               <span class="fw-semibold small">전송/로그인 실패 건수</span>
               <span id="healthRatePeriod" class="text-muted" style="font-size:0.75rem"></span>
+              <button class="btn btn-outline-secondary btn-xs ms-auto" onclick="openCwdAnalysis()"
+                      title="디렉토리 이동(CWD) 실패가 어느 경로에 몰려 있는지 확인">
+                <i class="bi bi-search me-1"></i>CWD 실패 분석
+              </button>
             </div>
             <div style="position:relative;height:220px"><canvas id="chartHealthRate"></canvas></div>
           </div>
@@ -164,6 +168,56 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body" id="dsBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CWD 실패 원인 분석 Modal -->
+    <div class="modal fade" id="cwdAnalysisModal" tabindex="-1">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title">
+              <i class="bi bi-signpost-split me-1"></i>CWD(디렉토리 이동) 실패 분석
+              <span id="cwdPeriod" class="text-muted fw-normal ms-1" style="font-size:0.78rem"></span>
+            </h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="cwdSummary" class="small mb-3">-</div>
+            <div class="row g-3">
+              <div class="col-lg-8">
+                <div class="fw-semibold small mb-1">실패가 몰린 경로</div>
+                <div class="table-responsive" style="max-height:340px;overflow:auto">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead><tr class="text-muted small">
+                      <th>경로</th><th class="text-end">건수</th><th class="text-end">비중</th>
+                      <th class="text-end">사용자</th><th class="text-end">IP</th><th>마지막</th><th></th>
+                    </tr></thead>
+                    <tbody id="cwdPaths"><tr><td colspan="7" class="text-muted small">-</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="fw-semibold small mb-1">사용자 <span class="text-muted fw-normal">(제외 경로 뺀 기준)</span></div>
+                <div class="table-responsive" style="max-height:340px;overflow:auto">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead><tr class="text-muted small">
+                      <th>사용자ID</th><th class="text-end">건수</th><th class="text-end">경로수</th>
+                    </tr></thead>
+                    <tbody id="cwdUsers"><tr><td colspan="3" class="text-muted small">-</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div class="form-text mt-2">
+              CWD 550 은 클라이언트가 경로 존재를 떠보는 정상 동작(탐색기 이동, 업로드 스크립트의 CWD→MKD 순서,
+              chroot 초기화)으로도 많이 발생합니다. <b>소수 경로에 몰려 있으면</b> 침입 탐색이 아니라 홈·업로드 경로
+              설정 오류일 가능성이 큽니다. 원인이 확인된 경로는 <b>제외</b>하면 실패 건수·추이·알림에서 빠집니다
+              (로그 조회에는 그대로 남습니다).
+            </div>
+            <div id="cwdMsg" class="alert d-none py-2 small mt-2 mb-0"></div>
+          </div>
         </div>
       </div>
     </div>
