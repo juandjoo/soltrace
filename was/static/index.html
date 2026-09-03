@@ -54,6 +54,7 @@
     <ul class="nav gap-1 flex-nowrap" style="position:absolute;left:50%;transform:translateX(-50%)">
       <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i>대시보드</a></li>
       <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
+      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('apiguide')"><i class="bi bi-code-slash"></i>API 가이드</a></li>
       <li class="nav-item" data-admin-only><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear-fill"></i>설정</a></li>
     </ul>
     <div class="ms-auto d-flex align-items-center gap-2">
@@ -262,6 +263,81 @@
         <div class="d-flex align-items-center px-3 py-2 border-top">
           <span class="text-muted small" id="logTotal"></span>
           <nav class="ms-auto"><ul class="pagination pagination-sm mb-0" id="logPager"></ul></nav>
+        </div>
+      </div>
+    </div>
+
+    <!-- API 가이드 -->
+    <div id="page-apiguide" class="page">
+      <h5 class="mb-3 fw-bold"><i class="bi bi-code-slash me-2 text-brand"></i>API 가이드</h5>
+
+      <div class="row g-4 align-items-start">
+        <div class="col-lg-8">
+          <div class="card mb-3">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-key-fill me-1"></i>인증</div>
+            <div class="card-body">
+              <p class="small mb-2">
+                모든 요청에 API 키가 필요합니다. 키는 관리자가 <b>설정 &gt; 고객 계정 &gt; API 키</b>에서 발급합니다.
+              </p>
+              <div class="mb-2">
+                <div class="small text-muted mb-1">방법 1 — <code>X-API-Key</code> 헤더 (권장)</div>
+                <div class="api-code" data-copy><code id="apiAuthHeader"></code></div>
+              </div>
+              <div>
+                <div class="small text-muted mb-1">방법 2 — <code>Authorization</code> 헤더</div>
+                <div class="api-code" data-copy><code id="apiAuthBearer"></code></div>
+              </div>
+              <ul class="small text-muted mt-3 mb-0 ps-3">
+                <li><b>조회 전용</b>입니다. <code>GET</code> 외의 요청은 <code>403</code>으로 거부됩니다.</li>
+                <li>권한 범위는 키를 발급한 계정과 같습니다. 고객 계정 키는 <b>해당 고객사의 장비 데이터만</b> 조회됩니다.</li>
+                <li>키는 발급 시 한 번만 표시됩니다. 분실하면 재발급해야 합니다.</li>
+                <li>요청 한도는 분당 60회이며, 초과하면 <code>503</code>이 반환됩니다.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="card mb-3">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-list-ul me-1"></i>엔드포인트</div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0 align-middle small">
+                <thead class="table-light"><tr>
+                  <th style="width:32%">경로</th><th>설명</th>
+                </tr></thead>
+                <tbody id="apiEndpointList"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card mb-3">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-sliders me-1"></i>로그 조회 파라미터</div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0 align-middle small">
+                <thead class="table-light"><tr>
+                  <th style="width:22%">이름</th><th style="width:18%">예시</th><th>설명</th>
+                </tr></thead>
+                <tbody id="apiParamList"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-exclamation-triangle me-1"></i>오류 응답</div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0 align-middle small">
+                <thead class="table-light"><tr>
+                  <th style="width:18%">코드</th><th>의미</th>
+                </tr></thead>
+                <tbody id="apiErrorList"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4">
+          <div class="card sticky-lg-top" style="top:4.5rem">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-terminal me-1"></i>사용 예시</div>
+            <div class="card-body" id="apiExamples"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -733,6 +809,7 @@
 <script src="/static/js/settings.js?v=__VER__"></script>
 <script src="/static/js/groups.js?v=__VER__"></script>
 <script src="/static/js/logs.js?v=__VER__"></script>
+<script src="/static/js/apiguide.js?v=__VER__"></script>
 <script src="/static/js/app.js?v=__VER__"></script>
 
 </body>

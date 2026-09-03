@@ -16,6 +16,7 @@ function nav(page) {
   }
   else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
   if (page === 'logs') initLogsPage();
+  if (page === 'apiguide') initApiGuide();
   if (page === 'settings') settingsTab(currentSettingsTab);
 }
 

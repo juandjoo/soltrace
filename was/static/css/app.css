@@ -92,3 +92,19 @@ body        { background: #f5f7fa; font-size: 14px; }
 .action-login,
 .action-logout            { color: #6c757d; }
 .size-val                 { font-family: monospace; }
+
+/* ── API 가이드 ────────────────────────────────────────────────── */
+.api-code {
+  background: #f6f8fa;
+  border: 1px solid #e4e7ea;
+  border-radius: .375rem;
+  padding: .5rem .65rem;
+}
+.api-code code {
+  color: #24292f;
+  font-size: .78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+#page-apiguide table code { font-size: .78rem; }
