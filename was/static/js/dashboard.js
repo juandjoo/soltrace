@@ -129,10 +129,8 @@ function dashCustom() {
 }
 
 function loadAll() {
-  loadDashboard();
   loadServiceHealth();
   loadUserHourly();
-  loadHourly();
 }
 
 // 슬라이스 인덱스 0=전송 실패, 1=로그인 실패, 2=CWD 실패
@@ -162,74 +160,83 @@ function navToLogsFilters({action = '', status = '', filePath = ''} = {}) {
   nav('logs');
 }
 
-async function loadDashboard() {
-  const data = await api('GET', `/dashboard?${_dashDateParams()}`);
-  if (!data) return;
+// 사용자별 '건수' 추이 카드 — 업로드 카운트·삭제 카운트가 같은 코드를 쓴다.
+// (같은 규칙이 두 벌이 되면 한쪽만 고쳐져 두 카드가 갈라진다)
+const USER_COUNT_CHARTS = {
+  userUploadCnt: {
+    canvas: 'chartUserUploadCnt', legend: 'userUploadCntLegend',
+    resetBtn: 'resetUserUploadCntZoomBtn', head: '사용자',
+    pick: h => h.uploads || 0, empty: '기간 내 업로드 없음',
+  },
+  userDeleteCnt: {
+    canvas: 'chartUserDeleteCnt', legend: 'userDeleteCntLegend',
+    resetBtn: 'resetUserDeleteCntZoomBtn', head: '사용자',
+    pick: h => h.deletes || 0, empty: '기간 내 삭제 없음',
+  },
+};
 
-  const bytesBarOpts = {
-    indexAxis: 'y',
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {display: false},
-      tooltip: {callbacks: {label: c => fmtBytes(c.parsed.x)}},
-    },
-    scales: {x: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}}},
-  };
+// key → {focus, sort}. 카드마다 따로 둔다(한 카드에서 계정을 골라도 다른 카드는 그대로).
+const _userChartState = {};
 
+function _chartState(key) {
+  if (!_userChartState[key]) _userChartState[key] = {focus: null, sort: {col: null, asc: true}};
+  return _userChartState[key];
 }
 
-let _userHourlyFocusIdx = null;
-
 async function loadUserHourly() {
-  _userHourlyFocusIdx = null;
-  _setPeriodLabels('userUploadPeriod', 'userDeletePeriod');
+  _setPeriodLabels('userUploadCntPeriod', 'userDeleteCntPeriod',
+                   'userUploadPeriod', 'userDeletePeriod');
   const data = await api('GET', `/dashboard/users-hourly?${_dashDateParams()}`);
   if (!data) return;
 
-  const legendEl = document.getElementById('userHourlyLegend');
   if (!data.length) {
-    destroyChart('userHourly');
+    Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, [], [], String));
     _renderUserVolumeChart('userUpload', 'chartUserUpload', [], [], String, () => [0, 0]);
     _renderUserVolumeChart('userDelete', 'chartUserDelete', [], [], String, () => [0, 0]);
-    legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
     return;
   }
 
   // 버킷은 전체 사용자 기준 — 삭제만 한 사용자도 x축에 들어와야 한다
   const bucketSet = new Set(data.flatMap(u => u.data.map(h => h.bucket)));
   const allBuckets = [...bucketSet].sort();
-
   const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
 
-  // 버킷 → 시점 맵. 세 차트(사용량·업로드양·삭제량)가 같은 맵을 쓴다.
+  // 버킷 → 시점 맵. 네 차트(업로드·삭제 카운트, 업로드양·삭제량)가 같은 맵을 쓴다.
   data.forEach(u => { u._map = Object.fromEntries(u.data.map(h => [h.bucket, h])); });
 
+  Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, data, allBuckets, fmtBucket));
+
   // 업로드양 · 삭제량 (기간별) — 같은 응답으로 그린다 (추가 요청 없음).
-  // 사용량 차트가 비어도(전송이 없어도) 삭제는 있을 수 있으므로 먼저 그린다.
   _renderUserVolumeChart('userUpload', 'chartUserUpload', data, allBuckets, fmtBucket,
                          h => [h.bytes_in || 0, h.uploads || 0]);
   _renderUserVolumeChart('userDelete', 'chartUserDelete', data, allBuckets, fmtBucket,
                          h => [h.bytes_del || 0, h.deletes || 0]);
+}
 
-  const active = data.filter(u => u.data.some(h => (h.uploads || 0) + (h.downloads || 0) > 0));
+// 사용자별 건수 라인차트 + 범례표(사용자·최대·현재, 클릭 시 해당 계정만 표시).
+function _renderUserCountChart(key, series, buckets, fmtBucket) {
+  const cfg = USER_COUNT_CHARTS[key];
+  const legendEl = document.getElementById(cfg.legend);
+  const st = _chartState(key);
+  st.focus = null;
+  destroyChart(key);
+  document.getElementById(cfg.resetBtn)?.classList.add('d-none');
+
+  const active = series.filter(u => u.data.some(h => cfg.pick(h) > 0));
   if (!active.length) {
-    destroyChart('userHourly');
-    legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
+    if (legendEl) legendEl.innerHTML = `<div class="text-muted small">${cfg.empty}</div>`;
     return;
   }
 
   const datasets = active.map((u, i) => ({
     label: u.username,
-    data: allBuckets.map(b => (u._map[b]?.uploads || 0) + (u._map[b]?.downloads || 0)),
-    ..._hourlyLineStyle(i, allBuckets.length),
+    data: buckets.map(b => cfg.pick(u._map[b] || {})),
+    ..._hourlyLineStyle(i, buckets.length),
   }));
 
-  document.getElementById('resetUserZoomBtn')?.classList.add('d-none');
-  destroyChart('userHourly');
-  charts.userHourly = new Chart(document.getElementById('chartUserHourly'), {
+  charts[key] = new Chart(document.getElementById(cfg.canvas), {
     type: 'line',
-    data: {labels: allBuckets.map(fmtBucket), datasets},
+    data: {labels: buckets.map(fmtBucket), datasets},
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -241,42 +248,42 @@ async function loadUserHourly() {
           zoom: {
             drag: {enabled: true, backgroundColor: 'rgba(13,110,253,0.08)', borderColor: 'rgba(13,110,253,0.4)', borderWidth: 1},
             mode: 'x',
-            onZoomComplete: () => document.getElementById('resetUserZoomBtn')?.classList.remove('d-none'),
+            onZoomComplete: () => document.getElementById(cfg.resetBtn)?.classList.remove('d-none'),
           },
         },
       },
       scales: {
-        x: _hourlyXScale(allBuckets.length),
+        x: _hourlyXScale(buckets.length),
         y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
   });
 
-  const userRows = active.map((u, i) => {
+  const rows = active.map((u, i) => {
     const vals = datasets[i].data;
     const maxVal = Math.max(0, ...vals);
     const curVal = vals[vals.length - 1] ?? 0;
     const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
-    return `<tr onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}" style="cursor:pointer" data-name="${u.username}" data-max="${maxVal}" data-cur="${curVal}">
+    return `<tr onclick="focusUserChart('${key}', ${i})" id="${key}LegendItem${i}" style="cursor:pointer" data-name="${esc(u.username)}" data-max="${maxVal}" data-cur="${curVal}">
       <td style="padding:3px 4px;min-width:0;max-width:0">
         <div class="d-flex align-items-center gap-1" style="min-width:0">
           <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
-          <span class="text-truncate" style="font-size:0.75rem" title="${u.username}">${u.username}</span>
+          <span class="text-truncate" style="font-size:0.75rem" title="${esc(u.username)}">${esc(u.username)}</span>
         </div>
       </td>
       <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${maxVal.toLocaleString()}</td>
       <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
     </tr>`;
   }).join('');
-  _userLegendSort = {col: null, asc: true};
+  st.sort = {col: null, asc: true};
   legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
     <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
     <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
-      <th data-col="name" onclick="sortUserLegend('name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">사용자<span class="sort-arrow"></span></th>
-      <th data-col="max" onclick="sortUserLegend('max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
-      <th data-col="cur" onclick="sortUserLegend('cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
+      <th data-col="name" onclick="sortUserChart('${key}', 'name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">${cfg.head}<span class="sort-arrow"></span></th>
+      <th data-col="max" onclick="sortUserChart('${key}', 'max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
+      <th data-col="cur" onclick="sortUserChart('${key}', 'cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
     </tr></thead>
-    <tbody>${userRows}</tbody>
+    <tbody>${rows}</tbody>
   </table>`;
 }
 
@@ -330,9 +337,6 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
   });
 }
 
-let _userLegendSort   = {col: null, asc: true};
-let _hourlyLegendSort = {col: null, asc: true};
-
 function _applyLegendSort(legendId, state) {
   const legendEl = document.getElementById(legendId);
   const tbody = legendEl?.querySelector('tbody');
@@ -355,164 +359,35 @@ function _applyLegendSort(legendId, state) {
   });
 }
 
-function sortUserLegend(col) {
-  if (_userLegendSort.col === col) _userLegendSort.asc = !_userLegendSort.asc;
-  else _userLegendSort = {col, asc: col === 'name'};
-  _applyLegendSort('userHourlyLegend', _userLegendSort);
+function sortUserChart(key, col) {
+  const st = _chartState(key);
+  if (st.sort.col === col) st.sort.asc = !st.sort.asc;
+  else st.sort = {col, asc: col === 'name'};
+  _applyLegendSort(USER_COUNT_CHARTS[key].legend, st.sort);
 }
 
-function sortHourlyLegend(col) {
-  if (_hourlyLegendSort.col === col) _hourlyLegendSort.asc = !_hourlyLegendSort.asc;
-  else _hourlyLegendSort = {col, asc: col === 'name'};
-  _applyLegendSort('hourlyGroupLegend', _hourlyLegendSort);
+function resetUserChartZoom(key) {
+  charts[key]?.resetZoom();
+  document.getElementById(USER_COUNT_CHARTS[key].resetBtn)?.classList.add('d-none');
 }
 
-function resetUserHourlyZoom() {
-  charts.userHourly?.resetZoom();
-  document.getElementById('resetUserZoomBtn')?.classList.add('d-none');
-}
-
-function focusUserSeries(idx) {
-  if (!charts.userHourly) return;
-  const total = charts.userHourly.data.datasets.length;
-  if (_userHourlyFocusIdx === idx) {
-    _userHourlyFocusIdx = null;
-    for (let i = 0; i < total; i++) {
-      charts.userHourly.setDatasetVisibility(i, true);
-      const el = document.getElementById('userHourlyLegendItem' + i);
-      if (el) el.style.opacity = '1';
-    }
-  } else {
-    _userHourlyFocusIdx = idx;
-    for (let i = 0; i < total; i++) {
-      const show = i === idx;
-      charts.userHourly.setDatasetVisibility(i, show);
-      const el = document.getElementById('userHourlyLegendItem' + i);
-      if (el) el.style.opacity = show ? '1' : '0.3';
-    }
+// 범례에서 계정을 클릭하면 그 계정만 표시, 같은 계정을 다시 클릭하면 전체 복원.
+function focusUserChart(key, idx) {
+  const chart = charts[key];
+  if (!chart) return;
+  const st = _chartState(key);
+  const clear = st.focus === idx;
+  st.focus = clear ? null : idx;
+  for (let i = 0; i < chart.data.datasets.length; i++) {
+    const show = clear || i === idx;
+    chart.setDatasetVisibility(i, show);
+    const el = document.getElementById(`${key}LegendItem${i}`);
+    if (el) el.style.opacity = show ? '1' : '0.3';
   }
-  charts.userHourly.update();
+  chart.update();
 }
 
 const HOURLY_PALETTE = ['#0d6efd','#198754','#dc3545','#fd7e14','#6f42c1','#20c997','#0dcaf0','#ffc107','#e83e8c','#6c757d'];
-
-async function loadHourly() {
-  _hourlyFocusIdx = null;
-  const data = await api('GET', `/dashboard/hourly?${_dashDateParams()}`);
-  if (!data) return;
-
-  const legendEl = document.getElementById('hourlyGroupLegend');
-  if (!data.length) {
-    destroyChart('hourly');
-    legendEl.innerHTML = '<div class="text-muted small">그룹 데이터 없음</div>';
-    return;
-  }
-
-  const active = data.filter(g => g.data.some(h => (h.uploads || 0) + (h.downloads || 0) > 0));
-  if (!active.length) {
-    destroyChart('hourly');
-    legendEl.innerHTML = '<div class="text-muted small">그룹 데이터 없음</div>';
-    return;
-  }
-  const bucketSet = new Set(active.flatMap(g => g.data.map(h => h.bucket)));
-  const allBuckets = [...bucketSet].sort();
-
-  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
-
-  const datasets = active.map((g, i) => {
-    const map = Object.fromEntries(g.data.map(h => [h.bucket, h]));
-    return {
-      label: g.name,
-      data: allBuckets.map(b => (map[b]?.uploads || 0) + (map[b]?.downloads || 0)),
-      ..._hourlyLineStyle(i, allBuckets.length),
-    };
-  });
-
-  document.getElementById('resetHourlyZoomBtn')?.classList.add('d-none');
-  destroyChart('hourly');
-  charts.hourly = new Chart(document.getElementById('chartHourly'), {
-    type: 'line',
-    data: {labels: allBuckets.map(fmtBucket), datasets},
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {mode: 'index', intersect: false},
-      plugins: {
-        legend: {display: false},
-        tooltip: {callbacks: {label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}건`}},
-        zoom: {
-          zoom: {
-            drag: {enabled: true, backgroundColor: 'rgba(13,110,253,0.08)', borderColor: 'rgba(13,110,253,0.4)', borderWidth: 1},
-            mode: 'x',
-            onZoomComplete: () => document.getElementById('resetHourlyZoomBtn')?.classList.remove('d-none'),
-          },
-        },
-      },
-      scales: {
-        x: _hourlyXScale(allBuckets.length),
-        y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
-      },
-    },
-  });
-
-  const groupRows = active.map((g, i) => {
-    const vals = datasets[i].data;
-    const maxVal = Math.max(0, ...vals);
-    const curVal = vals[vals.length - 1] ?? 0;
-    const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
-    return `<tr onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}" style="cursor:pointer" data-name="${g.name}" data-max="${maxVal}" data-cur="${curVal}">
-      <td style="padding:3px 4px;min-width:0;max-width:0">
-        <div class="d-flex align-items-center gap-1" style="min-width:0">
-          <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
-          <span class="text-truncate" style="font-size:0.75rem" title="${g.name}">${g.name}</span>
-        </div>
-      </td>
-      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${maxVal.toLocaleString()}</td>
-      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
-    </tr>`;
-  }).join('');
-  _hourlyLegendSort = {col: null, asc: true};
-  legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
-    <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
-    <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
-      <th data-col="name" onclick="sortHourlyLegend('name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">그룹<span class="sort-arrow"></span></th>
-      <th data-col="max" onclick="sortHourlyLegend('max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
-      <th data-col="cur" onclick="sortHourlyLegend('cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
-    </tr></thead>
-    <tbody>${groupRows}</tbody>
-  </table>`;
-}
-
-function resetHourlyZoom() {
-  charts.hourly?.resetZoom();
-  document.getElementById('resetHourlyZoomBtn')?.classList.add('d-none');
-}
-
-let _hourlyFocusIdx = null;
-
-function focusHourlySeries(idx) {
-  if (!charts.hourly) return;
-  const total = charts.hourly.data.datasets.length;
-  if (_hourlyFocusIdx === idx) {
-    // 같은 그룹 재클릭 → 전체 표시 복원
-    _hourlyFocusIdx = null;
-    for (let i = 0; i < total; i++) {
-      charts.hourly.setDatasetVisibility(i, true);
-      const el = document.getElementById('hourlyLegendItem' + i);
-      if (el) el.style.opacity = '1';
-    }
-  } else {
-    // 선택 그룹만 표시, 나머지 숨김
-    _hourlyFocusIdx = idx;
-    for (let i = 0; i < total; i++) {
-      const show = i === idx;
-      charts.hourly.setDatasetVisibility(i, show);
-      const el = document.getElementById('hourlyLegendItem' + i);
-      if (el) el.style.opacity = show ? '1' : '0.3';
-    }
-  }
-  charts.hourly.update();
-}
 
 function _dashPeriodLabel() {
   const s = document.getElementById('dashStart').value;

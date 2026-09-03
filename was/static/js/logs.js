@@ -30,6 +30,9 @@ function _resetAutofillInputs() {
 }
 
 async function initLogsPage() {
+  // 왼쪽 탭으로 직접 들어온 경우엔 이전 검색 조건을 남기지 않는다.
+  // 대시보드 드릴다운(navToLogsFilters)은 조건을 들고 오므로 건드리지 않는다.
+  if (!_pendingSearch) _clearLogSearch();
   _resetAutofillInputs();
 
   const groups = await api('GET', '/groups');
@@ -53,11 +56,24 @@ async function initLogsPage() {
   }
 }
 
+// 옵션 title — 목록을 펼친 상태에서 항목에 마우스를 올리면 고객사/서비스가 보인다.
+// (네이티브 select 는 option 에 커스텀 툴팁을 못 붙이므로 title 속성을 쓴다)
+function _groupOptionTitle(g) {
+  const rows = [];
+  if (g.customer)    rows.push(`고객사: ${g.customer}`);
+  if (g.application) rows.push(`서비스: ${g.application}`);
+  if (g.description) rows.push(`설명: ${g.description}`);
+  return rows.join('\n');
+}
+
 function _renderGroupOptions(telco) {
   const filtered = telco ? allGroups.filter(g => g.telco === telco) : allGroups;
   document.getElementById('logGroupFilter').innerHTML =
     '<option value="">전체 그룹</option>' +
-    filtered.map(g => `<option value="${g.id}">${telco ? '' : (g.telco ? g.telco + ' · ' : '')}${g.name}</option>`).join('');
+    filtered.map(g => {
+      const tip = _groupOptionTitle(g);
+      return `<option value="${g.id}"${tip ? ` title="${esc(tip)}"` : ''}>${telco ? '' : (g.telco ? g.telco + ' · ' : '')}${g.name}</option>`;
+    }).join('');
 }
 
 function onTelcoFilter() {
@@ -74,8 +90,8 @@ function _initGroupTooltip() {
     const g = _logGroupMap[sel.value];
     if (!g || (!g.application && !g.description && !g.customer)) { tip.classList.add('d-none'); return; }
     const rows = [];
-    if (g.application) rows.push(`<span class="text-muted">서비스:</span> <b>${esc(g.application)}</b>`);
-    if (g.customer)    rows.push(`<span class="text-muted">고객사:</span> ${esc(g.customer)}`);
+    if (g.customer)    rows.push(`<span class="text-muted">고객사:</span> <b>${esc(g.customer)}</b>`);
+    if (g.application) rows.push(`<span class="text-muted">서비스:</span> ${esc(g.application)}`);
     if (g.description) rows.push(`<span class="text-muted">설명:</span> ${esc(g.description)}`);
     tip.innerHTML = rows.join('<br>');
     tip.classList.remove('d-none');
@@ -202,7 +218,8 @@ function _renderLogTotal(itemCount) {
       _setHtml(el, itemCount
         ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 <span class="text-muted">집계 중…</span>`
         : '결과 없음');
-      // 총건수 미확정: 이전/다음만 제공
+      // 총건수 미확정: 이전/다음만 제공 (이동할 마지막 페이지를 모르므로 직접 이동은 숨김)
+      _renderPageJump(0);
       _setHtml(pager, itemCount ? _simplePager(itemCount < logPageSize) : '');
     }, LOG_COUNT_PENDING_DELAY);
     return;
@@ -212,7 +229,7 @@ function _renderLogTotal(itemCount) {
   const to = Math.min(logPage * logPageSize, _logTotal);
   _setHtml(el, _logTotal
     ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 ${_logTotal.toLocaleString()}건` : '결과 없음');
-  renderPager(Math.ceil(_logTotal / logPageSize), logPage);
+  renderPager(_logTotal ? Math.ceil(_logTotal / logPageSize) : 0, logPage);
 }
 
 function _simplePager(isLast) {
@@ -241,6 +258,7 @@ async function searchLogs(page) {
       `<tr><td colspan="9" class="text-center text-danger py-4">${msg}</td></tr>`;
     document.getElementById('logTotal').textContent = '';
     document.getElementById('logPager').innerHTML = '';
+    _renderPageJump(0);
   };
   try {
   logPage = page || 1;
@@ -303,8 +321,33 @@ async function searchLogs(page) {
   }
 }
 
+// 페이지 직접 이동 입력 — 총 페이지 수가 확정됐을 때만 보인다.
+let _logTotalPages = 0;
+
+function _renderPageJump(total) {
+  const box = document.getElementById('logPageJump');
+  const input = document.getElementById('logPageJumpInput');
+  if (!box || !input) return;
+  _logTotalPages = total;
+  box.classList.toggle('d-none', total <= 1);
+  box.classList.toggle('d-flex', total > 1);
+  if (total > 1) {
+    input.max = total;
+    input.placeholder = `1-${total}`;
+  }
+}
+
+function jumpLogPage() {
+  const input = document.getElementById('logPageJumpInput');
+  const n = parseInt(input.value, 10);
+  if (!_logTotalPages || !Number.isFinite(n)) return;
+  input.value = '';
+  searchLogs(Math.min(Math.max(1, n), _logTotalPages));
+}
+
 function renderPager(total, current) {
   const ul = document.getElementById('logPager');
+  _renderPageJump(total);
   if (total <= 1) { _setHtml(ul, ''); return; }
   const go = n => `searchLogs(${n})`;
   let html = '';
@@ -335,7 +378,8 @@ async function _download(endpoint, ext) {
 async function exportLogs() { await _download('/logs/export', 'csv'); }
 async function exportXlsx() { await _download('/logs/export/xlsx', 'xlsx'); }
 
-function resetLogFilters() {
+// 검색 조건만 기본값으로 되돌린다 (조회는 하지 않음).
+function _clearLogFilters() {
   document.getElementById('logTelcoFilter').value = '';
   _renderGroupOptions('');
   document.getElementById('logGroupFilter').value = '';
@@ -345,6 +389,23 @@ function resetLogFilters() {
   document.getElementById('logStatusFilter').value = '';
   document.getElementById('logStartTime').value = '';
   document.getElementById('logEndTime').value = '';
+}
+
+// 조건 + 결과를 화면 진입 직후 상태로 되돌린다 (탭 재진입용).
+function _clearLogSearch() {
+  _clearLogFilters();
+  _clearPendingTotal();
+  _logCountKey = null;
+  _logTotal = null;
+  document.getElementById('logTable').innerHTML =
+    '<tr><td colspan="9" class="text-center text-muted py-4">검색 조건을 입력하고 조회하세요.</td></tr>';
+  document.getElementById('logTotal').textContent = '';
+  document.getElementById('logPager').innerHTML = '';
+  _renderPageJump(0);
+}
+
+function resetLogFilters() {
+  _clearLogFilters();
   searchLogs(1);
 }
 

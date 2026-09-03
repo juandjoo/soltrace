@@ -422,6 +422,8 @@ async function deleteApiKey(id, prefix) {
   } catch (e) { settingsMsg('apiKeyMsg', 'danger', e.message); }
 }
 
+let _users = [];          // 목록 캐시 — 수정 모달이 현재 값을 채울 때 쓴다
+
 async function loadUsers() {
   const tbody = document.getElementById('userList');
   document.getElementById('apiKeyIssued').classList.add('d-none');
@@ -441,6 +443,7 @@ async function loadUsers() {
       tbody.innerHTML = '<tr><td colspan="5" class="text-muted small p-3">등록된 고객 계정이 없습니다.</td></tr>';
       return;
     }
+    _users = users;
     tbody.innerHTML = users.map(u => {
       const ips = u.allowed_ips && u.allowed_ips.length ? u.allowed_ips.join(', ') : '<span class="text-muted">제한 없음</span>';
       const badge = u.is_active
@@ -452,7 +455,7 @@ async function loadUsers() {
         <td class="small">${ips}</td>
         <td>${badge}</td>
         <td class="text-end pe-3">
-          <button class="btn btn-xs btn-outline-secondary" onclick="resetUserPwd(${u.id}, '${esc(u.username)}')" title="비밀번호 재설정"><i class="bi bi-key"></i></button>
+          <button class="btn btn-xs btn-outline-primary" onclick="openUserEdit(${u.id})" title="고객사·허용 IP·비밀번호 수정">수정</button>
           <button class="btn btn-xs btn-outline-secondary" onclick="toggleUser(${u.id}, ${u.is_active ? 'false' : 'true'})">${u.is_active ? '비활성화' : '활성화'}</button>
           <button class="btn btn-xs btn-outline-danger" onclick="deleteUser(${u.id}, '${esc(u.username)}')"><i class="bi bi-trash"></i></button>
         </td>
@@ -488,14 +491,38 @@ async function toggleUser(id, active) {
   } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
 }
 
-async function resetUserPwd(id, username) {
-  const pw = prompt(`'${username}' 계정의 새 비밀번호 (8자 이상):`);
-  if (pw === null) return;
-  if (pw.length < 8) { settingsMsg('userMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+// 고객사·허용 IP·비밀번호·활성 상태를 한 모달에서 수정한다 (PUT /users/{id}).
+function openUserEdit(id) {
+  const u = _users.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('editUserId').value = u.id;
+  document.getElementById('editUserName').textContent = u.username;
+  document.getElementById('editUserCustomer').value = u.customer || '';
+  document.getElementById('editUserIps').value = (u.allowed_ips || []).join('\n');
+  document.getElementById('editUserPwd').value = '';
+  document.getElementById('editUserActive').checked = !!u.is_active;
+  document.getElementById('editUserMsg').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('userEditModal')).show();
+}
+
+async function saveUserEdit() {
+  const id = parseInt(document.getElementById('editUserId').value, 10);
+  const customer = document.getElementById('editUserCustomer').value.trim();
+  const pw = document.getElementById('editUserPwd').value;
+  if (!customer) { settingsMsg('editUserMsg', 'danger', '고객사는 비울 수 없습니다.'); return; }
+  if (pw && pw.length < 8) { settingsMsg('editUserMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  const body = {
+    customer,
+    allowed_ips: _taLines('editUserIps'),
+    is_active: document.getElementById('editUserActive').checked,
+  };
+  if (pw) body.password = pw;
   try {
-    await api('PUT', `/users/${id}`, {password: pw});
-    settingsMsg('userMsg', 'success', `'${username}' 비밀번호가 변경되었습니다.`);
-  } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+    await api('PUT', `/users/${id}`, body);
+    bootstrap.Modal.getInstance(document.getElementById('userEditModal'))?.hide();
+    settingsMsg('userMsg', 'success', '계정 정보를 수정했습니다.');
+    loadUsers();
+  } catch (e) { settingsMsg('editUserMsg', 'danger', e.message); }
 }
 
 async function deleteUser(id, username) {

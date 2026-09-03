@@ -52,6 +52,12 @@
       <i class="bi bi-hdd-network me-2 text-brand"></i><span class="text-brand">Sol</span><span>Trace</span>
     </button>
     <div class="ms-auto d-flex align-items-center gap-2">
+      <span id="currentUserBox" class="d-flex align-items-center gap-1 small me-1">
+        <i class="bi bi-person-circle" style="font-size:1rem"></i>
+        <span id="currentUserName" class="fw-semibold"></span>
+        <span id="currentUserRole" class="badge rounded-pill"></span>
+      </span>
+      <span class="vr" style="opacity:.2"></span>
       <span id="sessionTimerDisplay" class="session-timer d-flex align-items-center gap-1 small">
         <i class="bi bi-clock" style="font-size:.85rem"></i>
         <span id="sessionTimerText" style="font-variant-numeric:tabular-nums;min-width:2.6rem;font-weight:500">--:--</span>
@@ -94,29 +100,31 @@
           <button class="btn btn-sm btn-outline-primary" onclick="loadAll()"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
-      <!-- 1행: 사용자별 사용량 + 장비 그룹별 시간대별 사용량 -->
+      <!-- 1행: 사용자별 업로드 카운트 · 삭제 카운트 -->
       <div class="row g-3 mb-3">
         <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
             <div class="d-flex align-items-center mb-2">
-              <span class="fw-semibold small">사용자별 사용량</span>
-              <button id="resetUserZoomBtn" class="btn btn-xs btn-outline-secondary ms-2 d-none" onclick="resetUserHourlyZoom()"><i class="bi bi-zoom-out me-1"></i>초기화</button>
+              <span class="fw-semibold small">사용자별 업로드 카운트</span>
+              <span id="userUploadCntPeriod" class="text-muted ms-2" style="font-size:0.75rem"></span>
+              <button id="resetUserUploadCntZoomBtn" class="btn btn-xs btn-outline-secondary ms-2 d-none" onclick="resetUserChartZoom('userUploadCnt')"><i class="bi bi-zoom-out me-1"></i>초기화</button>
             </div>
             <div class="d-flex gap-2">
-              <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartUserHourly"></canvas></div>
-              <div id="userHourlyLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
+              <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartUserUploadCnt"></canvas></div>
+              <div id="userUploadCntLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
             </div>
           </div>
         </div>
         <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
             <div class="d-flex align-items-center mb-2">
-              <span class="fw-semibold small">장비 그룹별 시간대별 사용량</span>
-              <button id="resetHourlyZoomBtn" class="btn btn-xs btn-outline-secondary ms-2 d-none" onclick="resetHourlyZoom()"><i class="bi bi-zoom-out me-1"></i>초기화</button>
+              <span class="fw-semibold small">사용자별 삭제 카운트</span>
+              <span id="userDeleteCntPeriod" class="text-muted ms-2" style="font-size:0.75rem"></span>
+              <button id="resetUserDeleteCntZoomBtn" class="btn btn-xs btn-outline-secondary ms-2 d-none" onclick="resetUserChartZoom('userDeleteCnt')"><i class="bi bi-zoom-out me-1"></i>초기화</button>
             </div>
             <div class="d-flex gap-2">
-              <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartHourly"></canvas></div>
-              <div id="hourlyGroupLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
+              <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartUserDeleteCnt"></canvas></div>
+              <div id="userDeleteCntLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
             </div>
           </div>
         </div>
@@ -284,7 +292,7 @@
             <select class="form-select form-select-sm w-100" id="logGroupFilter" onchange="searchLogs(1)">
               <option value="">전체 그룹</option>
             </select>
-            <div id="logGroupTip" class="d-none position-absolute bg-white border rounded shadow-sm px-2 py-1 small" style="top:calc(100% + 4px);left:0;z-index:1055;min-width:200px;line-height:1.6;pointer-events:none"></div>
+            <div id="logGroupTip" class="d-none position-absolute bg-white border rounded shadow-sm px-2 py-1 small" style="top:calc(100% + 4px);left:0;z-index:1055;min-width:200px;line-height:1.6;white-space:pre-wrap;pointer-events:none"></div>
           </div>
           <input class="form-control form-control-sm" style="flex:0.8;min-width:80px" id="logUserFilter" placeholder="사용자ID" readonly autocomplete="off" onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')searchLogs(1)">
           <input class="form-control form-control-sm" style="flex:0.9;min-width:95px" id="logIpFilter" placeholder="사용자IP" readonly autocomplete="off" onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')searchLogs(1)">
@@ -349,7 +357,15 @@
         </div>
         <div class="d-flex align-items-center px-3 py-2 border-top">
           <span class="text-muted small" id="logTotal"></span>
-          <nav class="ms-auto"><ul class="pagination pagination-sm mb-0" id="logPager"></ul></nav>
+          <nav class="ms-auto d-flex align-items-center gap-2">
+            <ul class="pagination pagination-sm mb-0" id="logPager"></ul>
+            <div id="logPageJump" class="d-none align-items-center gap-1">
+              <input type="number" min="1" class="form-control form-control-sm" id="logPageJumpInput"
+                     style="width:74px" title="이동할 페이지 번호"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();jumpLogPage();}">
+              <button class="btn btn-sm btn-outline-secondary" onclick="jumpLogPage()">이동</button>
+            </div>
+          </nav>
         </div>
       </div>
     </div>
@@ -847,6 +863,42 @@
   </div><!-- /main -->
   </div><!-- /shell -->
 </div><!-- /appLayout -->
+
+<!-- 고객 계정 수정 모달 -->
+<div class="modal fade" id="userEditModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-person-gear me-1"></i>고객 계정 수정 — <span id="editUserName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editUserId">
+        <div id="editUserMsg" class="alert d-none py-2 small"></div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">고객사 (그룹의 customer 와 일치)</label>
+          <input class="form-control form-control-sm" id="editUserCustomer" list="customerOptions">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">허용 IP/CIDR (줄바꿈 구분, 비우면 제한 없음)</label>
+          <textarea class="form-control form-control-sm" id="editUserIps" rows="3" placeholder="예) 203.0.113.0/24"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">새 비밀번호 (선택, 8자 이상)</label>
+          <input type="password" class="form-control form-control-sm" id="editUserPwd" placeholder="변경하지 않으려면 비워두세요" autocomplete="new-password">
+        </div>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" role="switch" id="editUserActive">
+          <label class="form-check-label small" for="editUserActive">계정 활성</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="saveUserEdit()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- 그룹 모달 -->
 <div class="modal fade" id="groupModal" tabindex="-1">

@@ -29,18 +29,24 @@ _CWD_PROBE_WINDOW = "10 minutes"
 
 
 def cwd_probe_sql(alias: str, since: str, until: str) -> str:
-    """이 cwd_fail 이 '존재 확인'인가 — 실패 직후 같은 경로가 생성됐는지 보는 조건.
+    """이 cwd_fail 이 '존재 확인'인가 — 실패 직후 그 경로(또는 그 하위)가 생성됐는지 보는 조건.
 
     폴더로 이동하다 실패한 게 아니라 업로드 전에 있는지 떠본 것이므로 실패가 아니다.
+    하위 경로까지 보는 이유: `/a/b` CWD 실패 직후 `/a/b/11111` 이 만들어졌다면 그 사이에
+    `/a/b` 가 생겼다는 뜻이라(하위를 만들려면 부모가 있어야 한다) 같은 '존재 확인' 흐름이다.
+    LIKE 가 아니라 starts_with 를 쓰는 것은 경로에 흔한 `_`/`%` 가 와일드카드로 해석돼
+    엉뚱한 건까지 실패에서 빠지는 것을 막기 위해서다.
+
     since/until 은 바깥 조회의 기간 SQL 식(예: ":since", "NOW()") — mkdir 쪽에도 같은
     기간을 걸어야 파티션 프루닝이 되고, 없으면 전체 월 파티션을 훑는다.
-    idx_ftp_logs_mkdir_path(부분 인덱스)를 탄다.
+    idx_ftp_logs_mkdir_path(부분 인덱스)의 device_id 선두 컬럼을 탄다.
     """
     return f"""EXISTS (
                       SELECT 1 FROM ftp_logs mk
                       WHERE mk.action = 'mkdir'
                         AND mk.device_id = {alias}.device_id
-                        AND mk.file_path = {alias}.file_path
+                        AND (mk.file_path = {alias}.file_path
+                             OR starts_with(mk.file_path, {alias}.file_path || '/'))
                         AND mk.log_time >= {since}
                         AND mk.log_time < ({until}) + INTERVAL '{_CWD_PROBE_WINDOW}'
                         AND mk.log_time >= {alias}.log_time

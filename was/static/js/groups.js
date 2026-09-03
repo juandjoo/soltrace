@@ -68,8 +68,8 @@ function renderGroupPage(page) {
       <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
       <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer ? esc(g.customer) : '<span class="text-muted">-</span>'}</td>
       <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains ? esc(g.upload_domains) : '-'}</td>
-      <td class="small" style="word-break:break-word">${g.application ? esc(g.application) : '<span class="text-muted">-</span>'}</td>
-      <td class="small text-muted" style="word-break:break-word">${g.description ? esc(g.description) : '-'}</td>
+      <td class="small" style="word-break:break-word;white-space:pre-wrap">${g.application ? esc(g.application) : '<span class="text-muted">-</span>'}</td>
+      <td class="small text-muted" style="word-break:break-word;white-space:pre-wrap">${g.description ? esc(g.description) : '-'}</td>
       <td><div class="d-flex gap-1 justify-content-end">
         <button class="btn btn-xs btn-outline-secondary" onclick="openGroupDevices(${g.id})" title="이 그룹에 장비 등록"><i class="bi bi-hdd-network me-1"></i>장비</button>
         <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>

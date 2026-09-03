@@ -32,11 +32,32 @@ function getRole() {
 }
 
 // role 에 따라 admin 전용 UI(설정 등) 표시/숨김. data-admin-only 요소를 토글한다.
+// 상단바의 로그인 사용자 표시도 같은 토큰에서 채운다 (표시가 권한과 갈라지지 않게 한 곳에서).
 function applyRoleUI() {
   const isAdmin = getRole() === 'admin';
   document.querySelectorAll('[data-admin-only]').forEach(el => {
     el.classList.toggle('d-none', !isAdmin);
   });
+  _renderCurrentUser(isAdmin);
+}
+
+function _renderCurrentUser(isAdmin) {
+  const p = token ? _parseJwt(token) : null;
+  const nameEl = document.getElementById('currentUserName');
+  const roleEl = document.getElementById('currentUserRole');
+  if (!nameEl || !roleEl) return;
+  nameEl.textContent = p?.sub || '-';
+  nameEl.title = p?.sub || '';
+  if (isAdmin) {
+    roleEl.textContent = '관리자';
+    roleEl.className = 'badge rounded-pill text-bg-secondary';
+    roleEl.title = '';
+  } else {
+    const customer = p?.customer || '';
+    roleEl.textContent = customer || '고객';
+    roleEl.className = 'badge rounded-pill text-bg-light border';
+    roleEl.title = customer ? `고객사: ${customer}` : '고객 계정';
+  }
 }
 
 function _updateTopbarTimer(expiresAt) {
