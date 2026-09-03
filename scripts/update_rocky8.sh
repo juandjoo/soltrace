@@ -37,7 +37,9 @@ log ">> pip 패키지 업데이트"
 "$DEPLOY_DIR/venv/bin/pip" install --quiet -r "$DEPLOY_DIR/requirements.txt"
 
 log ">> DB 스키마 마이그레이션"
-sudo -u postgres psql -d soltrace -f "$APP_DIR/postgres/init.sql"
+# psql 의 -f 는 postgres 계정으로 파일을 연다 — 저장소가 /root 나 홈 디렉터리(0700) 안에 있으면
+# root 는 읽어도 postgres 는 "Permission denied" 로 실패한다. root 가 읽어 stdin 으로 넘긴다.
+sudo -u postgres psql -d soltrace -f - < "$APP_DIR/postgres/init.sql"
 # init.sql 은 postgres 로 적용되므로 새로 생긴 테이블/시퀀스 소유권을 soltrace 로 이관
 # (앱이 soltrace 로 접속해 INSERT/UPDATE/DDL 하려면 소유권 필요 — 예: app_config)
 sudo -u postgres psql -d soltrace -tAc "SELECT format('ALTER TABLE public.%I OWNER TO soltrace;', tablename) FROM pg_tables WHERE schemaname='public' UNION ALL SELECT format('ALTER SEQUENCE public.%I OWNER TO soltrace;', sequencename) FROM pg_sequences WHERE schemaname='public'" | sudo -u postgres psql -d soltrace

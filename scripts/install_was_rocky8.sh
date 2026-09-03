@@ -124,17 +124,31 @@ systemctl enable --now postgresql-16
 # ── [3/8] DB·유저 생성 ──────────────────────────────────────────────────────
 echo "[3/8] DB 유저 및 스키마 생성 중..."
 
-# .env에서 DB_PASSWORD 읽거나 새로 생성
+# .env에서 기존 값 읽거나 새로 생성
 ENV_FILE="$APP_DIR/.env"
+
+# 키가 없을 때 grep 이 1 로 끝나면 pipefail+set -e 가 스크립트를 '메시지 없이' 죽인다 → || true
+_env_get() {
+    [ -f "$ENV_FILE" ] || return 0
+    { grep -m1 "^$1=" "$ENV_FILE" || true; } | cut -d= -f2-
+}
+
+DB_PASSWORD=""; SECRET_KEY=""; ADMIN_PASSWORD=""
 if [ -f "$ENV_FILE" ]; then
-    DB_PASSWORD=$(grep "^DB_PASSWORD=" "$ENV_FILE" | cut -d= -f2)
-    SECRET_KEY=$(grep "^SECRET_KEY=" "$ENV_FILE" | cut -d= -f2)
-    ADMIN_PASSWORD=$(grep "^ADMIN_PASSWORD=" "$ENV_FILE" | cut -d= -f2)
-else
-    DB_PASSWORD=$(_rand 32)
-    SECRET_KEY=$(_rand 48)
-    ADMIN_PASSWORD=$(_rand 16)
+    DB_PASSWORD=$(_env_get DB_PASSWORD)
+    # 이 스크립트가 만든 .env 에는 DB_PASSWORD 줄이 없다 — DATABASE_URL 에서 뽑는다.
+    # (못 뽑고 새로 만들면 아래에서 ALTER USER 로 DB 비밀번호가 바뀌므로 .env 도 함께 갱신해야 한다)
+    if [ -z "$DB_PASSWORD" ]; then
+        DB_PASSWORD=$(_env_get DATABASE_URL | sed -n 's|^postgresql://[^:]*:\(.*\)@[^@]*$|\1|p')
+    fi
+    SECRET_KEY=$(_env_get SECRET_KEY)
+    ADMIN_PASSWORD=$(_env_get ADMIN_PASSWORD)
 fi
+
+# 값이 없거나 .env 가 깨진 부분 설치본이면 새로 생성 (아래에서 .env 에 반영)
+[ -z "$DB_PASSWORD" ]    && DB_PASSWORD=$(_rand 32)
+[ -z "$SECRET_KEY" ]     && SECRET_KEY=$(_rand 48)
+[ -z "$ADMIN_PASSWORD" ] && ADMIN_PASSWORD=$(_rand 16)
 
 # psql로 유저/DB 생성 (이미 존재하면 무시)
 sudo -u postgres psql -v ON_ERROR_STOP=0 <<SQL
@@ -150,7 +164,9 @@ GRANT ALL PRIVILEGES ON DATABASE soltrace TO soltrace;
 SQL
 
 # 스키마 적용 (확장 생성 등은 슈퍼유저 필요 → postgres 로 적용)
-sudo -u postgres psql -d soltrace -f "$SCRIPT_DIR/postgres/init.sql"
+# psql 의 -f 는 postgres 계정으로 파일을 연다 — 저장소가 /root 나 홈 디렉터리(0700) 안에 있으면
+# root 는 읽어도 postgres 는 "Permission denied" 로 실패한다. root 가 읽어 stdin 으로 넘긴다.
+sudo -u postgres psql -d soltrace -f - < "$SCRIPT_DIR/postgres/init.sql"
 
 # 소유권/권한 이관: 앱이 soltrace 로 접속해 런타임에 파티션을 생성하므로
 # (PG15+ public 스키마 CREATE 기본 회수 + 파티션 추가는 부모 테이블 소유자 필요)
@@ -192,8 +208,22 @@ fi
 "$APP_DIR/venv/bin/pip" install --quiet --upgrade pip
 "$APP_DIR/venv/bin/pip" install --quiet -r "$APP_DIR/requirements.txt"
 
-# .env 생성 (최초 설치 시만)
-if [ ! -f "$ENV_FILE" ]; then
+# .env 반영. 재설치 시에는 사용자가 추가한 키(ALERT_* 등)를 지우지 않도록 해당 줄만 갱신한다.
+_env_set() {
+    local k="$1" v="$2"
+    if grep -q "^$k=" "$ENV_FILE" 2>/dev/null; then
+        sed -i "s|^$k=.*|$k=$v|" "$ENV_FILE"
+    else
+        printf '%s=%s\n' "$k" "$v" >> "$ENV_FILE"
+    fi
+}
+
+if [ -f "$ENV_FILE" ]; then
+    # 위에서 읽은 값과 같으면 그대로, 비어 있어 새로 만든 값이면 여기서 채워진다
+    _env_set DATABASE_URL "postgresql://soltrace:${DB_PASSWORD}@127.0.0.1:5432/soltrace"
+    _env_set SECRET_KEY "${SECRET_KEY}"
+    _env_set ADMIN_PASSWORD "${ADMIN_PASSWORD}"
+else
     cat > "$ENV_FILE" <<EOF
 DATABASE_URL=postgresql://soltrace:${DB_PASSWORD}@127.0.0.1:5432/soltrace
 SECRET_KEY=${SECRET_KEY}

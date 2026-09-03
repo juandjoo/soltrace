@@ -51,7 +51,9 @@ chown -R soltrace:soltrace "$DEPLOY_DIR/app" "$DEPLOY_DIR/static" "$DEPLOY_DIR/r
 
 "$DEPLOY_DIR/venv/bin/pip" install --quiet -r "$DEPLOY_DIR/requirements.txt"
 
-sudo -u postgres psql -d soltrace -f "$REPO_DIR/postgres/init.sql"
+# psql 의 -f 는 postgres 계정으로 파일을 연다 — 저장소가 /root 나 홈 디렉터리(0700) 안에 있으면
+# root 는 읽어도 postgres 는 "Permission denied" 로 실패한다. root 가 읽어 stdin 으로 넘긴다.
+sudo -u postgres psql -d soltrace -f - < "$REPO_DIR/postgres/init.sql"
 # 새로 생긴 테이블/시퀀스 소유권을 soltrace 로 이관 (init.sql 은 postgres 로 적용됨)
 sudo -u postgres psql -d soltrace -tAc "SELECT format('ALTER TABLE public.%I OWNER TO soltrace;', tablename) FROM pg_tables WHERE schemaname='public' UNION ALL SELECT format('ALTER SEQUENCE public.%I OWNER TO soltrace;', sequencename) FROM pg_sequences WHERE schemaname='public'" | sudo -u postgres psql -d soltrace
 

@@ -106,7 +106,7 @@ HOOK
 chmod 755 /etc/letsencrypt/renewal-hooks/deploy/soltrace-reload-nginx.sh
 
 # Rocky 8 의 certbot 패키지는 certbot-renew.timer 를 제공한다. 없으면 cron 으로 대체.
-TIMER=$(systemctl list-unit-files 2>/dev/null | awk '/^certbot.*\.timer/ {print $1; exit}')
+TIMER=$({ systemctl list-unit-files 2>/dev/null || true; } | awk '/^certbot.*\.timer/ {print $1; exit}')
 if [ -n "$TIMER" ]; then
     systemctl enable --now "$TIMER"
     echo "  [OK] systemd timer 활성화: $TIMER"
