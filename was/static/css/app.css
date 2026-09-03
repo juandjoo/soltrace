@@ -85,12 +85,19 @@ body        { background: #f5f7fa; font-size: 14px; }
 /* ── 로그 테이블 ───────────────────────────────────────────────── */
 #page-logs table td, #page-logs table th { padding: 5px 10px; }
 #page-logs table thead th:not(:last-child) { border-right: 2px solid #ced4da; }
+/* table-layout:fixed + nowrap 조합은 열보다 긴 글자가 다음 칸 위로 그려진다.
+   (예: '작업' 열의 '디렉토리 이동 실패'가 파일 경로를 침범) 넘치면 잘라내고 …로 표시한다.
+   파일 경로처럼 줄바꿈되는 칸은 ellipsis 가 적용되지 않으므로 영향이 없다. */
+#page-logs table td { overflow: hidden; text-overflow: ellipsis; }
 .action-upload            { color: #0d6efd; }
 .action-download          { color: #198754; }
 .action-delete            { color: #dc3545; }
 .action-rename            { color: #fd7e14; }
 .action-login,
 .action-logout            { color: #6c757d; }
+.action-mkdir             { color: #0dcaf0; }
+.action-rmdir             { color: #6f42c1; }
+.action-cwd_fail          { color: #b02a37; }
 .size-val                 { font-family: monospace; }
 
 /* ── API 가이드 ────────────────────────────────────────────────── */

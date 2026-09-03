@@ -98,12 +98,19 @@ body        { background: #f5f7fa; font-size: 14px; }
 /* ── 로그 테이블 ───────────────────────────────────────────────── */
 #page-logs table td, #page-logs table th { padding: 5px 10px; }
 #page-logs table thead th:not(:last-child) { border-right: 2px solid #ced4da; }
+/* table-layout:fixed + nowrap 조합은 열보다 긴 글자가 다음 칸 위로 그려진다.
+   (예: '작업' 열의 '디렉토리 이동 실패'가 파일 경로를 침범) 넘치면 잘라내고 …로 표시한다.
+   파일 경로처럼 줄바꿈되는 칸은 ellipsis 가 적용되지 않으므로 영향이 없다. */
+#page-logs table td { overflow: hidden; text-overflow: ellipsis; }
 .action-upload            { color: #0d6efd; }
 .action-download          { color: #198754; }
 .action-delete            { color: #dc3545; }
 .action-rename            { color: #fd7e14; }
 .action-login,
 .action-logout            { color: #6c757d; }
+.action-mkdir             { color: #0dcaf0; }
+.action-rmdir             { color: #6f42c1; }
+.action-cwd_fail          { color: #b02a37; }
 .size-val                 { font-family: monospace; }
 
 /* ── API 가이드 ────────────────────────────────────────────────── */
@@ -411,11 +418,11 @@ body        { background: #f5f7fa; font-size: 14px; }
         <div class="table-responsive">
           <table class="table table-hover mb-0 table-sm" style="table-layout:fixed;min-width:1260px">
             <colgroup id="logColGroup">
-              <col data-idx="0" style="width:140px"> <!-- 시간 -->
+              <col data-idx="0" style="width:168px"> <!-- 시간 (YYYY/MM/DD HH:MM:SS 전체가 보이는 폭) -->
               <col data-idx="1" style="width:140px"> <!-- 장비 -->
               <col data-idx="2" style="width:120px"> <!-- 사용자 -->
               <col data-idx="3" style="width:130px"> <!-- IP -->
-              <col data-idx="4" style="width:90px">  <!-- 작업 -->
+              <col data-idx="4" style="width:132px"> <!-- 작업 (아이콘 + '디렉토리 이동 실패' 기준) -->
               <col data-idx="5">                     <!-- 파일 경로 -->
               <col data-idx="6" style="width:90px">  <!-- 크기 -->
               <col data-idx="7" style="width:90px">  <!-- 전송시간 -->
@@ -3208,6 +3215,18 @@ async function saveGroupDevices() {
 
 /* === logs.js === */
 const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제', cwd_fail:'디렉토리 이동 실패'};
+// 작업 아이콘 — ACTION_KO 의 모든 action 을 덮는다(빠지면 라벨 앞이 비어 보인다).
+const ACTION_ICON = {
+  upload:   '<i class="bi bi-upload action-upload"></i>',
+  download: '<i class="bi bi-download action-download"></i>',
+  delete:   '<i class="bi bi-trash action-delete"></i>',
+  rename:   '<i class="bi bi-pencil action-rename"></i>',
+  login:    '<i class="bi bi-box-arrow-in-right action-login"></i>',
+  logout:   '<i class="bi bi-box-arrow-right action-logout"></i>',
+  mkdir:    '<i class="bi bi-folder-plus action-mkdir"></i>',
+  rmdir:    '<i class="bi bi-folder-minus action-rmdir"></i>',
+  cwd_fail: '<i class="bi bi-folder-x action-cwd_fail"></i>',
+};
 
 let _logGroupMap = {};   // id → group object
 let _pendingSearch = false;  // navToLogsFilters가 세팅, initLogsPage 완료 후 자동 검색
@@ -3290,7 +3309,7 @@ function _initLogColResize() {
   const row  = table.querySelector('thead tr');
 
   // 저장된 폭 복원 (v2: 컬럼 기본값 변경 시 이전 저장값 무효화)
-  const WIDTHS_VER = 'v3';
+  const WIDTHS_VER = 'v4';   // 작업 열 기본 폭 변경(90 → 118px)
   const savedRaw = localStorage.getItem('logColWidths');
   const savedMeta = localStorage.getItem('logColWidthsVer');
   const saved = (savedMeta === WIDTHS_VER && savedRaw) ? JSON.parse(savedRaw) : null;
@@ -3369,24 +3388,46 @@ function _logParams() {
   return params;
 }
 
+// 같은 내용이면 DOM 을 다시 쓰지 않는다 — 재작성 자체가 깜빡임이다.
+function _setHtml(el, html) {
+  if (el.innerHTML !== html) el.innerHTML = html;
+}
+
+// 총건수 집계가 이 시간 안에 끝나면 '집계 중' 단계를 건너뛰고 한 번만 그린다.
+// (목록과 총건수를 병렬로 요청하므로, 예전에는 검색 한 번에 총건수·페이저가
+//  '스피너 + 간이 페이저' → '건수 + 번호 페이저' 로 두 번 그려져 그 줄이 깜빡였다.)
+const LOG_COUNT_PENDING_DELAY = 250;
+let _logPendingTimer = null;
+
+function _clearPendingTotal() {
+  if (_logPendingTimer) { clearTimeout(_logPendingTimer); _logPendingTimer = null; }
+}
+
 // 총건수 표시 + 페이저 갱신. total=null 이면 집계 중.
 function _renderLogTotal(itemCount) {
   const el = document.getElementById('logTotal');
   const pager = document.getElementById('logPager');
   if (_logTotal === null) {
-    const from = itemCount ? (logPage - 1) * logPageSize + 1 : 0;
-    const to = itemCount ? from + itemCount - 1 : 0;
-    el.innerHTML = itemCount
-      ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 <span class="text-muted"><span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem"></span> 집계 중</span>`
-      : '결과 없음';
-    // 총건수 미확정: 이전/다음만 제공
-    pager.innerHTML = itemCount ? _simplePager(itemCount < logPageSize) : '';
+    // 집계 중 표시는 조금 늦춘다. 대개 그 전에 총건수가 도착해 이 단계가 아예 안 보인다.
+    _clearPendingTotal();
+    _logPendingTimer = setTimeout(() => {
+      _logPendingTimer = null;
+      if (_logTotal !== null) return;         // 그 사이 도착
+      const from = itemCount ? (logPage - 1) * logPageSize + 1 : 0;
+      const to = itemCount ? from + itemCount - 1 : 0;
+      _setHtml(el, itemCount
+        ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 <span class="text-muted">집계 중…</span>`
+        : '결과 없음');
+      // 총건수 미확정: 이전/다음만 제공
+      _setHtml(pager, itemCount ? _simplePager(itemCount < logPageSize) : '');
+    }, LOG_COUNT_PENDING_DELAY);
     return;
   }
+  _clearPendingTotal();
   const from = _logTotal ? (logPage - 1) * logPageSize + 1 : 0;
   const to = Math.min(logPage * logPageSize, _logTotal);
-  el.textContent = _logTotal
-    ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 ${_logTotal.toLocaleString()}건` : '결과 없음';
+  _setHtml(el, _logTotal
+    ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 ${_logTotal.toLocaleString()}건` : '결과 없음');
   renderPager(Math.ceil(_logTotal / logPageSize), logPage);
 }
 
@@ -3411,6 +3452,7 @@ async function _countLogs(params, key, itemCount) {
 
 async function searchLogs(page) {
   const _fail = msg => {
+    _clearPendingTotal();
     document.getElementById('logTable').innerHTML =
       `<tr><td colspan="9" class="text-center text-danger py-4">${msg}</td></tr>`;
     document.getElementById('logTotal').textContent = '';
@@ -3440,14 +3482,13 @@ async function searchLogs(page) {
     if (needCount && logPage > 1) _countLogs(filterParams, key, 0);
     return;
   }
-  _renderLogTotal(data.items.length);
-  if (needCount) _countLogs(filterParams, key, data.items.length);
-
   tbody.innerHTML = data.items.map(l => {
     const d = new Date(l.log_time);
     const dt = `${d.getFullYear()}/${pad2(d.getMonth()+1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
     const action = l.action;
-    const icon = {upload:'<i class="bi bi-upload action-upload"></i>', download:'<i class="bi bi-download action-download"></i>', delete:'<i class="bi bi-trash action-delete"></i>', rename:'<i class="bi bi-pencil action-rename"></i>', login:'<i class="bi bi-box-arrow-in-right action-login"></i>', logout:'<i class="bi bi-box-arrow-right action-logout"></i>'}[action] || action;
+    // 매핑에 없으면 빈 문자열 — 예전에는 action 원문('cwd_fail')이 라벨 앞에 그대로 찍혀
+    // 작업 열을 넘치게 만들었다.
+    const icon = ACTION_ICON[action] || '';
     const filePath = l.file_path || '';
     const fileDisplay = action === 'rename'
       ? filePath.replace(' -> ', ' → ')
@@ -3462,13 +3503,17 @@ async function searchLogs(page) {
       <td class="small text-center text-truncate" style="overflow:hidden;font-family:monospace" title="${esc(hostname)}">${esc(deviceIp)}</td>
       <td class="small text-center text-truncate" style="overflow:hidden">${esc(l.username||'-')}</td>
       <td class="small text-center text-muted text-nowrap">${esc(l.client_ip||'-')}</td>
-      <td class="text-center text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||esc(action)}</span></td>
+      <td class="text-center text-nowrap" title="${esc(ACTION_KO[action]||action)}">${icon} <span class="action-${action} small">${ACTION_KO[action]||esc(action)}</span></td>
       <td class="small" style="word-break:break-all;overflow:hidden" title="${esc(filePath)}">${esc(fileDisplay||'-')}</td>
       <td class="size-val small text-center text-nowrap">${sizeDisplay}</td>
       <td class="small text-center text-nowrap">${timeDisplay}</td>
       <td class="text-center"><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>
     </tr>`;
   }).join('');
+
+  // 표를 먼저 채운 뒤 총건수/페이저를 그린다 — 반대 순서면 행이 들어오면서 그 줄이 한 번 더 밀린다.
+  _renderLogTotal(data.items.length);
+  if (needCount) _countLogs(filterParams, key, data.items.length);
   } catch(e) {
     _fail(`조회 실패: ${e.message}`);
   }
@@ -3476,7 +3521,7 @@ async function searchLogs(page) {
 
 function renderPager(total, current) {
   const ul = document.getElementById('logPager');
-  if (total <= 1) { ul.innerHTML=''; return; }
+  if (total <= 1) { _setHtml(ul, ''); return; }
   const go = n => `searchLogs(${n})`;
   let html = '';
   html += `<li class="page-item ${current===1?'disabled':''}"><a class="page-link" href="#" onclick="${go(1)}">«</a></li>`;
@@ -3487,7 +3532,7 @@ function renderPager(total, current) {
   if (end < total) html += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
   html += `<li class="page-item ${current===total?'disabled':''}"><a class="page-link" href="#" onclick="${go(current+1)}">›</a></li>`;
   html += `<li class="page-item ${current===total?'disabled':''}"><a class="page-link" href="#" onclick="${go(total)}">»</a></li>`;
-  ul.innerHTML = html;
+  _setHtml(ul, html);
 }
 
 async function _download(endpoint, ext) {
