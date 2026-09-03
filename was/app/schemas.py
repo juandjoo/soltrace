@@ -190,6 +190,9 @@ class GroupUpdate(BaseModel):
     upload_domains: Optional[str] = None
     application: Optional[str] = None
 
+class GroupDeviceAssign(BaseModel):
+    device_ids: List[int]
+
 class GroupResponse(BaseModel):
     id: int
     name: str

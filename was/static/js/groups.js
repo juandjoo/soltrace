@@ -71,6 +71,7 @@ function renderGroupPage(page) {
       <td class="small" style="word-break:break-word">${g.application ? esc(g.application) : '<span class="text-muted">-</span>'}</td>
       <td class="small text-muted" style="word-break:break-word">${g.description ? esc(g.description) : '-'}</td>
       <td><div class="d-flex gap-1 justify-content-end">
+        <button class="btn btn-xs btn-outline-secondary" onclick="openGroupDevices(${g.id})" title="이 그룹에 장비 등록"><i class="bi bi-hdd-network me-1"></i>장비</button>
         <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
         <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
       </div></td>`;
@@ -103,7 +104,7 @@ function renderGroupPage(page) {
         <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
           <colgroup>
             <col style="width:14%"><col style="width:6%"><col style="width:14%">
-            <col style="width:24%"><col style="width:14%"><col style="width:17%"><col style="width:11%">
+            <col style="width:22%"><col style="width:13%"><col style="width:14%"><col style="width:17%">
           </colgroup>
           <thead class="table-light">
             <tr><th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
@@ -187,4 +188,82 @@ async function deleteGroup(id) {
   if (!confirm('그룹을 삭제하시겠습니까?')) return;
   await api('DELETE', `/groups/${id}`);
   loadGroups();
+}
+
+
+// ── 그룹 → 장비 등록 ─────────────────────────────────────────────────────────
+// 장비관리의 "그룹 배정"(saveDeviceGroups)과 같은 매핑을 그룹 쪽에서 편집한다.
+
+async function openGroupDevices(groupId) {
+  const g = allGroups.find(x => x.id === groupId);
+  if (!g) return;
+  document.getElementById('gdGroupId').value = groupId;
+  document.getElementById('gdGroupName').textContent = g.name;
+  document.getElementById('gdSearch').value = '';
+
+  const devices = await api('GET', '/devices');
+  if (!devices) return;
+  // 장비관리에서 승인된(confirmed) 장비만 등록 대상. 단 이미 이 그룹에 속한 장비는
+  // 상태와 무관하게 노출해야 저장 시 조용히 빠지지 않는다.
+  const targets = devices
+    .filter(d => d.status === 'confirmed' || d.groups.some(x => x.id === groupId))
+    .sort((a, b) => a.hostname.localeCompare(b.hostname));
+
+  const list = document.getElementById('gdDeviceList');
+  if (!targets.length) {
+    list.innerHTML = '<div class="text-center text-muted py-4">등록 가능한 승인된 장비가 없습니다.<br><span class="small">장비 관리에서 먼저 장비를 확인(승인)해주세요.</span></div>';
+    document.getElementById('gdCount').textContent = '0';
+    new bootstrap.Modal(document.getElementById('groupDeviceModal')).show();
+    return;
+  }
+
+  list.innerHTML = targets.map(d => {
+    const checked = d.groups.some(x => x.id === groupId);
+    const others = d.groups.filter(x => x.id !== groupId);
+    const key = `${d.hostname} ${d.ip_address || ''}`.toLowerCase();
+    return `
+    <div class="form-check border rounded px-2 py-1 gd-item" data-key="${esc(key)}">
+      <input class="form-check-input" type="checkbox" id="gdd${d.id}" value="${d.id}"
+        ${checked ? 'checked' : ''} onchange="updateGroupDeviceCount()">
+      <label class="form-check-label d-flex align-items-center gap-2 flex-wrap w-100" for="gdd${d.id}">
+        <span class="fw-semibold">${esc(d.hostname)}</span>
+        <span class="text-muted small">${esc(d.ip_address || '-')}</span>
+        ${statusBadge(d.status)}
+        ${others.length ? `<span class="small text-muted">기존 그룹: ${others.map(x => esc(x.name)).join(', ')}</span>` : ''}
+      </label>
+    </div>`;
+  }).join('');
+
+  updateGroupDeviceCount();
+  new bootstrap.Modal(document.getElementById('groupDeviceModal')).show();
+}
+
+function updateGroupDeviceCount() {
+  const n = document.querySelectorAll('#gdDeviceList input:checked').length;
+  document.getElementById('gdCount').textContent = n;
+}
+
+function filterGroupDevices() {
+  const q = document.getElementById('gdSearch').value.trim().toLowerCase();
+  document.querySelectorAll('#gdDeviceList .gd-item').forEach(el => {
+    el.classList.toggle('d-none', !!q && !el.dataset.key.includes(q));
+  });
+}
+
+// 검색으로 걸러진(보이는) 항목만 일괄 선택/해제한다.
+function toggleGroupDevices(checked) {
+  document.querySelectorAll('#gdDeviceList .gd-item:not(.d-none) input').forEach(el => {
+    el.checked = checked;
+  });
+  updateGroupDeviceCount();
+}
+
+async function saveGroupDevices() {
+  const id = document.getElementById('gdGroupId').value;
+  const ids = [...document.querySelectorAll('#gdDeviceList input:checked')].map(el => parseInt(el.value));
+  try {
+    await api('PUT', `/groups/${id}/devices`, {device_ids: ids});
+    bootstrap.Modal.getInstance(document.getElementById('groupDeviceModal')).hide();
+    loadGroups();
+  } catch(e) { alert(e.message); }
 }

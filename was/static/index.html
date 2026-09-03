@@ -782,6 +782,32 @@
   </div>
 </div>
 
+<!-- 그룹 장비 등록 모달 (그룹 관리 → 장비) -->
+<div class="modal fade" id="groupDeviceModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">장비 등록 - <span id="gdGroupName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="gdGroupId">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <input class="form-control form-control-sm" id="gdSearch" placeholder="호스트명 / IP 검색" oninput="filterGroupDevices()" style="max-width:260px">
+          <button class="btn btn-xs btn-outline-secondary" onclick="toggleGroupDevices(true)">전체 선택</button>
+          <button class="btn btn-xs btn-outline-secondary" onclick="toggleGroupDevices(false)">전체 해제</button>
+          <span class="ms-auto small text-muted"><span id="gdCount">0</span>대 선택됨</span>
+        </div>
+        <div id="gdDeviceList" class="d-flex flex-column gap-1"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="saveGroupDevices()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 장비 그룹 배정 모달 -->
 <div class="modal fade" id="deviceGroupModal" tabindex="-1">
   <div class="modal-dialog">
