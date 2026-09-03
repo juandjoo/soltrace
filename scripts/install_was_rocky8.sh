@@ -189,6 +189,12 @@ if [ -f "$ENV_FILE" ]; then
     fi
     SECRET_KEY=$(_env_get SECRET_KEY)
     ADMIN_PASSWORD=$(_env_get ADMIN_PASSWORD)
+    # 앱 설정은 정의되지 않은 키를 거부한다(extra_forbidden) — DB_PASSWORD 줄이 남아 있으면
+    # 기동 시 ValidationError 로 워커가 죽는다. 값은 위에서 읽었으니 줄은 지운다.
+    if grep -q '^DB_PASSWORD=' "$ENV_FILE"; then
+        sed -i '/^DB_PASSWORD=/d' "$ENV_FILE"
+        echo "  >> .env 의 DB_PASSWORD 줄 제거 (앱이 거부하는 키 — 값은 DATABASE_URL 에 유지)"
+    fi
 fi
 
 # 값이 없거나 .env 가 깨진 부분 설치본이면 새로 생성 (아래에서 .env 에 반영)
