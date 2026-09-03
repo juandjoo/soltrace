@@ -23,6 +23,38 @@ log = logging.getLogger("soltrace.monitor")
 
 _EPOCH = "2000-01-01 00:00:00+00"  # date_bin origin (버킷 경계 고정)
 
+# CWD 550 뒤 이 시간 안에 같은 경로가 만들어졌으면 "이동 실패"가 아니라 존재 확인으로 본다.
+# (업로드 클라이언트의 CWD → 550 → MKD → 업로드 흐름. 사람이 아니라 스크립트라 간격이 짧다.)
+_CWD_PROBE_WINDOW = "10 minutes"
+
+
+def cwd_real_fail_sql(alias: str, since: str, until: str) -> str:
+    """진짜 디렉토리 이동 실패만 남기는 조건 (:cwd_ignore 바인딩 필요).
+
+    두 가지를 뺀다.
+      1. 설정의 제외 경로 — 원인이 밝혀져 더 볼 필요가 없는 경로.
+      2. 존재 확인 — 실패 직후 같은 경로가 생성된 건. 폴더로 '이동하다 실패'한 게 아니라
+         업로드 전에 있는지 떠본 것이므로 실패로 세지 않는다.
+
+    집계·알림·화면이 모두 이 한 조건을 쓴다(기준이 갈라지면 숫자가 어긋난다).
+
+    since/until 은 바깥 조회의 기간 SQL 식(예: ":since", "NOW()"). mkdir 쪽에도 같은
+    기간을 걸어야 파티션 프루닝이 되고, 없으면 전체 월 파티션을 훑는다.
+    2번 조회는 idx_ftp_logs_mkdir_path(부분 인덱스)를 탄다.
+    """
+    return f"""{cwd_not_ignored_sql(f'{alias}.file_path')}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM ftp_logs mk
+                      WHERE mk.action = 'mkdir'
+                        AND mk.device_id = {alias}.device_id
+                        AND mk.file_path = {alias}.file_path
+                        AND mk.log_time >= {since}
+                        AND mk.log_time < ({until}) + INTERVAL '{_CWD_PROBE_WINDOW}'
+                        AND mk.log_time >= {alias}.log_time
+                        AND mk.log_time < {alias}.log_time + INTERVAL '{_CWD_PROBE_WINDOW}'
+                  )"""
+
+
 def cwd_not_ignored_sql(col: str = "file_path") -> str:
     """cwd_fail 집계에서 제외 경로를 거르는 SQL 조건 (:cwd_ignore 바인딩 필요).
 
@@ -141,8 +173,8 @@ class ServiceMonitor:
                     WHERE action IN ('upload','download') AND status='success' AND file_size >= :large), 0),
                 COUNT(*) FILTER (WHERE action='login'),
                 COUNT(*) FILTER (WHERE action='login' AND status='fail'),
-                -- 원인이 밝혀진 경로(설정 오류 등)는 알림 집계에서만 제외한다.
-                COUNT(*) FILTER (WHERE action='cwd_fail' AND {cwd_not_ignored_sql()})
+                -- 존재 확인(실패 직후 그 경로가 생성됨)과 제외 경로는 실패로 세지 않는다.
+                COUNT(*) FILTER (WHERE action='cwd_fail' AND {cwd_real_fail_sql('ftp_logs', ':win_start', 'NOW()')})
             FROM ftp_logs
             WHERE log_time >= :win_start
             GROUP BY device_id, bucket
@@ -230,12 +262,12 @@ class ServiceMonitor:
             if a["metric"] != "cwd_fail_spike":
                 continue
             row = db.execute(text(f"""
-                SELECT file_path, COUNT(*)::int AS n
-                FROM ftp_logs
-                WHERE device_id = :device_id AND action = 'cwd_fail'
-                  AND log_time >= :bucket AND log_time < :bucket_end
-                  AND {cwd_not_ignored_sql()}
-                GROUP BY file_path
+                SELECT fl.file_path AS file_path, COUNT(*)::int AS n
+                FROM ftp_logs fl
+                WHERE fl.device_id = :device_id AND fl.action = 'cwd_fail'
+                  AND fl.log_time >= :bucket AND fl.log_time < :bucket_end
+                  AND {cwd_real_fail_sql('fl', ':bucket', ':bucket_end')}
+                GROUP BY fl.file_path
                 ORDER BY n DESC
                 LIMIT 1
             """), {"device_id": a["device_id"], "bucket": a["bucket"],

@@ -7,7 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 from app import alert_settings
-from app.service_monitor import ServiceMonitor, _like_patterns, cwd_not_ignored_sql
+from app.service_monitor import (ServiceMonitor, _like_patterns, cwd_not_ignored_sql,
+                                 cwd_real_fail_sql)
 
 MB = 1024 * 1024
 
@@ -152,6 +153,10 @@ def test_cwd_ignore_rule_lives_in_one_place():
 
     assert cwd_not_ignored_sql() == cwd_not_ignored_sql("file_path")
     assert "fl.file_path" in cwd_not_ignored_sql("fl.file_path")
+    # 진짜 실패 조건 = 제외 경로 + 존재 확인(직후 같은 경로 생성) 제외
+    real = cwd_real_fail_sql("fl", ":since", ":until")
+    assert cwd_not_ignored_sql("fl.file_path") in real
+    assert "mk.action = 'mkdir'" in real and "mk.file_path = fl.file_path" in real
 
     for mod in (dashboard, service_monitor):
         src = inspect.getsource(mod)
@@ -160,3 +165,5 @@ def test_cwd_ignore_rule_lives_in_one_place():
         expected = 1 if mod is service_monitor else 0  # 헬퍼 정의 1회
         assert literal == expected, f"{mod.__name__}: 제외 조건을 직접 적지 말고 헬퍼를 쓰세요"
         assert "cwd_not_ignored_sql(" in src
+        # 실패 건수를 세는 곳은 '진짜 실패' 조건을 쓴다 (존재 확인 건이 다시 새어 들어오지 않게)
+        assert "cwd_real_fail_sql(" in src

@@ -364,8 +364,8 @@ class ServiceTrendPoint(BaseModel):
 class FailTotals(BaseModel):
     transfer_fails: int = 0
     login_fails: int = 0
-    cwd_fails: int = 0            # 제외 경로를 뺀 건수 (알림/추이와 같은 기준)
-    cwd_fails_ignored: int = 0    # 제외 경로에 걸려 빠진 건수
+    cwd_fails: int = 0            # 진짜 이동 실패만 (알림/추이와 같은 기준)
+    cwd_fails_ignored: int = 0    # 그중 설정의 제외 경로로 빠진 건수 (존재 확인 건은 아예 세지 않는다)
 
 
 class CwdFailPath(BaseModel):
@@ -384,8 +384,9 @@ class CwdFailUser(BaseModel):
 
 
 class CwdFailBreakdown(BaseModel):
-    total: int = 0                # 기간 내 cwd_fail 전체 (제외 경로 포함)
+    total: int = 0                # 기간 내 cwd_fail 전체 (제외 경로·존재 확인 포함)
     ignored: int = 0              # 그중 제외 경로에 걸린 건수
+    probes: int = 0               # 그중 존재 확인(실패 직후 그 경로가 생성됨)으로 걸러낸 건수
     distinct_paths: int = 0
     top_share: float = 0.0        # 상위 경로 3개가 전체에서 차지하는 비율
     paths: List[CwdFailPath] = []

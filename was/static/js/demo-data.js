@@ -220,12 +220,15 @@
       { file_path: '/upload/thumb',       count: 44,  users: 6,  ips: 11, ignored: false },
       { file_path: '/etc',                count: 9,   users: 2,  ips: 2,  ignored: false },
     ].map((p, i) => ({ ...p, last_seen: new Date(now - (i + 1) * 900 * 1000).toISOString() }));
-    const total = paths.reduce((a, p) => a + p.count, 0);
+    const listed = paths.reduce((a, p) => a + p.count, 0);
+    const probes = 1840;   // 존재 확인으로 걸러진 건 (목록에는 오지 않는다)
     return {
-      total,
+      total: listed + probes,
       ignored: paths.filter(p => p.ignored).reduce((a, p) => a + p.count, 0),
+      probes,
       distinct_paths: 37,
-      top_share: (paths[0].count + paths[1].count + paths[2].count) / total,
+      top_share: (paths[0].count + paths[3].count + paths[4].count)
+                 / paths.filter(p => !p.ignored).reduce((a, p) => a + p.count, 0),
       paths,
       users: [
         { username: 'vod_batch', count: 401, paths: 6 },

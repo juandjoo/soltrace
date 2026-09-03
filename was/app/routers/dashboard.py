@@ -16,7 +16,7 @@ from app.schemas import (
     CwdFailBreakdown, CwdFailPath, CwdFailUser,
 )
 # cwd_fail 제외 규칙은 롤업/알림과 같은 것을 쓴다 (기준이 갈라지면 화면 숫자가 어긋난다)
-from app.service_monitor import _like_patterns, cwd_not_ignored_sql
+from app.service_monitor import _like_patterns, cwd_not_ignored_sql, cwd_real_fail_sql
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
@@ -391,8 +391,9 @@ def get_service_health(
         cwd_fails=r.cwd_fails,
     ) for r in trend_rows]
 
-    # cwd_fail 은 설정의 '제외 경로'를 빼고 센다 — service_metrics 롤업/알림과 같은 기준.
-    # 제외된 건수도 함께 돌려줘 화면에서 '왜 로그보다 적은지' 를 설명할 수 있게 한다.
+    # cwd_fail 은 '진짜 이동 실패'만 센다 — service_metrics 롤업/알림과 같은 기준
+    # (제외 경로 + 실패 직후 그 경로가 생성된 존재 확인 건 제외).
+    # 설정으로 숨긴 건수는 함께 돌려줘 화면에서 '왜 로그보다 적은지'를 설명할 수 있게 한다.
     params["cwd_ignore"] = _like_patterns(alert_settings.load(db)["cwd_ignore_paths"])
     totals_row = db.execute(text(f"""
         SELECT
@@ -400,7 +401,7 @@ def get_service_health(
                               AND fl.status = 'fail' THEN 1 ELSE 0 END), 0)::int AS transfer_fails,
             COALESCE(SUM(CASE WHEN fl.action = 'login' AND fl.status = 'fail' THEN 1 ELSE 0 END), 0)::int AS login_fails,
             COUNT(*) FILTER (WHERE fl.action = 'cwd_fail'
-                             AND {cwd_not_ignored_sql('fl.file_path')})::int AS cwd_fails,
+                             AND {cwd_real_fail_sql('fl', ':since', ':until')})::int AS cwd_fails,
             COUNT(*) FILTER (WHERE fl.action = 'cwd_fail'
                              AND NOT ({cwd_not_ignored_sql('fl.file_path')}))::int AS cwd_ignored
         FROM ftp_logs fl
@@ -443,9 +444,21 @@ def get_cwd_fail_breakdown(
 
     ignore_raw = alert_settings.load(db)["cwd_ignore_paths"]
     params["cwd_ignore"] = _like_patterns(ignore_raw)
-    ignored_expr = f"NOT ({cwd_not_ignored_sql('fl.file_path')})"
+    not_ignored = cwd_not_ignored_sql("fl.file_path")
+    real_fail = cwd_real_fail_sql("fl", ":since", ":until")          # 제외 경로 + 존재 확인을 뺀 '진짜 이동 실패'
+    period = f"""FROM ftp_logs fl
+        WHERE fl.action = 'cwd_fail'
+          AND fl.log_time >= :since AND fl.log_time <= :until {dev_f_log}"""
 
-    # 경로별 집계 1회 스캔으로 상위 목록과 전체 합계를 함께 얻는다 (윈도우 집계)
+    # 걸러낸 근거를 밝히기 위해 원본 건수도 함께 센다 (화면에는 요약 한 줄로만 보인다)
+    totals = db.execute(text(f"""
+        SELECT COUNT(*)::int                                                  AS total,
+               COUNT(*) FILTER (WHERE NOT ({not_ignored}))::int               AS ignored,
+               COUNT(*) FILTER (WHERE ({not_ignored}) AND NOT ({real_fail}))::int AS probes
+        {period}
+    """), params).fetchone()
+
+    # 목록은 진짜 이동 실패만. 제외 경로는 해제할 수 있도록 표시만 하고 남긴다.
     rows = db.execute(text(f"""
         WITH per_path AS (
             SELECT fl.file_path                        AS file_path,
@@ -453,43 +466,39 @@ def get_cwd_fail_breakdown(
                    COUNT(DISTINCT fl.username)::int    AS users,
                    COUNT(DISTINCT fl.client_ip)::int   AS ips,
                    MAX(fl.log_time)                    AS last_seen,
-                   {ignored_expr}                      AS ignored
-            FROM ftp_logs fl
-            WHERE fl.action = 'cwd_fail'
-              AND fl.log_time >= :since AND fl.log_time <= :until {dev_f_log}
+                   NOT ({not_ignored})                 AS ignored
+            {period}
+              AND (({real_fail}) OR NOT ({not_ignored}))
             GROUP BY fl.file_path
         )
         SELECT file_path, n, users, ips, last_seen, ignored,
-               SUM(n) OVER ()::int                                AS total,
-               COALESCE(SUM(n) FILTER (WHERE ignored) OVER (), 0)::int AS ignored_total,
-               COUNT(*) OVER ()::int                              AS distinct_paths
+               COUNT(*) OVER ()::int AS distinct_paths
         FROM per_path
         ORDER BY n DESC
         LIMIT :limit
     """), params).fetchall()
 
-    total = rows[0].total if rows else 0
     paths = [CwdFailPath(file_path=r.file_path, count=r.n, users=r.users, ips=r.ips,
                          last_seen=r.last_seen, ignored=r.ignored) for r in rows]
-    top_share = (sum(p.count for p in paths[:_CWD_TOP_N]) / total) if total else 0.0
+    listed = sum(p.count for p in paths if not p.ignored)
+    top_share = (sum(p.count for p in paths[:_CWD_TOP_N] if not p.ignored) / listed) if listed else 0.0
 
-    # 사용자 집계는 제외 경로를 뺀 뒤로 본다 — 남아 있는 실패가 누구에게서 나오는지가 관심사
+    # 사용자 집계도 같은 기준 — 남아 있는 실패가 누구에게서 나오는지가 관심사
     user_rows = db.execute(text(f"""
         SELECT fl.username                       AS username,
                COUNT(*)::int                     AS n,
                COUNT(DISTINCT fl.file_path)::int AS paths
-        FROM ftp_logs fl
-        WHERE fl.action = 'cwd_fail'
-          AND fl.log_time >= :since AND fl.log_time <= :until {dev_f_log}
-          AND {cwd_not_ignored_sql('fl.file_path')}
+        {period}
+          AND {real_fail}
         GROUP BY fl.username
         ORDER BY n DESC
         LIMIT :limit
     """), params).fetchall()
 
     return CwdFailBreakdown(
-        total=total,
-        ignored=rows[0].ignored_total if rows else 0,
+        total=totals.total,
+        ignored=totals.ignored,
+        probes=totals.probes,
         distinct_paths=rows[0].distinct_paths if rows else 0,
         top_share=top_share,
         paths=paths,

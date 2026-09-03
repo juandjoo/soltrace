@@ -191,6 +191,13 @@ CREATE INDEX IF NOT EXISTS idx_ftp_logs_username_trgm
 CREATE INDEX IF NOT EXISTS idx_ftp_logs_client_ip_trgm
     ON ftp_logs USING GIN (client_ip gin_trgm_ops);
 
+-- [5] CWD 실패 판정용 — 실패 직후 같은 경로가 생성됐는지(존재 확인) 확인하는 anti-join.
+--     WHERE action='mkdir' AND device_id=? AND file_path=? AND log_time BETWEEN ...
+--     mkdir 만 담는 부분 인덱스라 크기가 작다 (service_monitor.cwd_real_fail_sql).
+CREATE INDEX IF NOT EXISTS idx_ftp_logs_mkdir_path
+    ON ftp_logs (device_id, file_path, log_time)
+    WHERE action = 'mkdir';
+
 -- ────────────────────────────────────────────────────────────────────────────
 -- device_groups 인덱스
 -- ────────────────────────────────────────────────────────────────────────────

@@ -326,10 +326,11 @@ body        { background: #f5f7fa; font-size: 14px; }
               </div>
             </div>
             <div class="form-text mt-2">
-              CWD 550 은 클라이언트가 경로 존재를 떠보는 정상 동작(탐색기 이동, 업로드 스크립트의 CWD→MKD 순서,
-              chroot 초기화)으로도 많이 발생합니다. <b>소수 경로에 몰려 있으면</b> 침입 탐색이 아니라 홈·업로드 경로
-              설정 오류일 가능성이 큽니다. 원인이 확인된 경로는 <b>제외</b>하면 실패 건수·추이·알림에서 빠집니다
-              (로그 조회에는 그대로 남습니다).
+              CWD 550 은 클라이언트가 경로 존재를 떠보는 정상 동작으로도 많이 발생합니다. <b>실패 직후 그 경로가
+              만들어졌으면(CWD→MKD→업로드) 이동 실패가 아니라 존재 확인</b>으로 보고 실패 건수·추이·알림·이 목록에서
+              모두 제외합니다. 남은 실패가 <b>소수 경로에 몰려 있으면</b> 침입 탐색이 아니라 홈·업로드 경로 설정
+              오류일 가능성이 큽니다. 원인이 확인된 경로는 <b>제외</b>로 함께 뺄 수 있습니다
+              (로그 조회에는 모두 그대로 남습니다).
             </div>
             <div id="cwdMsg" class="alert d-none py-2 small mt-2 mb-0"></div>
           </div>
@@ -1231,12 +1232,15 @@ body        { background: #f5f7fa; font-size: 14px; }
       { file_path: '/upload/thumb',       count: 44,  users: 6,  ips: 11, ignored: false },
       { file_path: '/etc',                count: 9,   users: 2,  ips: 2,  ignored: false },
     ].map((p, i) => ({ ...p, last_seen: new Date(now - (i + 1) * 900 * 1000).toISOString() }));
-    const total = paths.reduce((a, p) => a + p.count, 0);
+    const listed = paths.reduce((a, p) => a + p.count, 0);
+    const probes = 1840;   // 존재 확인으로 걸러진 건 (목록에는 오지 않는다)
     return {
-      total,
+      total: listed + probes,
       ignored: paths.filter(p => p.ignored).reduce((a, p) => a + p.count, 0),
+      probes,
       distinct_paths: 37,
-      top_share: (paths[0].count + paths[1].count + paths[2].count) / total,
+      top_share: (paths[0].count + paths[3].count + paths[4].count)
+                 / paths.filter(p => !p.ignored).reduce((a, p) => a + p.count, 0),
       paths,
       users: [
         { username: 'vod_batch', count: 401, paths: 6 },
@@ -2151,25 +2155,31 @@ async function loadCwdAnalysis() {
   _cwdData = data;
   const isAdmin = getRole() === 'admin';
 
-  const counted = data.total - data.ignored;
-  const share = data.total ? Math.round(data.top_share * 100) : 0;
-  const hint = !data.total ? ''
+  // 진짜 이동 실패 = 전체 - (제외 경로 + 존재 확인)
+  const counted = data.total - data.ignored - data.probes;
+  const share = counted ? Math.round(data.top_share * 100) : 0;
+  const hint = !counted
+    ? '<div class="alert alert-success py-2 px-3 mt-2 mb-0">이 기간에 <b>실제 디렉토리 이동 실패는 없습니다.</b>'
+      + (data.probes ? ' CWD 550 은 모두 업로드 전 경로 존재를 떠본 것으로, 곧이어 그 경로가 만들어졌습니다.' : '')
+      + '</div>'
     : share >= 90
       ? '<div class="alert alert-warning py-2 px-3 mt-2 mb-0">상위 3개 경로에 ' + share + '% 가 몰려 있습니다. '
         + '침입 탐색보다 <b>홈·업로드 경로 설정 오류</b>일 가능성이 큽니다 (경로 오타, 마운트 누락, 권한).</div>'
       : '<div class="alert alert-secondary py-2 px-3 mt-2 mb-0">실패가 여러 경로(' + data.distinct_paths.toLocaleString()
-        + '개)에 흩어져 있습니다. 사용자·IP 가 소수에 몰려 있다면 탐색성 접근일 수 있으니 오른쪽 표를 확인하세요.</div>';
+        + '개)에 흩어져 있습니다. 사용자·IP 가 여럿이면 탐색성 접근일 수 있으니 오른쪽 표를 확인하세요.</div>';
 
   document.getElementById('cwdSummary').innerHTML =
-    `총 <b>${data.total.toLocaleString()}건</b>`
-    + ` · 집계 대상 <b>${counted.toLocaleString()}건</b>`
-    + (data.ignored ? ` · 제외 경로 ${data.ignored.toLocaleString()}건` : '')
+    `실제 이동 실패 <b>${counted.toLocaleString()}건</b>`
     + ` · 경로 ${data.distinct_paths.toLocaleString()}개`
+    + `<span class="text-muted"> — 원본 ${data.total.toLocaleString()}건 중 `
+    + `존재 확인 ${data.probes.toLocaleString()}건`
+    + (data.ignored ? `, 제외 경로 ${data.ignored.toLocaleString()}건` : '')
+    + ` 제외</span>`
     + hint;
 
   const paths = data.paths || [];
   document.getElementById('cwdPaths').innerHTML = !paths.length
-    ? '<tr><td colspan="7" class="text-muted small">기간 내 CWD 실패가 없습니다.</td></tr>'
+    ? '<tr><td colspan="7" class="text-muted small">실제 이동 실패가 없습니다.</td></tr>'
     : paths.map((p, i) => {
         const pct = data.total ? (p.count / data.total * 100).toFixed(1) : '0.0';
         const path = p.file_path || '(경로 없음)';
@@ -2192,7 +2202,7 @@ async function loadCwdAnalysis() {
 
   const users = data.users || [];
   document.getElementById('cwdUsers').innerHTML = !users.length
-    ? '<tr><td colspan="3" class="text-muted small">집계 대상 실패가 없습니다.</td></tr>'
+    ? '<tr><td colspan="3" class="text-muted small">실제 이동 실패가 없습니다.</td></tr>'
     : users.map(u => `<tr>
         <td class="small">${esc(u.username || '(미상)')}</td>
         <td class="small text-end fw-semibold">${u.count.toLocaleString()}</td>
