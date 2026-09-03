@@ -73,6 +73,21 @@ class UpdateTriggerResponse(BaseModel):
     started: bool
     message: str
 
+class StoragePartition(BaseModel):
+    name: str
+    rows_est: int                          # pg_class.reltuples (통계 추정치)
+    total_bytes: int                       # 테이블 + 인덱스 + TOAST
+    table_bytes: int
+    index_bytes: int
+
+class StorageInfo(BaseModel):
+    db_bytes: int                          # 데이터베이스 전체 크기
+    ftp_logs_bytes: int                    # ftp_logs 전체(모든 파티션)
+    partitions: List[StoragePartition]
+    default_rows: int                      # ftp_logs_default 정확한 행 수
+    default_months: List[str]              # default 에 들어있는 월(YYYY-MM) 목록
+    retention_months: int
+
 
 # ── Device ────────────────────────────────────────────────────────────────────
 
@@ -223,21 +238,15 @@ class FtpLogResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class LogQueryParams(BaseModel):
-    device_id: Optional[int] = None
-    username: Optional[str] = None
-    action: Optional[str] = None
-    status: Optional[str] = None
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    page: int = Field(default=1, ge=1)
-    size: int = Field(default=50, ge=1, le=500)
-
 class LogListResponse(BaseModel):
-    total: int
+    # 총건수는 별도 엔드포인트(/logs/count)에서 정확히 센다 — 목록 응답을 COUNT 가 막지 않게
+    total: Optional[int] = None
     page: int
     size: int
     items: List[FtpLogResponse]
+
+class LogCountResponse(BaseModel):
+    total: int
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────

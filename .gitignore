@@ -9,9 +9,6 @@ __pycache__/
 venv/
 *.egg-info/
 
-# Docker volumes
-postgres/data/
-
 # Editor
 .idea/
 .vscode/
@@ -25,3 +22,6 @@ Thumbs.db
 # 데몬 런타임 파일
 ftp-daemon/*.key
 ftp-daemon/*.jsonl
+
+# Tests
+.pytest_cache/

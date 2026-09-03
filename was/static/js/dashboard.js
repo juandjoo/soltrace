@@ -22,12 +22,6 @@ const _centerPlugin = {
 };
 if (!Chart.registry.plugins.get('centerText')) Chart.register(_centerPlugin);
 
-const HEALTH_STATUS = {
-  ok:       {label:'정상', cls:'success', icon:'check-circle'},
-  warning:  {label:'주의', cls:'warning', icon:'exclamation-triangle'},
-  critical: {label:'심각', cls:'danger',  icon:'exclamation-octagon'},
-  idle:     {label:'유휴', cls:'secondary', icon:'dash-circle'},
-};
 const METRIC_LABEL = {fail_rate:'전송 실패율', throughput:'전송 속도', login_fail_rate:'로그인 실패율', cwd_fail_spike:'CWD 실패 급증'};
 
 function fmtPct(v) { return v == null ? '-' : (v*100).toFixed(1) + '%'; }
@@ -35,20 +29,19 @@ function fmtBytesPerSec(v) { return v == null ? '-' : (v / 1024 / 1024).toFixed(
 function fmtTime(s) {
   if (!s) return '-';
   // timezone 없는 문자열은 브라우저가 로컬시간으로 파싱하므로 Z 추가해 UTC 강제
-  const d = new Date(/[Z+]/.test(s) ? s : s + 'Z');
-  return [d.getFullYear(),
-    String(d.getMonth()+1).padStart(2,'0'),
-    String(d.getDate()).padStart(2,'0')].join('-') + ' ' +
-    [String(d.getHours()).padStart(2,'0'), String(d.getMinutes()).padStart(2,'0')].join(':');
+  return fmtLocalDateTime(new Date(/[Z+]/.test(s) ? s : s + 'Z'));
+}
+
+// 시간대별 차트 x축 라벨: 하루 이내면 'HH시', 그 이상이면 'MM/DD HH시' (UTC 버킷 기준)
+function _fmtHourBucket(b, withDate) {
+  const d = new Date(b);
+  const hh = pad2(d.getUTCHours());
+  return withDate ? `${pad2(d.getUTCMonth() + 1)}/${pad2(d.getUTCDate())} ${hh}시` : hh + '시';
 }
 function fmtMetricVal(metric, v) { return metric === 'throughput' ? fmtBytesPerSec(v) : fmtPct(v); }
 
 function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
-}
-
-function _localDateStr(d) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
 let _dashExactStart = null;
@@ -71,8 +64,8 @@ function dashLast24() {
   const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
   _dashExactStart = start.toISOString();
   _dashExactEnd   = end.toISOString();
-  document.getElementById('dashStart').value = _localDateStr(start);
-  document.getElementById('dashEnd').value   = _localDateStr(end);
+  document.getElementById('dashStart').value = fmtLocalDate(start);
+  document.getElementById('dashEnd').value   = fmtLocalDate(end);
   document.querySelectorAll('.dash-quick').forEach(b => {
     const active = b.dataset.h24 === 'true';
     b.classList.toggle('btn-primary', active);
@@ -87,8 +80,8 @@ function dashQuick(days) {
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - days + 1);
-  document.getElementById('dashStart').value = _localDateStr(start);
-  document.getElementById('dashEnd').value   = _localDateStr(end);
+  document.getElementById('dashStart').value = fmtLocalDate(start);
+  document.getElementById('dashEnd').value   = fmtLocalDate(end);
   document.querySelectorAll('.dash-quick').forEach(b => {
     const active = parseInt(b.dataset.days) === days;
     b.classList.toggle('btn-primary', active);
@@ -124,12 +117,8 @@ const RATE_DRILL_FILTERS = [
 // 대시보드 날짜 범위를 유지하면서 로그 조회 페이지로 드릴다운
 function navToLogsFilters({action = '', status = ''} = {}) {
   if (_dashExactStart && _dashExactEnd) {
-    const toLocal = iso => {
-      const d = new Date(iso);
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    };
-    document.getElementById('logStartTime').value = toLocal(_dashExactStart);
-    document.getElementById('logEndTime').value   = toLocal(_dashExactEnd);
+    document.getElementById('logStartTime').value = fmtLocalInput(new Date(_dashExactStart));
+    document.getElementById('logEndTime').value   = fmtLocalInput(new Date(_dashExactEnd));
   } else {
     const s = document.getElementById('dashStart').value;
     const e = document.getElementById('dashEnd').value;
@@ -182,14 +171,7 @@ async function loadUserHourly() {
   const bucketSet = new Set(active.flatMap(u => u.data.map(h => h.bucket)));
   const allBuckets = [...bucketSet].sort();
 
-  const fmtBucket = b => {
-    const d = new Date(b);
-    const hh = String(d.getUTCHours()).padStart(2, '0');
-    if (allBuckets.length <= 25) return hh + '시';
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    return `${mm}/${dd} ${hh}시`;
-  };
+  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
 
   const datasets = active.map((u, i) => {
     const map = Object.fromEntries(u.data.map(h => [h.bucket, h]));
@@ -347,14 +329,7 @@ async function loadHourly() {
   const bucketSet = new Set(active.flatMap(g => g.data.map(h => h.bucket)));
   const allBuckets = [...bucketSet].sort();
 
-  const fmtBucket = b => {
-    const d = new Date(b);
-    const hh = String(d.getUTCHours()).padStart(2, '0');
-    if (allBuckets.length <= 25) return hh + '시';
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    return `${mm}/${dd} ${hh}시`;
-  };
+  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
 
   const datasets = active.map((g, i) => {
     const map = Object.fromEntries(g.data.map(h => [h.bucket, h]));

@@ -13,9 +13,15 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings as app_settings
+from app.models import User
 
 _ALGO = "pbkdf2_sha256"
 _ITERATIONS = 240_000
+
+
+def strip_input(s: str) -> str:
+    """붙여넣기 인코딩 오류 방지: NBSP(U+00A0)→공백 치환 후 앞뒤 공백/탭 제거."""
+    return s.replace("\u00a0", " ").strip()
 
 
 def hash_password(password: str) -> str:
@@ -92,8 +98,31 @@ def set_admin_password(db: Session, new_password: str) -> None:
 
 # ── 접속 IP 허용 목록 ────────────────────────────────────────────────────────
 
-def _parse_ips(raw: str) -> list[str]:
-    return [e.strip() for e in raw.replace(",", "\n").splitlines() if e.strip()]
+def split_ips(raw: str | None) -> list[str]:
+    """저장 포맷(줄바꿈/쉼표 구분 문자열) → 항목 리스트. 빈 항목 제거."""
+    return [e.strip() for e in (raw or "").replace(",", "\n").splitlines() if e.strip()]
+
+
+def parse_ip_entries(entries: list) -> tuple[list[str], list[str]]:
+    """사용자 입력 IP/CIDR 목록 검증. (유효 항목, 무효 항목) 반환.
+
+    admin 전역 허용 IP(settings)와 고객 계정별 허용 IP(users)가 같은 규칙을 쓴다.
+    빈 항목은 무시하고, 문자열이 아닌 값은 무효로 본다.
+    """
+    valid, invalid = [], []
+    for e in entries:
+        if not isinstance(e, str):
+            invalid.append(str(e))
+            continue
+        e = strip_input(e)
+        if not e:
+            continue
+        try:
+            ipaddress.ip_network(e, strict=False)
+            valid.append(e)
+        except ValueError:
+            invalid.append(e)
+    return valid, invalid
 
 
 def get_office_ips(db: Session) -> list[str]:
@@ -101,9 +130,8 @@ def get_office_ips(db: Session) -> list[str]:
     # ""   = 키가 있지만 비어있음 → 사용자가 의도적으로 초기화한 것
     raw = get_config(db, OFFICE_IPS_KEY)
     if raw is None:
-        legacy = get_config(db, ALLOWED_IPS_KEY) or ""
-        return _parse_ips(legacy)
-    return _parse_ips(raw)
+        return split_ips(get_config(db, ALLOWED_IPS_KEY))
+    return split_ips(raw)
 
 
 def set_office_ips(db: Session, ips: list[str]) -> None:
@@ -133,9 +161,8 @@ def check_ip_allowed(db: Session, client_ip: str) -> bool:
 _DUMMY_HASH = hash_password("soltrace-nonexistent-account")
 
 
-def get_active_user(db: Session, username: str):
+def get_active_user(db: Session, username: str) -> User | None:
     """username 으로 활성 사용자(User) 조회. 없거나 비활성이면 None."""
-    from app.models import User  # 순환 import 방지
     return (
         db.query(User)
         .filter(User.username == username, User.is_active.is_(True))
@@ -145,7 +172,7 @@ def get_active_user(db: Session, username: str):
 
 def check_user_ip_allowed(allowed_ips_raw: str | None, client_ip: str) -> bool:
     """계정별 허용 IP 검사. 목록이 비어있으면 모두 허용."""
-    entries = _parse_ips(allowed_ips_raw or "")
+    entries = split_ips(allowed_ips_raw)
     if not entries:
         return True
     return any(_ip_matches(client_ip, e) for e in entries)

@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Device
 
 bearer = HTTPBearer()
 
@@ -79,12 +78,3 @@ def device_scope(
         {"c": user.customer or ""},
     ).scalars().all()
     return list(rows)
-
-
-def require_device(device_key: str, db: Session = Depends(get_db)) -> Device:
-    device = db.query(Device).filter(Device.device_key == device_key).first()
-    if not device:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown device key")
-    if device.status == "disabled":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Device is disabled")
-    return device

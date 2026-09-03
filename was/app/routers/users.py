@@ -3,7 +3,6 @@
 admin 계정 자체는 app_config(설정 페이지)에서 관리하며 이 라우터는 role='customer'
 계정만 다룬다. 격리 경계는 users.customer ↔ groups.customer 매칭으로 동작한다.
 """
-import ipaddress
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,41 +12,28 @@ from app.database import get_db
 from app.deps import require_admin
 from app.models import User
 from app.schemas import UserCreate, UserResponse, UserUpdate
-from app.security import get_admin_username, hash_password
+from app.security import (
+    get_admin_username, hash_password, parse_ip_entries, split_ips, strip_input as _clean,
+)
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 
-def _clean(s: str) -> str:
-    # 붙여넣기 인코딩 오류 방지: 공백/NBSP/탭 strip
-    return s.replace(" ", " ").strip()
-
-
 def _parse_ip_list(entries: List[str]) -> str:
-    """IP/CIDR 목록 검증 후 줄바꿈 구분 문자열로 직렬화. 유효하지 않으면 422."""
-    cleaned, invalid = [], []
-    for e in entries:
-        e = _clean(e) if isinstance(e, str) else str(e)
-        if not e:
-            continue
-        try:
-            ipaddress.ip_network(e, strict=False)
-            cleaned.append(e)
-        except ValueError:
-            invalid.append(e)
+    """IP/CIDR 목록 검증 후 저장 포맷(줄바꿈 구분)으로 직렬화. 유효하지 않으면 422."""
+    valid, invalid = parse_ip_entries(entries)
     if invalid:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"유효하지 않은 IP/CIDR: {', '.join(invalid)}",
         )
-    return "\n".join(cleaned)
+    return "\n".join(valid)
 
 
 def _to_response(u: User) -> UserResponse:
-    ips = [e.strip() for e in (u.allowed_ips or "").replace(",", "\n").splitlines() if e.strip()]
     return UserResponse(
         id=u.id, username=u.username, role=u.role, customer=u.customer,
-        allowed_ips=ips, is_active=u.is_active, created_at=u.created_at,
+        allowed_ips=split_ips(u.allowed_ips), is_active=u.is_active, created_at=u.created_at,
     )
 
 

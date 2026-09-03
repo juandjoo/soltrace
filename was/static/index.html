@@ -276,6 +276,7 @@
             <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-telephone-fill me-2"></i>텔코 정보</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('security')"><i class="bi bi-shield-lock-fill me-2"></i>계정 보안</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('storage')"><i class="bi bi-database-fill me-2"></i>DB 저장소</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack-fill me-2"></i>장비 관리</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3-fill me-2"></i>그룹 관리</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('notify')"><i class="bi bi-bell-fill me-2"></i>알림 설정</a></li>
@@ -361,6 +362,37 @@
                 <button class="btn btn-sm btn-outline-secondary" id="checkUpdBtn" onclick="checkUpdate()">업데이트 확인</button>
                 <button class="btn btn-sm btn-warning" id="runUpdBtn" onclick="runUpdate()"><i class="bi bi-download me-1"></i>지금 업데이트</button>
                 <div class="form-text mt-2">업데이트 시 origin/main을 받아 재배포하며, 서비스가 1~2분간 재시작됩니다.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DB 저장소 -->
+          <div id="settings-storage" class="settings-pane d-none" style="max-width:760px">
+            <div class="card mb-3">
+              <div class="card-header bg-white fw-semibold d-flex align-items-center">
+                <i class="bi bi-database-fill me-1"></i>DB 저장소 현황
+                <button class="btn btn-sm btn-outline-primary ms-auto" onclick="loadStorage()"><i class="bi bi-arrow-clockwise"></i></button>
+              </div>
+              <div class="card-body">
+                <div id="storageMsg" class="alert d-none py-2 small"></div>
+                <dl class="row small mb-2">
+                  <dt class="col-sm-4 text-muted">데이터베이스 전체</dt><dd class="col-sm-8" id="stDbSize">-</dd>
+                  <dt class="col-sm-4 text-muted">ftp_logs (전체 파티션)</dt><dd class="col-sm-8" id="stLogsSize">-</dd>
+                  <dt class="col-sm-4 text-muted">보존 기간</dt><dd class="col-sm-8" id="stRetention">-</dd>
+                  <dt class="col-sm-4 text-muted">default 파티션</dt><dd class="col-sm-8" id="stDefault">-</dd>
+                </dl>
+                <div class="form-text">행 수는 통계 추정치입니다. default 파티션에 행이 남아 있으면 해당 월 파티션이 만들어지지 않고 보존기간 정리에서도 제외되므로 <code>scripts/rebalance_default_partition.sql</code> 로 재배치하세요.</div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-table me-1"></i>월별 파티션</div>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0 small">
+                  <thead class="table-light"><tr>
+                    <th>파티션</th><th class="text-end">행 수(추정)</th><th class="text-end">테이블</th><th class="text-end">인덱스</th><th class="text-end">합계</th>
+                  </tr></thead>
+                  <tbody id="storageTable"><tr><td colspan="5" class="text-center text-muted py-3">불러오는 중…</td></tr></tbody>
+                </table>
               </div>
             </div>
           </div>

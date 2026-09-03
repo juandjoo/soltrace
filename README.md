@@ -43,7 +43,8 @@ soltrace/
 │       ├── database.py
 │       ├── models.py             # Device, Group, FtpLog, ServiceMetrics, ServiceAlerts
 │       ├── schemas.py
-│       ├── deps.py               # JWT 인증 의존성
+│       ├── deps.py               # JWT 인증 의존성, Principal(role), device_scope 격리
+│       ├── security.py           # 비밀번호 해시(pbkdf2), 관리자 자격증명, IP/CIDR 허용 검사
 │       ├── write_buffer.py       # 비동기 DB 쓰기 버퍼 (3초 flush, 최대 2000건)
 │       ├── notifier.py           # 웹훅 / HMS 알림 발송
 │       ├── service_monitor.py    # 5분 주기 롤업 + 이상 감지 + 알림
@@ -54,17 +55,20 @@ soltrace/
 │           ├── groups.py         # 그룹 관리 (telco / service / other)
 │           ├── logs.py           # 로그 조회 + CSV + XLSX 내보내기 (기본 90일)
 │           ├── dashboard.py      # 대시보드 / 서비스 건강도 / 사용자별 추이
-│           ├── settings.py       # 알림 설정 / 임계값 / 음소거
-│           └── telcos.py         # 통신사 관리
+│           ├── settings.py       # 알림 설정 / 임계값 / 음소거 / DB 저장소 현황
+│           ├── telcos.py         # 통신사 관리
+│           └── users.py          # 고객사 계정 관리 (admin 전용)
+│       ├── tests/                # 단위 테스트 (인증·격리 로직, DB 불필요)
 │       └── static/
 │           ├── index.html        # SPA (Bootstrap 5 + Chart.js 4)
+│           ├── css/app.css
 │           └── js/
 │               ├── utils.js      # esc() XSS 이스케이프, api() fetch 래퍼
 │               ├── dashboard.js  # 대시보드 차트 + 서비스 건강도 (기본 7일)
-│               ├── logs.js       # 로그 조회 (기본 90일, 드릴다운 필터)
+│               ├── logs.js       # 로그 조회 (기본 90일, 드릴다운 필터, 총건수 병렬 집계)
 │               ├── devices.js    # 장비 목록 / 상태 배지 (하트비트 120초 임계)
 │               ├── groups.js     # 그룹 관리
-│               └── settings.js   # 알림 설정 (웹훅 / HMS)
+│               └── settings.js   # 알림 설정 (웹훅 / HMS), 고객 계정, DB 저장소
 ├── ftp-daemon/
 │   ├── soltrace_daemon.py        # 실시간 로그 감시 데몬
 │   ├── soltrace_bulk.py          # 과거 데이터 일괄 전송 (glob 지원)
@@ -75,8 +79,8 @@ soltrace/
 └── scripts/
     ├── deploy_rocky8.sh              # 로컬 → GitLab + GitHub push + WAS 원격 업데이트
     ├── install_was_rocky8.sh         # WAS 최초 설치 (Rocky Linux 8)
-    ├── update_rocky8.sh              # WAS pull + 재배포
-    ├── install_daemon_rocky8.sh      # 데몬 최초 설치
+    ├── update_rocky8.sh              # WAS pull + 재배포 (+ PG 튜닝 재적용)
+    ├── tune_pg_rocky8.sh             # PostgreSQL 메모리/WAL 설정을 서버 RAM 비율로 계산·적용
     ├── create_partitions.sh          # ftp_logs 월별 파티션 생성 (cron)
     ├── backup_db.sh                  # DB 증분 백업, 최대 3년 보관 (cron)
     ├── rebalance_default_partition.sql  # ftp_logs_default → 월 파티션 수동 이동
@@ -242,7 +246,20 @@ WAS 점검·재시작 등 일시적 연결 실패 시 데몬이 종료되지 않
 | 장비 관리 | 신규 장비 확인(Confirm), 그룹 배정, 비활성화, 삭제, 원격 업데이트 |
 | 그룹 관리 | telco / service / other 유형으로 그룹 생성·수정·삭제 |
 | 로그 조회 | 장비·그룹·사용자·IP·파일명·작업유형·기간 필터, 페이징, CSV / XLSX 내보내기 (기본 90일) |
-| 설정 | 알림 채널 (웹훅 / HMS), 이상 감지 임계값, 알림 음소거 |
+| 설정 | 알림 채널 (웹훅 / HMS), 이상 감지 임계값, 알림 음소거, 고객 계정, DB 저장소 현황 |
+
+### 고객사 계정 (데이터 격리)
+
+관리자(admin) 외에 고객사별 조회 전용 계정을 둘 수 있다. 설정 > 고객 계정에서 관리한다.
+
+- **격리 기준**: 계정의 `customer` 값과 `groups.customer` 가 정확히 일치하는 그룹에 속한 장비의 데이터만 보인다. 대시보드·로그 조회·장비 목록·그룹 목록 모두 동일한 `device_scope` 로 제한된다.
+- **권한**: 고객 계정은 조회만 가능하며 설정 메뉴와 모든 관리 API(`require_admin`)가 차단된다.
+- **IP 제한**: 계정별 허용 IP/CIDR 목록을 둘 수 있다(비어 있으면 제한 없음). admin 은 기존의 전역 접속 허용 IP 를 따른다.
+- **주의**: customer 문자열이 공백·대소문자까지 같아야 하므로, 계정 생성 화면의 자동완성(그룹의 customer 목록)을 사용한다.
+
+### 로그 조회 총건수
+
+목록과 총건수(`/logs/count`)를 분리해 병렬로 요청한다. 대량 구간에서 COUNT 가 오래 걸려도 첫 페이지는 즉시 표시되고, 총건수는 집계가 끝나면 채워진다. 같은 필터로 페이지만 바꿀 때는 재집계하지 않는다. 총건수는 상한이나 추정 없이 정확히 센다.
 
 ### 서비스 영향도 감지
 
@@ -290,7 +307,8 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| `POST` | `/api/v1/auth/login` | 로그인 (JWT 발급) |
+| `POST` | `/api/v1/auth/login` | 로그인 (JWT 발급, role/customer 클레임 포함) |
+| `POST` | `/api/v1/auth/refresh` | 세션 연장 (토큰 재발급) |
 | `POST` | `/api/v1/ingest/register` | 장비 등록 (데몬) |
 | `POST` | `/api/v1/ingest/heartbeat` | 하트비트 + 데몬 상태 업데이트 (데몬) |
 | `POST` | `/api/v1/ingest/logs` | 로그 배치 수신 (데몬) |
@@ -300,7 +318,8 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 | `POST` | `/api/v1/devices/{id}/update` | 데몬 원격 업데이트 트리거 |
 | `DELETE` | `/api/v1/devices/{id}` | 장비 삭제 |
 | `GET/POST` | `/api/v1/groups` | 그룹 목록 / 생성 |
-| `GET` | `/api/v1/logs` | 로그 조회 (기본 최근 90일) |
+| `GET` | `/api/v1/logs` | 로그 조회 (기본 최근 90일, 총건수 미포함) |
+| `GET` | `/api/v1/logs/count` | 로그 총건수 (목록과 동일 필터, 정확한 COUNT) |
 | `GET` | `/api/v1/logs/export` | CSV 내보내기 |
 | `GET` | `/api/v1/logs/export/xlsx` | XLSX 내보내기 |
 | `GET` | `/api/v1/dashboard` | 대시보드 통계 |
@@ -308,6 +327,9 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 | `GET` | `/api/v1/dashboard/service-health` | 서비스 영향도 (장비 상태 / 알림 / 추이) |
 | `GET/POST` | `/api/v1/settings/notify` | 알림 채널 설정 |
 | `GET/POST` | `/api/v1/settings/notify/mute` | 알림 음소거 |
+| `GET` | `/api/v1/settings/storage` | DB 저장소 현황 (파티션별 크기·행수, default 잔존) |
+| `GET/POST` | `/api/v1/users` | 고객 계정 목록 / 생성 (admin) |
+| `PUT/DELETE` | `/api/v1/users/{id}` | 고객 계정 수정(비밀번호·customer·IP·활성) / 삭제 (admin) |
 
 ---
 
@@ -348,11 +370,13 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 
 ## DB 파티션 관리
 
-`ftp_logs`는 `log_time` 기준 월별 파티션으로 분할된다. WAS 기동 시 과거 12개월 ~ 향후 2개월 파티션을 자동 생성한다.
+`ftp_logs`는 `log_time` 기준 월별 파티션으로 분할된다. WAS 기동 시(및 `init.sql` 적용 시) **과거 36개월 ~ 향후 2개월** 파티션을 자동 생성한다. 과거 범위는 백업 보존 기간(`backup_db.sh` `RETENTION_MONTHS=36`)과 같아, 보존 기간 안의 과거 로그를 bulk import 해도 default 파티션으로 빠지지 않는다.
+
+파티션별 크기·행수와 default 파티션 잔존 여부는 **설정 > DB 저장소** 에서 확인한다. default 에 행이 남아 있으면 WAS 기동 로그에도 경고가 남는다.
 
 ### `ftp_logs_default` 재배치
 
-bulk import 데이터가 `ftp_logs_default`에 쌓인 경우 아래 SQL로 월 파티션으로 이동한다.  
+default 에 데이터가 있는 월은 파티션 생성이 건너뛰어지고 보존기간 DROP 대상에서도 빠진다. 아래 SQL로 월 파티션으로 이동한다.  
 행 수에 따라 부하가 크므로 저시간대에 수동 실행 권장.
 
 ```bash
@@ -366,6 +390,35 @@ sudo -u postgres psql -d soltrace -f scripts/rebalance_default_partition.sql
 ```bash
 # WAS 서버에서 실행
 sudo bash scripts/update_rocky8.sh main
+```
+
+업데이트 시 `tune_pg_rocky8.sh` 가 함께 실행되어 PostgreSQL 설정이 서버 RAM 기준 권장값과 다르면 재적용하고 PostgreSQL 을 재시작한다(같으면 아무것도 하지 않음).
+
+## PostgreSQL 튜닝
+
+설치·업데이트 스크립트가 자동으로 적용하지만, 메모리를 증설했거나 수동 확인이 필요하면 직접 실행한다.
+
+```bash
+sudo bash scripts/tune_pg_rocky8.sh --dry-run   # 계산 결과만 확인
+sudo bash scripts/tune_pg_rocky8.sh --restart   # 적용 + 변경 시 재시작
+```
+
+| 설정 | 산출 기준 |
+|---|---|
+| `shared_buffers` | RAM 25% (256MB ~ 8GB) |
+| `effective_cache_size` | RAM 60% |
+| `work_mem` | 16 / 32 / 64MB (RAM 4GB 미만 / 8GB 미만 / 이상) |
+| `maintenance_work_mem` | 128MB ~ 1GB |
+| `max_wal_size` | 1 / 2 / 4GB — bulk import 시 체크포인트 빈도 완화 |
+
+## 테스트
+
+인증·격리 로직 단위 테스트(DB 불필요):
+
+```bash
+cd was
+python -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
+.venv/bin/python -m pytest tests -q
 ```
 
 ## 코드 배포

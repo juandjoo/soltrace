@@ -109,7 +109,14 @@ CREATE TABLE IF NOT EXISTS ftp_logs (
     PRIMARY KEY (id, log_time)
 ) PARTITION BY RANGE (log_time);
 
--- 초기 파티션 생성 (당월 + 향후 2개월) — 이미 존재하면 건너뜀
+-- DEFAULT 파티션: 매칭 파티션 없는 행 임시 보관 (신규 월 파티션 생성 전 안전망)
+-- 아래 월 파티션 루프가 default 의 데이터 존재 여부를 검사하므로 먼저 만든다.
+CREATE TABLE IF NOT EXISTS ftp_logs_default PARTITION OF ftp_logs DEFAULT;
+
+-- 초기 파티션 생성 (과거 36개월 + 당월 + 향후 2개월) — 이미 존재하면 건너뜀
+-- 과거 범위는 backup_db.sh RETENTION_MONTHS(36) 및 was/app/main.py PARTITION_PAST_MONTHS 와 동일.
+-- default 파티션에 해당 월 데이터가 있으면 CREATE 가 실패(CheckViolation)하므로 그 달은 건너뛴다
+-- → 설정 > DB 저장소 확인 후 scripts/rebalance_default_partition.sql 로 재배치.
 DO $$
 DECLARE
     base_date DATE := date_trunc('month', NOW())::DATE;
@@ -117,8 +124,9 @@ DECLARE
     s         DATE;
     e         DATE;
     pname     TEXT;
+    has_data  BOOLEAN;
 BEGIN
-    FOR i IN 0..2 LOOP
+    FOR i IN -36..2 LOOP
         s := (base_date + (i || ' months')::INTERVAL)::DATE;
         e := (s + '1 month'::INTERVAL)::DATE;
         pname := 'ftp_logs_' || to_char(s, 'YYYY_MM');
@@ -128,6 +136,14 @@ BEGIN
             WHERE c.relname = pname AND n.nspname = 'public'
         ) THEN
             EXECUTE format(
+                'SELECT EXISTS(SELECT 1 FROM ftp_logs_default WHERE log_time >= %L AND log_time < %L)',
+                s, e
+            ) INTO has_data;
+            IF has_data THEN
+                RAISE WARNING 'Partition % skipped: ftp_logs_default has rows for this month (run rebalance_default_partition.sql)', pname;
+                CONTINUE;
+            END IF;
+            EXECUTE format(
                 'CREATE TABLE %I PARTITION OF ftp_logs FOR VALUES FROM (%L) TO (%L)',
                 pname, s, e
             );
@@ -135,9 +151,6 @@ BEGIN
         END IF;
     END LOOP;
 END $$;
-
--- DEFAULT 파티션: 매칭 파티션 없는 행 임시 보관 (신규 월 파티션 생성 전 안전망)
-CREATE TABLE IF NOT EXISTS ftp_logs_default PARTITION OF ftp_logs DEFAULT;
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- ftp_logs 인덱스

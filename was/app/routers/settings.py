@@ -1,58 +1,48 @@
 import logging
 import subprocess
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-log = logging.getLogger("soltrace.settings")
-
+from app import notifier
 from app.config import settings as cfg
 from app.database import get_db
 from app.deps import require_admin
-from app.schemas import PasswordChangeRequest, UpdateTriggerResponse, VersionInfo, NotifySettings
-import ipaddress
-
+from app.gitinfo import git, git_run
+from app.schemas import (
+    PasswordChangeRequest, UpdateTriggerResponse, VersionInfo, NotifySettings,
+    StorageInfo, StoragePartition,
+)
 from app.security import (
+    client_ip_from_request, parse_ip_entries,
     verify_admin_password, set_admin_password,
     get_admin_username, set_admin_username,
     get_office_ips, set_office_ips,
     get_config, set_config,
 )
 
+log = logging.getLogger("soltrace.settings")
+
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
 
-def _git_run(*args: str, timeout: int = 10):
-    # safe.directory: WAS(soltrace)가 root 소유로 바뀐 .git 에서도 git 실행 가능하게
-    try:
-        return subprocess.run(
-            ["git", "-c", f"safe.directory={cfg.repo_dir}", "-C", cfg.repo_dir, *args],
-            capture_output=True, text=True, timeout=timeout,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-
-
-def _git(*args: str, timeout: int = 10) -> str | None:
-    r = _git_run(*args, timeout=timeout)
-    return r.stdout.strip() if (r and r.returncode == 0) else None
-
-
 def _version_info(check_remote: bool = False) -> VersionInfo:
-    branch = _git("rev-parse", "--abbrev-ref", "HEAD")
-    commit = _git("rev-parse", "--short", "HEAD")
-    commit_date = _git("log", "-1", "--format=%cd", "--date=format:%Y-%m-%d %H:%M")
-    subject = _git("log", "-1", "--format=%s")
+    branch = git("rev-parse", "--abbrev-ref", "HEAD")
+    commit = git("rev-parse", "--short", "HEAD")
+    commit_date = git("log", "-1", "--format=%cd", "--date=format:%Y-%m-%d %H:%M")
+    subject = git("log", "-1", "--format=%s")
     info = VersionInfo(branch=branch, commit=commit, commit_date=commit_date, subject=subject)
 
     if check_remote and branch:
         # 원격 fetch 는 네트워크 작업 → 넉넉한 타임아웃. 실패하면 '최신'으로 오인하지
         # 않도록 에러를 표면화한다 (소유권/인증/네트워크 문제 가시화).
-        r = _git_run("fetch", "--quiet", "origin", branch, timeout=30)
+        r = git_run("fetch", "--quiet", "origin", branch, timeout=30)
         if r is None or r.returncode != 0:
             info.error = ((r.stderr.strip() if r else "") or "git fetch 실패")[:300]
             return info
-        behind = _git("rev-list", "--count", f"HEAD..origin/{branch}")
+        behind = git("rev-list", "--count", f"HEAD..origin/{branch}")
         if behind is not None and behind.isdigit():
             info.behind = int(behind)
             info.update_available = int(behind) > 0
@@ -83,34 +73,59 @@ def check_update(_: str = Depends(require_admin)):
     return _version_info(check_remote=True)
 
 
+# ── DB 저장소 현황 ────────────────────────────────────────────────────────────
+# backup_db.sh 의 RETENTION_MONTHS 와 동일. 파티션 자동 생성 범위(main.PARTITION_PAST_MONTHS)도 이 값.
+RETENTION_MONTHS = 36
+
+
+@router.get("/storage", response_model=StorageInfo)
+def get_storage(db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    """ftp_logs 파티션별 크기/행수 + default 파티션 잔존 여부.
+
+    행수는 pg_class.reltuples(통계 추정치)로 읽어 수억 행이어도 즉시 응답한다.
+    default 파티션만 정확히 센다 — 재배치 필요 여부 판단용이며 보통 0이어야 한다.
+    """
+    rows = db.execute(text("""
+        SELECT c.relname,
+               GREATEST(c.reltuples, 0)::bigint          AS rows_est,
+               pg_total_relation_size(c.oid)             AS total_bytes,
+               pg_relation_size(c.oid)                   AS table_bytes,
+               pg_indexes_size(c.oid)                    AS index_bytes
+          FROM pg_inherits i
+          JOIN pg_class c ON c.oid = i.inhrelid
+          JOIN pg_class p ON p.oid = i.inhparent
+         WHERE p.relname = 'ftp_logs'
+         ORDER BY c.relname DESC
+    """)).fetchall()
+    parts = [StoragePartition(name=r.relname, rows_est=r.rows_est, total_bytes=r.total_bytes,
+                              table_bytes=r.table_bytes, index_bytes=r.index_bytes) for r in rows]
+    db_bytes = db.execute(text("SELECT pg_database_size(current_database())")).scalar() or 0
+    default_rows = db.execute(text("SELECT COUNT(*) FROM ftp_logs_default")).scalar() or 0
+    default_months = []
+    if default_rows:
+        default_months = [r[0] for r in db.execute(text(
+            "SELECT DISTINCT to_char(log_time AT TIME ZONE 'UTC', 'YYYY-MM') "
+            "FROM ftp_logs_default ORDER BY 1"
+        )).fetchall()]
+    return StorageInfo(
+        db_bytes=db_bytes,
+        ftp_logs_bytes=sum(p.total_bytes for p in parts),
+        partitions=parts,
+        default_rows=default_rows,
+        default_months=default_months,
+        retention_months=RETENTION_MONTHS,
+    )
+
+
 # ── 계정 보안 ─────────────────────────────────────────────────────────────────
 
 @router.get("/security")
 def get_security(request: Request, db: Session = Depends(get_db), _: str = Depends(require_admin)):
-    # 리버스 프록시(nginx) 뒤에서는 client.host가 127.0.0.1이므로 헤더 우선 참조
-    xff = request.headers.get("x-forwarded-for")
-    my_ip = xff.split(",")[0].strip() if xff else (
-        request.headers.get("x-real-ip") or (request.client.host if request.client else None)
-    )
     return {
         "username": get_admin_username(db),
         "allowed_ips": get_office_ips(db),
-        "my_ip": my_ip,
+        "my_ip": client_ip_from_request(request),
     }
-
-
-
-def _validate_ip_list(entries: list) -> list[str]:
-    invalid = []
-    for entry in entries:
-        if not isinstance(entry, str):
-            invalid.append(str(entry))
-            continue
-        try:
-            ipaddress.ip_network(entry.strip(), strict=False)
-        except ValueError:
-            invalid.append(entry)
-    return invalid
 
 
 @router.put("/allowed-ips", status_code=status.HTTP_204_NO_CONTENT)
@@ -122,13 +137,13 @@ def update_allowed_ips(
     ips = body.get("allowed_ips", [])
     if not isinstance(ips, list):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="allowed_ips must be a list")
-    invalid = _validate_ip_list(ips)
+    valid, invalid = parse_ip_entries(ips)
     if invalid:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"유효하지 않은 IP/CIDR: {', '.join(invalid)}",
         )
-    set_office_ips(db, ips)
+    set_office_ips(db, valid)
 
 
 @router.get("/notify", response_model=NotifySettings)
@@ -143,11 +158,10 @@ def get_notify(db: Session = Depends(get_db), _: str = Depends(require_admin)):
 
 @router.put("/notify", status_code=status.HTTP_204_NO_CONTENT)
 def save_notify(body: NotifySettings, db: Session = Depends(get_db), _: str = Depends(require_admin)):
-    from app.notifier import validate_webhook_url
     for url_field, label in ((body.webhook_url, "웹훅"), (body.hms_url, "HMS")):
         if url_field:
             try:
-                validate_webhook_url(url_field)
+                notifier.validate_webhook_url(url_field)
             except ValueError as e:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{label} {e}")
     for k, v in {"notify_webhook_url": body.webhook_url, "notify_hms_url": body.hms_url}.items():
@@ -161,8 +175,6 @@ def test_notify(
     _: str = Depends(require_admin),
 ):
     """channel: 'all' | 'webhook' | 'hms'"""
-    from datetime import datetime, timezone
-    from app import notifier
     if channel not in ("all", "webhook", "hms"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"알 수 없는 채널: {channel!r}")
     dummy = [{
@@ -184,13 +196,11 @@ def test_notify(
 
 @router.get("/notify/mute", response_model=dict)
 def get_mute(db: Session = Depends(get_db), _: str = Depends(require_admin)):
-    from app import notifier
     return {"muted": notifier.is_muted(db)}
 
 
 @router.post("/notify/mute", status_code=status.HTTP_204_NO_CONTENT)
 def set_mute(muted: bool, db: Session = Depends(get_db), _: str = Depends(require_admin)):
-    from app.security import set_config
     set_config(db, "notify_muted", "true" if muted else "false")
     log.info("Notifications %s", "muted" if muted else "unmuted")
 

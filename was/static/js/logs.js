@@ -3,13 +3,22 @@ const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제',
 let _logGroupMap = {};   // id → group object
 let _pendingSearch = false;  // navToLogsFilters가 세팅, initLogsPage 완료 후 자동 검색
 
-async function initLogsPage() {
-  // Chrome 자동완성 차단: readonly로 리셋 후 값 초기화
+// 총건수 캐시: 필터(페이지/크기 제외)가 같으면 페이지 이동 시 재집계하지 않는다.
+// 카운트는 목록과 병렬로 요청해 첫 페이지가 COUNT 를 기다리지 않게 한다.
+let _logCountKey = null;     // 마지막으로 집계한 필터 문자열
+let _logTotal = null;        // 정확한 총건수 (집계 중이면 null)
+
+// Chrome 자동완성 차단: readonly 로 리셋 후 값 초기화 (포커스 시 해제는 index.html onfocus)
+function _resetAutofillInputs() {
   ['logUserFilter', 'logIpFilter'].forEach(id => {
     const el = document.getElementById(id);
     el.setAttribute('readonly', '');
     el.value = '';
   });
+}
+
+async function initLogsPage() {
+  _resetAutofillInputs();
 
   const groups = await api('GET', '/groups');
   if (groups) {
@@ -151,6 +160,46 @@ function _logParams() {
   return params;
 }
 
+// 총건수 표시 + 페이저 갱신. total=null 이면 집계 중.
+function _renderLogTotal(itemCount) {
+  const el = document.getElementById('logTotal');
+  const pager = document.getElementById('logPager');
+  if (_logTotal === null) {
+    const from = itemCount ? (logPage - 1) * logPageSize + 1 : 0;
+    const to = itemCount ? from + itemCount - 1 : 0;
+    el.innerHTML = itemCount
+      ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 <span class="text-muted"><span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem"></span> 집계 중</span>`
+      : '결과 없음';
+    // 총건수 미확정: 이전/다음만 제공
+    pager.innerHTML = itemCount ? _simplePager(itemCount < logPageSize) : '';
+    return;
+  }
+  const from = _logTotal ? (logPage - 1) * logPageSize + 1 : 0;
+  const to = Math.min(logPage * logPageSize, _logTotal);
+  el.textContent = _logTotal
+    ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 ${_logTotal.toLocaleString()}건` : '결과 없음';
+  renderPager(Math.ceil(_logTotal / logPageSize), logPage);
+}
+
+function _simplePager(isLast) {
+  const go = n => `searchLogs(${n})`;
+  return `<li class="page-item ${logPage===1?'disabled':''}"><a class="page-link" href="#" onclick="${go(logPage-1)}">‹</a></li>`
+       + `<li class="page-item active"><span class="page-link">${logPage}</span></li>`
+       + `<li class="page-item ${isLast?'disabled':''}"><a class="page-link" href="#" onclick="${go(logPage+1)}">›</a></li>`;
+}
+
+async function _countLogs(params, key, itemCount) {
+  try {
+    const c = await api('GET', `/logs/count?${params}`);
+    if (!c || _logCountKey !== key) return;   // 그 사이 필터가 바뀌었으면 무시
+    _logTotal = c.total;
+    _renderLogTotal(itemCount);
+  } catch (e) {
+    if (_logCountKey !== key) return;
+    document.getElementById('logTotal').textContent = `총건수 집계 실패: ${e.message}`;
+  }
+}
+
 async function searchLogs(page) {
   const _fail = msg => {
     document.getElementById('logTable').innerHTML =
@@ -161,29 +210,33 @@ async function searchLogs(page) {
   try {
   logPage = page || 1;
   logPageSize = parseInt(document.getElementById('logPageSize').value) || 50;
-  const params = _logParams();
+  const filterParams = _logParams();
+  const key = filterParams.toString();
+  const params = new URLSearchParams(filterParams);
   params.set('page', logPage);
   params.set('size', logPageSize);
+
+  // 필터가 바뀐 경우에만 총건수를 새로 센다 (목록과 병렬 요청)
+  const needCount = key !== _logCountKey;
+  if (needCount) { _logCountKey = key; _logTotal = null; }
 
   const data = await api('GET', `/logs?${params}`);
   if (!data) return;
 
-  const from = data.total ? (logPage - 1) * logPageSize + 1 : 0;
-  const to = Math.min(logPage * logPageSize, data.total);
-  document.getElementById('logTotal').textContent =
-    data.total ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 ${data.total.toLocaleString()}건` : '결과 없음';
-
   const tbody = document.getElementById('logTable');
   if (!data.items.length) {
     tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">결과가 없습니다.</td></tr>';
-    document.getElementById('logPager').innerHTML = '';
+    if (needCount && logPage === 1) { _logTotal = 0; }
+    _renderLogTotal(0);
+    if (needCount && logPage > 1) _countLogs(filterParams, key, 0);
     return;
   }
+  _renderLogTotal(data.items.length);
+  if (needCount) _countLogs(filterParams, key, data.items.length);
 
   tbody.innerHTML = data.items.map(l => {
     const d = new Date(l.log_time);
-    const p = n => String(n).padStart(2,'0');
-    const dt = `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    const dt = `${d.getFullYear()}/${pad2(d.getMonth()+1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
     const action = l.action;
     const icon = {upload:'<i class="bi bi-upload action-upload"></i>', download:'<i class="bi bi-download action-download"></i>', delete:'<i class="bi bi-trash action-delete"></i>', rename:'<i class="bi bi-pencil action-rename"></i>', login:'<i class="bi bi-box-arrow-in-right action-login"></i>', logout:'<i class="bi bi-box-arrow-right action-logout"></i>'}[action] || action;
     const filePath = l.file_path || '';
@@ -207,8 +260,6 @@ async function searchLogs(page) {
       <td class="text-center"><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>
     </tr>`;
   }).join('');
-
-  renderPager(Math.ceil(data.total / logPageSize), logPage);
   } catch(e) {
     _fail(`조회 실패: ${e.message}`);
   }
@@ -250,11 +301,7 @@ function resetLogFilters() {
   document.getElementById('logTelcoFilter').value = '';
   _renderGroupOptions('');
   document.getElementById('logGroupFilter').value = '';
-  ['logUserFilter', 'logIpFilter'].forEach(id => {
-    const el = document.getElementById(id);
-    el.setAttribute('readonly', '');
-    el.value = '';
-  });
+  _resetAutofillInputs();
   document.getElementById('logFileFilter').value = '';
   document.getElementById('logActionFilter').value = '__exclude_login_logout__';
   document.getElementById('logStatusFilter').value = '';
@@ -264,10 +311,6 @@ function resetLogFilters() {
 }
 
 function logDateQuick(dayOffset) {
-  const _fmt = d => {
-    const p = n => String(n).padStart(2,'0');
-    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-  };
   const now = new Date();
   let start, end;
   if (dayOffset === -1) {
@@ -283,7 +326,7 @@ function logDateQuick(dayOffset) {
     start = new Date(now); start.setDate(start.getDate()+dayOffset); start.setHours(0,0,0,0);
     end   = now;
   }
-  document.getElementById('logStartTime').value = _fmt(start);
-  document.getElementById('logEndTime').value   = _fmt(end);
+  document.getElementById('logStartTime').value = fmtLocalInput(start);
+  document.getElementById('logEndTime').value   = fmtLocalInput(end);
   searchLogs(1);
 }

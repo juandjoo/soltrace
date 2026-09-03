@@ -126,8 +126,19 @@ function fmtBytes(b) {
   return (b/1073741824).toFixed(2) + ' GB';
 }
 
-function fmtNum(n) {
-  return n?.toLocaleString() ?? '0';
+// ── 로컬 시각 포맷 (대시보드/로그 조회가 공유) ──────────────────────────────
+function pad2(n) { return String(n).padStart(2, '0'); }
+// datetime-local input 값: YYYY-MM-DDTHH:MM
+function fmtLocalInput(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+// YYYY-MM-DD
+function fmtLocalDate(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+}
+// YYYY-MM-DD HH:MM
+function fmtLocalDateTime(d) {
+  return `${fmtLocalDate(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 function fmtUptime(s) {

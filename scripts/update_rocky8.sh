@@ -54,6 +54,9 @@ chmod 440 /etc/sudoers.d/soltrace-update
 visudo -cf /etc/sudoers.d/soltrace-update || rm -f /etc/sudoers.d/soltrace-update
 sudo -u soltrace git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
 
+log ">> PostgreSQL 튜닝 확인 (RAM 비율, 변경 시에만 재시작)"
+bash "$APP_DIR/scripts/tune_pg_rocky8.sh" --restart || log "WARN: PG 튜닝 실패 — 기존 설정 유지"
+
 log ">> WAS 재시작"
 systemctl restart soltrace-was
 

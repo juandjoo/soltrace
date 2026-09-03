@@ -2,7 +2,6 @@ import hashlib
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -15,13 +14,6 @@ from app import write_buffer as wb
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 
 VALID_ACTIONS = {"upload", "download", "delete", "rename", "login", "logout", "mkdir", "rmdir", "cwd_fail"}
-
-# id, created_at 제외 — GENERATED ALWAYS AS IDENTITY 컬럼을 INSERT에 포함하면 오류 발생
-_LOG_COLS = (
-    "device_id", "log_time", "client_ip", "username", "action",
-    "file_path", "file_size", "transfer_time", "transfer_type", "status", "session_id",
-    "row_hash",
-)
 
 
 def _row_hash(entry: FtpLog) -> str:
@@ -146,13 +138,7 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
         accepted += 1
 
     if entries:
-        # 즉시 DB 쓰기 대신 버퍼에 넣어 워커 블로킹 제거
-        # 버퍼가 아직 초기화 안 된 경우(테스트 등)는 직접 쓰기 fallback
-        buf = wb.get_buffer()
-        if buf:
-            buf.add(entries)
-        else:
-            db.execute(pg_insert(FtpLog).on_conflict_do_nothing(), [{c: getattr(e, c) for c in _LOG_COLS} for e in entries])
-            db.commit()
+        # 즉시 DB 쓰기 대신 버퍼(lifespan 에서 워커마다 초기화)에 넣어 워커 블로킹 제거
+        wb.get_buffer().add(entries)
 
     return IngestResponse(accepted=accepted, rejected=rejected)

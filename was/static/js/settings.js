@@ -33,6 +33,42 @@ async function loadVersion() {
   } catch (e) { settingsMsg('updMsg', 'danger', e.message); }
 }
 
+async function loadStorage() {
+  const msg = document.getElementById('storageMsg');
+  msg.className = 'alert d-none py-2 small';
+  const tbody = document.getElementById('storageTable');
+  try {
+    const s = await api('GET', '/settings/storage');
+    if (!s) return;
+    document.getElementById('stDbSize').textContent = fmtBytes(s.db_bytes);
+    document.getElementById('stLogsSize').textContent = fmtBytes(s.ftp_logs_bytes);
+    document.getElementById('stRetention').textContent = `${s.retention_months}개월 (초과 파티션은 백업 후 자동 삭제)`;
+    const def = document.getElementById('stDefault');
+    if (s.default_rows > 0) {
+      def.innerHTML = `<span class="text-danger fw-semibold">${s.default_rows.toLocaleString()}행 잔존</span>`
+        + ` <span class="text-muted">(${s.default_months.map(esc).join(', ')})</span>`;
+      settingsMsg('storageMsg', 'warning', 'default 파티션에 데이터가 남아 있습니다. 재배치가 필요합니다.');
+    } else {
+      def.innerHTML = '<span class="text-success">비어 있음</span>';
+    }
+    if (!s.partitions.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">파티션이 없습니다.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = s.partitions.map(p => `
+      <tr class="${p.name === 'ftp_logs_default' && s.default_rows > 0 ? 'table-warning' : ''}">
+        <td class="font-monospace">${esc(p.name)}</td>
+        <td class="text-end">${p.rows_est.toLocaleString()}</td>
+        <td class="text-end">${fmtBytes(p.table_bytes)}</td>
+        <td class="text-end">${fmtBytes(p.index_bytes)}</td>
+        <td class="text-end fw-semibold">${fmtBytes(p.total_bytes)}</td>
+      </tr>`).join('');
+  } catch (e) {
+    settingsMsg('storageMsg', 'danger', e.message);
+    tbody.innerHTML = '';
+  }
+}
+
 async function getTelcos() {
   allTelcos = (await api('GET', '/telcos')) || [];
   return allTelcos;

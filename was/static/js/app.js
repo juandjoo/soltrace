@@ -28,6 +28,7 @@ function settingsTab(tab) {
   if (link) link.classList.add('active');
   if (tab === 'telco') loadTelcos();
   if (tab === 'update') loadVersion();
+  if (tab === 'storage') loadStorage();
   if (tab === 'devices') loadDevices();
   if (tab === 'groups') loadGroups();
   if (tab === 'notify') loadNotify();

@@ -1,4 +1,4 @@
-import subprocess
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,14 +10,23 @@ from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.database import SessionLocal, engine
+from app.gitinfo import git
 from app.models import Base
 from app.routers import auth, dashboard, devices, groups, ingest, logs, settings, telcos, users
 from app import write_buffer as wb
 from app import service_monitor as sm
 
+log = logging.getLogger("soltrace.main")
+
+# ftp_logs 월별 파티션 자동 생성 범위. 과거 범위는 backup_db.sh 의 RETENTION_MONTHS(36)와
+# 맞춘다 — 보존 기간 안의 과거 로그(bulk import)가 default 파티션으로 빠지지 않게.
+# init.sql / create_partitions.sh 의 범위와 함께 바꿀 것.
+PARTITION_PAST_MONTHS = 36
+PARTITION_FUTURE_MONTHS = 2
+
 
 def _ensure_partitions(db):
-    """과거 12개월 + 당월 + 향후 2개월 파티션이 없으면 생성."""
+    """과거 PARTITION_PAST_MONTHS + 당월 + 향후 PARTITION_FUTURE_MONTHS 파티션이 없으면 생성."""
     is_partitioned = db.execute(text(
         "SELECT COUNT(*) FROM pg_class c "
         "JOIN pg_namespace n ON n.oid = c.relnamespace "
@@ -27,8 +36,7 @@ def _ensure_partitions(db):
         return
 
     now = datetime.now(timezone.utc)
-    # -12 ~ +2 월 범위 (총 15개월)
-    for offset in range(-12, 3):
+    for offset in range(-PARTITION_PAST_MONTHS, PARTITION_FUTURE_MONTHS + 1):
         total = now.month - 1 + offset
         year, month = now.year + total // 12, total % 12 + 1
         next_total = total + 1
@@ -52,6 +60,19 @@ def _ensure_partitions(db):
         "CREATE TABLE IF NOT EXISTS ftp_logs_default PARTITION OF ftp_logs DEFAULT"
     ))
     db.commit()
+
+    # default 파티션에 행이 남아 있으면 해당 월 파티션이 생성되지 못하고(위 has_data 스킵)
+    # 백업 스크립트의 보존기간 DROP 대상에서도 빠진다 → 기동 시 경고로 가시화.
+    # 정확한 COUNT 대신 통계 추정치(reltuples)를 써서 대량일 때 기동을 늦추지 않는다.
+    est = db.execute(text(
+        "SELECT reltuples::bigint FROM pg_class WHERE relname = 'ftp_logs_default'"
+    )).scalar() or 0
+    if est > 0:
+        log.warning(
+            "ftp_logs_default 에 약 %s 행이 남아 있습니다. "
+            "설정 > DB 저장소에서 확인 후 scripts/rebalance_default_partition.sql 로 재배치하세요.",
+            f"{est:,}",
+        )
 
 
 def _run_migrations(conn):
@@ -154,28 +175,6 @@ def _run_migrations(conn):
     """))
 
 
-# ftp_logs_default 재배치 (수동 1회 실행):
-# 과거 bulk import 데이터가 ftp_logs_default에 쌓인 경우,
-# _ensure_partitions로 월 파티션 생성 후 아래 SQL로 직접 이동한다.
-# 행 수에 따라 부하가 크므로 서비스 저시간대에 수동 실행 권장.
-#
-# DO $$
-# DECLARE r RECORD; s DATE; e DATE; pname TEXT;
-# BEGIN
-#   FOR r IN
-#     SELECT DISTINCT date_trunc('month', log_time)::date AS ms
-#     FROM ftp_logs_default
-#     WHERE log_time < date_trunc('month', now())
-#   LOOP
-#     s := r.ms; e := s + interval '1 month';
-#     pname := 'ftp_logs_' || to_char(s, 'YYYY_MM');
-#     EXECUTE format(
-#       'WITH d AS (DELETE FROM ftp_logs_default WHERE log_time>=%L AND log_time<%L RETURNING *)
-#        INSERT INTO ftp_logs SELECT * FROM d ON CONFLICT DO NOTHING', s, e);
-#   END LOOP;
-# END $$;
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # pg_trgm 확장을 create_all 전에 보장 — username GIN(gin_trgm_ops) 인덱스 생성 선행 조건
@@ -239,20 +238,13 @@ app.include_router(users.router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-def _git_short_hash() -> str:
-    try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
-        ).decode().strip()
-    except Exception:
-        return "0"
-
-
 _INDEX_HTML: str = ""
 
 
 def _load_index_html() -> str:
-    return Path("static/index.html").read_text(encoding="utf-8").replace("__VER__", _git_short_hash())
+    # __VER__ → 커밋 해시: 정적 JS/CSS 캐시 버스팅
+    ver = git("rev-parse", "--short", "HEAD") or "0"
+    return Path("static/index.html").read_text(encoding="utf-8").replace("__VER__", ver)
 
 
 @app.get("/", include_in_schema=False)

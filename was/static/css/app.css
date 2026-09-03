@@ -69,16 +69,14 @@ body        { background: #f5f7fa; font-size: 14px; }
 /* ── 공통 컴포넌트 ─────────────────────────────────────────────── */
 .card                    { border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .btn-xs                  { padding: 2px 8px; font-size: 12px; }
-.badge-pending           { background: #ffc107; color: #000; }
-.badge-confirmed         { background: #198754; }
-.badge-disabled          { background: #6c757d; }
+
 .table th                { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #6c757d; }
 #loginModal .modal-dialog { max-width: 380px; margin-top: 15vh; }
 
 /* ── 대시보드 ──────────────────────────────────────────────────── */
 .dash-card       { border: 1px solid rgba(13,110,253,.15) !important; transition: box-shadow .15s ease, transform .15s ease; }
 .dash-card:hover { box-shadow: 0 8px 22px rgba(13,110,253,.18); transform: translateY(-3px); border-color: rgba(13,110,253,.35) !important; }
-.stat-card              { border-left: 4px solid; }
+
 .stat-card.upload       { border-color: #0d6efd; }
 .stat-card.download     { border-color: #198754; }
 .stat-card.delete       { border-color: #dc3545; }

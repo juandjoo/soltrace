@@ -17,6 +17,26 @@ from app.schemas import (
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
 
+def _time_range(start_date: Optional[datetime], end_date: Optional[datetime],
+                *, days: Optional[int] = None, hours: Optional[int] = None):
+    """조회 구간 (since, until). 명시 구간이 있으면 그대로(naive 는 UTC 로 간주), 없으면 now 기준."""
+    if start_date and end_date:
+        since = start_date if start_date.tzinfo else start_date.replace(tzinfo=timezone.utc)
+        until = end_date if end_date.tzinfo else end_date.replace(tzinfo=timezone.utc)
+        return since, until
+    now = datetime.now(timezone.utc)
+    delta = timedelta(hours=hours) if hours is not None else timedelta(days=days)
+    return now - delta, now
+
+
+def _scope_sql(params: dict, scope: Optional[list[int]], col: str) -> str:
+    """고객 계정 격리용 raw SQL 조각. admin(scope=None) 이면 빈 문자열, 아니면 params 에 allowed_ids 를 넣는다."""
+    if scope is None:
+        return ""
+    params["allowed_ids"] = scope
+    return f" AND {col} = ANY(CAST(:allowed_ids AS int[]))"
+
+
 @router.get("", response_model=DashboardDetail)
 def get_dashboard(
     days: int = Query(default=7, ge=1, le=366),
@@ -26,13 +46,7 @@ def get_dashboard(
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
 ):
-    now = datetime.now(timezone.utc)
-    if start_date and end_date:
-        since = start_date if start_date.tzinfo else start_date.replace(tzinfo=timezone.utc)
-        until = end_date if end_date.tzinfo else end_date.replace(tzinfo=timezone.utc)
-    else:
-        since = now - timedelta(days=days)
-        until = now
+    since, until = _time_range(start_date, end_date, days=days)
     days = max(1, (until - since).days or 1)
 
     base_q = db.query(FtpLog).filter(FtpLog.log_time >= since, FtpLog.log_time <= until)
@@ -178,19 +192,9 @@ def get_hourly(
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
 ):
-    now = datetime.now(timezone.utc)
-    if start_date and end_date:
-        since = start_date if start_date.tzinfo else start_date.replace(tzinfo=timezone.utc)
-        until = end_date if end_date.tzinfo else end_date.replace(tzinfo=timezone.utc)
-    else:
-        since = now - timedelta(days=days)
-        until = now
-
+    since, until = _time_range(start_date, end_date, days=days)
     params = {"since": since, "until": until}
-    scope_f = ""
-    if scope is not None:  # 고객 계정 격리
-        params["allowed_ids"] = scope
-        scope_f = "AND fl.device_id = ANY(CAST(:allowed_ids AS int[]))"
+    scope_f = _scope_sql(params, scope, "fl.device_id")
     rows = db.execute(text(f"""
         SELECT g.id AS group_id, g.name, g.telco,
                DATE_TRUNC('hour', fl.log_time) AS bucket,
@@ -227,21 +231,10 @@ def get_users_hourly(
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
 ):
-    now = datetime.now(timezone.utc)
-    if start_date and end_date:
-        since = start_date if start_date.tzinfo else start_date.replace(tzinfo=timezone.utc)
-        until = end_date if end_date.tzinfo else end_date.replace(tzinfo=timezone.utc)
-    else:
-        since = now - timedelta(days=days)
-        until = now
-
+    since, until = _time_range(start_date, end_date, days=days)
     params = {"since": since, "until": until}
-    cte_f = ""    # top_users CTE 내부 (별칭 없음)
-    main_f = ""   # 본 쿼리 (fl 별칭)
-    if scope is not None:  # 고객 계정 격리
-        params["allowed_ids"] = scope
-        cte_f = "AND device_id = ANY(CAST(:allowed_ids AS int[]))"
-        main_f = "AND fl.device_id = ANY(CAST(:allowed_ids AS int[]))"
+    cte_f = _scope_sql(params, scope, "device_id")      # top_users CTE 내부 (별칭 없음)
+    main_f = _scope_sql(params, scope, "fl.device_id")  # 본 쿼리 (fl 별칭)
     rows = db.execute(text(f"""
         WITH top_users AS (
             SELECT username
@@ -294,25 +287,13 @@ def get_service_health(
     scope: Optional[list[int]] = Depends(device_scope),
 ):
     """부하로 인한 서비스 영향도 — 장비별 최신 상태 + 최근 알림 + 추이."""
-    now = datetime.now(timezone.utc)
-    if start_date and end_date:
-        since = start_date if start_date.tzinfo else start_date.replace(tzinfo=timezone.utc)
-        until = end_date if end_date.tzinfo else end_date.replace(tzinfo=timezone.utc)
-    else:
-        since = now - timedelta(hours=hours)
-        until = now
+    since, until = _time_range(start_date, end_date, hours=hours)
     params = {"since": since, "until": until, "did": device_id}
-    dev_f = "AND m.device_id = :did" if device_id else ""
-    adev_f = "AND a.device_id = :did" if device_id else ""
-    dev_f_log = "AND fl.device_id = :did" if device_id else ""
-    # 고객 계정 격리: 모든 하위 쿼리에 허용 device 제한 추가
-    scope_d = ""  # devices 별칭(d) 용 — all_devices 쿼리에서 사용
-    if scope is not None:
-        params["allowed_ids"] = scope
-        dev_f += " AND m.device_id = ANY(CAST(:allowed_ids AS int[]))"
-        adev_f += " AND a.device_id = ANY(CAST(:allowed_ids AS int[]))"
-        dev_f_log += " AND fl.device_id = ANY(CAST(:allowed_ids AS int[]))"
-        scope_d = " AND d.id = ANY(CAST(:allowed_ids AS int[]))"
+    # 장비 선택 + 고객 계정 격리: 모든 하위 쿼리에 같은 제한을 건다 (별칭만 다름)
+    dev_f     = ("AND m.device_id = :did" if device_id else "")  + _scope_sql(params, scope, "m.device_id")
+    adev_f    = ("AND a.device_id = :did" if device_id else "")  + _scope_sql(params, scope, "a.device_id")
+    dev_f_log = ("AND fl.device_id = :did" if device_id else "") + _scope_sql(params, scope, "fl.device_id")
+    scope_d   = _scope_sql(params, scope, "d.id")  # all_devices 쿼리(d 별칭)
 
     # 최근 알림 (장비 상태 판정에도 사용)
     alert_rows = db.execute(text(f"""

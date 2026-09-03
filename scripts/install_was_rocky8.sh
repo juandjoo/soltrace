@@ -55,18 +55,9 @@ if ! grep -q "soltrace" "$PG_HBA"; then
     sed -i '/^# TYPE/a local   soltrace        soltrace                                md5\nhost    soltrace        soltrace        127.0.0.1/32            md5' "$PG_HBA"
 fi
 
-# postgresql.conf 튜닝 (docker-compose.yml 설정과 동일)
-PG_CONF="/var/lib/pgsql/16/data/postgresql.conf"
-sed -i \
-    -e "s/^#*shared_buffers.*/shared_buffers = 256MB/" \
-    -e "s/^#*work_mem.*/work_mem = 4MB/" \
-    -e "s/^#*effective_cache_size.*/effective_cache_size = 512MB/" \
-    -e "s/^#*maintenance_work_mem.*/maintenance_work_mem = 64MB/" \
-    -e "s/^#*wal_buffers.*/wal_buffers = 8MB/" \
-    -e "s/^#*checkpoint_completion_target.*/checkpoint_completion_target = 0.9/" \
-    -e "s/^#*random_page_cost.*/random_page_cost = 1.1/" \
-    -e "s/^#*log_min_duration_statement.*/log_min_duration_statement = 1000/" \
-    "$PG_CONF"
+# postgresql.conf 튜닝 — 서버 RAM 비율로 계산 (scripts/tune_pg_rocky8.sh)
+# 아직 기동 전이므로 재시작 불필요. 이후 update_rocky8.sh 가 변경 시에만 재적용·재시작한다.
+bash "$SCRIPT_DIR/scripts/tune_pg_rocky8.sh"
 
 systemctl enable --now postgresql-16
 
