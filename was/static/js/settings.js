@@ -324,13 +324,110 @@ async function saveAllowedIps() {
 }
 
 // ── 고객 계정 관리 (admin 전용) ───────────────────────────────────────────────
+// ── API 키 (조회 전용 토큰) ────────────────────────────────────────────────
+let _apiKeyOwners = [];   // [{id: null|number, label}] — 발급 대상 선택지
+
+function _renderApiKeyOwners(users) {
+  _apiKeyOwners = [{ id: '', label: '관리자 (전체 조회)' }]
+    .concat((users || []).map(u => ({ id: u.id, label: `${u.username} (${u.customer || '-'})` })));
+  const sel = document.getElementById('apiKeyOwner');
+  const keep = sel.value;
+  sel.innerHTML = _apiKeyOwners.map(o => `<option value="${o.id}">${esc(o.label)}</option>`).join('');
+  if (keep) sel.value = keep;
+}
+
+async function loadApiKeys() {
+  const tbody = document.getElementById('apiKeyList');
+  try {
+    const keys = await api('GET', '/api-keys');
+    if (!keys || !keys.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-muted small p-3">발급된 키가 없습니다.</td></tr>';
+      return;
+    }
+    const now = Date.now();
+    tbody.innerHTML = keys.map(k => {
+      const expired = k.expires_at && new Date(k.expires_at).getTime() <= now;
+      const badge = !k.is_active
+        ? '<span class="badge bg-secondary-subtle text-secondary">폐기</span>'
+        : (expired ? '<span class="badge bg-warning-subtle text-warning">만료</span>'
+                   : '<span class="badge bg-success-subtle text-success">활성</span>');
+      const owner = k.role === 'admin'
+        ? `${esc(k.username)} <span class="badge bg-primary-subtle text-primary">관리자</span>`
+        : `${esc(k.username)} <span class="text-muted small">${esc(k.customer || '-')}</span>`;
+      return `<tr>
+        <td class="font-monospace small">${esc(k.key_prefix)}…</td>
+        <td class="small">${owner}</td>
+        <td class="small">${esc(k.label || '-')}</td>
+        <td class="small text-muted">${k.last_used_at ? timeAgo(k.last_used_at) : '미사용'}</td>
+        <td class="small text-muted">${k.expires_at ? fmtLocalDate(new Date(k.expires_at)) : '무기한'}</td>
+        <td>${badge}</td>
+        <td class="text-end">
+          <button class="btn btn-xs btn-outline-secondary" onclick="toggleApiKey(${k.id}, ${k.is_active ? 'false' : 'true'})">${k.is_active ? '폐기' : '재활성'}</button>
+          <button class="btn btn-xs btn-outline-danger" onclick="deleteApiKey(${k.id}, '${esc(k.key_prefix)}')"><i class="bi bi-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    settingsMsg('apiKeyMsg', 'danger', e.message);
+    tbody.innerHTML = '';
+  }
+}
+
+async function createApiKey() {
+  const owner = document.getElementById('apiKeyOwner').value;
+  const label = document.getElementById('apiKeyLabel').value.trim();
+  const expires = document.getElementById('apiKeyExpires').value;
+  const body = { user_id: owner === '' ? null : parseInt(owner, 10), label };
+  // 만료일은 그 날 끝까지 유효하도록 다음 날 00:00 으로 보낸다
+  if (expires) {
+    const d = new Date(expires + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    body.expires_at = d.toISOString();
+  }
+  try {
+    const k = await api('POST', '/api-keys', body);
+    document.getElementById('apiKeyIssuedValue').value = k.key;
+    document.getElementById('apiKeyIssued').classList.remove('d-none');
+    document.getElementById('apiKeyLabel').value = '';
+    document.getElementById('apiKeyExpires').value = '';
+    settingsMsg('apiKeyMsg', 'success', `${k.username} 계정의 키를 발급했습니다.`);
+    loadApiKeys();
+  } catch (e) { settingsMsg('apiKeyMsg', 'danger', e.message); }
+}
+
+function copyApiKey() {
+  const el = document.getElementById('apiKeyIssuedValue');
+  el.select();
+  navigator.clipboard.writeText(el.value)
+    .then(() => settingsMsg('apiKeyMsg', 'success', '키를 복사했습니다.'))
+    .catch(() => settingsMsg('apiKeyMsg', 'warning', '복사에 실패했습니다. 직접 선택해 복사하세요.'));
+}
+
+async function toggleApiKey(id, active) {
+  try {
+    await api('PUT', `/api-keys/${id}/status?active=${active}`);
+    loadApiKeys();
+  } catch (e) { settingsMsg('apiKeyMsg', 'danger', e.message); }
+}
+
+async function deleteApiKey(id, prefix) {
+  if (!confirm(`키 ${prefix}… 를 삭제할까요? 이 키를 쓰는 연동은 즉시 중단됩니다.`)) return;
+  try {
+    await api('DELETE', `/api-keys/${id}`);
+    loadApiKeys();
+  } catch (e) { settingsMsg('apiKeyMsg', 'danger', e.message); }
+}
+
 async function loadUsers() {
   const tbody = document.getElementById('userList');
+  document.getElementById('apiKeyIssued').classList.add('d-none');
+  loadApiKeys();
   try {
     const [users, groups] = await Promise.all([
       api('GET', '/users'),
       api('GET', '/groups').catch(() => []),
     ]);
+    _renderApiKeyOwners(users);
     // 고객사 자동완성: 그룹의 customer 값 중복 제거
     const customers = [...new Set((groups || []).map(g => g.customer).filter(Boolean))].sort();
     document.getElementById('customerOptions').innerHTML =

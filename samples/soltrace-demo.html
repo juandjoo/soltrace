@@ -698,6 +698,59 @@ body        { background: #f5f7fa; font-size: 14px; }
                 </div>
               </div>
             </div>
+
+            <!-- API 키 (조회 전용 토큰) -->
+            <div class="card mt-4">
+              <div class="card-header bg-white fw-semibold d-flex align-items-center">
+                <span><i class="bi bi-key-fill me-1"></i>API 키 (조회 전용)</span>
+                <button class="btn btn-sm btn-outline-primary ms-auto" onclick="loadApiKeys()"><i class="bi bi-arrow-clockwise"></i></button>
+              </div>
+              <div class="card-body">
+                <div id="apiKeyMsg" class="alert d-none py-2 small"></div>
+
+                <!-- 발급 직후 1회 표시 -->
+                <div id="apiKeyIssued" class="alert alert-success py-2 d-none">
+                  <div class="small fw-semibold mb-1"><i class="bi bi-check-circle me-1"></i>키가 발급되었습니다 — 지금 복사하세요. 이 화면을 벗어나면 다시 볼 수 없습니다.</div>
+                  <div class="input-group input-group-sm">
+                    <input class="form-control font-monospace" id="apiKeyIssuedValue" readonly>
+                    <button class="btn btn-outline-secondary" onclick="copyApiKey()"><i class="bi bi-clipboard me-1"></i>복사</button>
+                  </div>
+                </div>
+
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label small fw-semibold">대상 계정</label>
+                    <select class="form-select form-select-sm" id="apiKeyOwner"></select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label small fw-semibold">메모 (선택)</label>
+                    <input class="form-control form-control-sm" id="apiKeyLabel" placeholder="예: 사내 대시보드 연동">
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label small fw-semibold">만료일 (선택)</label>
+                    <input type="date" class="form-control form-control-sm" id="apiKeyExpires">
+                  </div>
+                  <div class="col-md-2">
+                    <button class="btn btn-sm btn-primary w-100" onclick="createApiKey()"><i class="bi bi-plus-lg me-1"></i>키 발급</button>
+                  </div>
+                </div>
+
+                <div class="table-responsive mt-3">
+                  <table class="table table-sm table-hover mb-0 align-middle">
+                    <thead><tr class="small text-muted">
+                      <th>키</th><th>계정</th><th>메모</th><th>마지막 사용</th><th>만료</th><th>상태</th><th class="text-end">작업</th>
+                    </tr></thead>
+                    <tbody id="apiKeyList"><tr><td colspan="7" class="text-muted small p-3">불러오는 중…</td></tr></tbody>
+                  </table>
+                </div>
+
+                <div class="form-text mt-2">
+                  키는 <b>조회(GET)만</b> 가능하며 권한 범위는 소유 계정과 같습니다
+                  (고객 계정 키는 해당 고객사 데이터만 보입니다). 사용 예:
+                  <div class="mt-1"><code>curl -H "X-API-Key: slt_..." https://&lt;주소&gt;/api/v1/logs?size=50</code></div>
+                </div>
+              </div>
+            </div>
           </div>
 
         </div><!-- /col -->
@@ -1054,6 +1107,21 @@ body        { background: #f5f7fa; font-size: 14px; }
     [/^\/settings\/notify\/mute$/, () => ({ muted: false })],
     [/^\/settings\/notify$/, () => ({ webhook_url: 'https://hooks.example.com/soltrace', hms_url: '' })],
     [/^\/users$/, () => ACCOUNTS],
+    [/^\/api-keys$/, () => [
+      { id: 1, user_id: null, username: 'admin', role: 'admin', customer: null,
+        label: '사내 대시보드 연동', key_prefix: 'slt_7Kd2mQ4a', is_active: true,
+        expires_at: null, last_used_at: new Date(now - 12 * 60 * 1000).toISOString(),
+        created_at: new Date(now - 20 * DAY).toISOString() },
+      { id: 2, user_id: 1, username: 'acme_view', role: 'customer', customer: 'ACME',
+        label: 'ACME 월간 리포트', key_prefix: 'slt_Xb91TpLs', is_active: true,
+        expires_at: new Date(now + 90 * DAY).toISOString(),
+        last_used_at: new Date(now - 3 * HOUR).toISOString(),
+        created_at: new Date(now - 8 * DAY).toISOString() },
+      { id: 3, user_id: 3, username: 'partner_ro', role: 'customer', customer: 'ACME',
+        label: '', key_prefix: 'slt_Qm38vZc1', is_active: false,
+        expires_at: null, last_used_at: null,
+        created_at: new Date(now - 40 * DAY).toISOString() },
+    ]],
   ];
 
   const DEMO_READONLY = '데모 모드에서는 변경할 수 없습니다.';
@@ -2357,13 +2425,110 @@ async function saveAllowedIps() {
 }
 
 // ── 고객 계정 관리 (admin 전용) ───────────────────────────────────────────────
+// ── API 키 (조회 전용 토큰) ────────────────────────────────────────────────
+let _apiKeyOwners = [];   // [{id: null|number, label}] — 발급 대상 선택지
+
+function _renderApiKeyOwners(users) {
+  _apiKeyOwners = [{ id: '', label: '관리자 (전체 조회)' }]
+    .concat((users || []).map(u => ({ id: u.id, label: `${u.username} (${u.customer || '-'})` })));
+  const sel = document.getElementById('apiKeyOwner');
+  const keep = sel.value;
+  sel.innerHTML = _apiKeyOwners.map(o => `<option value="${o.id}">${esc(o.label)}</option>`).join('');
+  if (keep) sel.value = keep;
+}
+
+async function loadApiKeys() {
+  const tbody = document.getElementById('apiKeyList');
+  try {
+    const keys = await api('GET', '/api-keys');
+    if (!keys || !keys.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-muted small p-3">발급된 키가 없습니다.</td></tr>';
+      return;
+    }
+    const now = Date.now();
+    tbody.innerHTML = keys.map(k => {
+      const expired = k.expires_at && new Date(k.expires_at).getTime() <= now;
+      const badge = !k.is_active
+        ? '<span class="badge bg-secondary-subtle text-secondary">폐기</span>'
+        : (expired ? '<span class="badge bg-warning-subtle text-warning">만료</span>'
+                   : '<span class="badge bg-success-subtle text-success">활성</span>');
+      const owner = k.role === 'admin'
+        ? `${esc(k.username)} <span class="badge bg-primary-subtle text-primary">관리자</span>`
+        : `${esc(k.username)} <span class="text-muted small">${esc(k.customer || '-')}</span>`;
+      return `<tr>
+        <td class="font-monospace small">${esc(k.key_prefix)}…</td>
+        <td class="small">${owner}</td>
+        <td class="small">${esc(k.label || '-')}</td>
+        <td class="small text-muted">${k.last_used_at ? timeAgo(k.last_used_at) : '미사용'}</td>
+        <td class="small text-muted">${k.expires_at ? fmtLocalDate(new Date(k.expires_at)) : '무기한'}</td>
+        <td>${badge}</td>
+        <td class="text-end">
+          <button class="btn btn-xs btn-outline-secondary" onclick="toggleApiKey(${k.id}, ${k.is_active ? 'false' : 'true'})">${k.is_active ? '폐기' : '재활성'}</button>
+          <button class="btn btn-xs btn-outline-danger" onclick="deleteApiKey(${k.id}, '${esc(k.key_prefix)}')"><i class="bi bi-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    settingsMsg('apiKeyMsg', 'danger', e.message);
+    tbody.innerHTML = '';
+  }
+}
+
+async function createApiKey() {
+  const owner = document.getElementById('apiKeyOwner').value;
+  const label = document.getElementById('apiKeyLabel').value.trim();
+  const expires = document.getElementById('apiKeyExpires').value;
+  const body = { user_id: owner === '' ? null : parseInt(owner, 10), label };
+  // 만료일은 그 날 끝까지 유효하도록 다음 날 00:00 으로 보낸다
+  if (expires) {
+    const d = new Date(expires + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    body.expires_at = d.toISOString();
+  }
+  try {
+    const k = await api('POST', '/api-keys', body);
+    document.getElementById('apiKeyIssuedValue').value = k.key;
+    document.getElementById('apiKeyIssued').classList.remove('d-none');
+    document.getElementById('apiKeyLabel').value = '';
+    document.getElementById('apiKeyExpires').value = '';
+    settingsMsg('apiKeyMsg', 'success', `${k.username} 계정의 키를 발급했습니다.`);
+    loadApiKeys();
+  } catch (e) { settingsMsg('apiKeyMsg', 'danger', e.message); }
+}
+
+function copyApiKey() {
+  const el = document.getElementById('apiKeyIssuedValue');
+  el.select();
+  navigator.clipboard.writeText(el.value)
+    .then(() => settingsMsg('apiKeyMsg', 'success', '키를 복사했습니다.'))
+    .catch(() => settingsMsg('apiKeyMsg', 'warning', '복사에 실패했습니다. 직접 선택해 복사하세요.'));
+}
+
+async function toggleApiKey(id, active) {
+  try {
+    await api('PUT', `/api-keys/${id}/status?active=${active}`);
+    loadApiKeys();
+  } catch (e) { settingsMsg('apiKeyMsg', 'danger', e.message); }
+}
+
+async function deleteApiKey(id, prefix) {
+  if (!confirm(`키 ${prefix}… 를 삭제할까요? 이 키를 쓰는 연동은 즉시 중단됩니다.`)) return;
+  try {
+    await api('DELETE', `/api-keys/${id}`);
+    loadApiKeys();
+  } catch (e) { settingsMsg('apiKeyMsg', 'danger', e.message); }
+}
+
 async function loadUsers() {
   const tbody = document.getElementById('userList');
+  document.getElementById('apiKeyIssued').classList.add('d-none');
+  loadApiKeys();
   try {
     const [users, groups] = await Promise.all([
       api('GET', '/users'),
       api('GET', '/groups').catch(() => []),
     ]);
+    _renderApiKeyOwners(users);
     // 고객사 자동완성: 그룹의 customer 값 중복 제거
     const customers = [...new Set((groups || []).map(g => g.customer).filter(Boolean))].sort();
     document.getElementById('customerOptions').innerHTML =

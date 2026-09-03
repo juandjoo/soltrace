@@ -43,6 +43,32 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+# ── API 키 (조회 전용 토큰) ────────────────────────────────────────────────────
+
+class ApiKeyCreate(BaseModel):
+    # None = 관리자(admin) 키, 값이 있으면 해당 고객 계정의 키
+    user_id: Optional[int] = None
+    label: str = Field(default="", max_length=100)
+    expires_at: Optional[datetime] = None
+
+class ApiKeyResponse(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    username: str                  # 소유 계정 (관리자 키면 관리자 아이디)
+    role: str                      # admin | customer
+    customer: Optional[str] = None
+    label: str = ""
+    key_prefix: str
+    is_active: bool
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+class ApiKeyCreated(ApiKeyResponse):
+    # 발급 직후 1회만 내려주는 평문 키 (저장하지 않으므로 다시 볼 수 없다)
+    key: str
+
+
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 class PasswordChangeRequest(BaseModel):

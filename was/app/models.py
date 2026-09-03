@@ -42,6 +42,30 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
 
 
+class ApiKey(Base):
+    """계정별 API 키 (조회 전용 토큰).
+
+    user_id NULL = 관리자(admin) 키. 원본 키는 저장하지 않고 sha256 해시만 보관한다.
+    """
+    __tablename__ = "api_keys"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    label = Column(String(100), nullable=False, default="")
+    key_prefix = Column(String(20), nullable=False)
+    key_hash = Column(String(64), unique=True, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    expires_at = Column(DateTime(timezone=True))
+    last_used_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        Index("idx_api_keys_user", "user_id"),
+    )
+
+
 class Telco(Base):
     """통신사 목록 (그룹의 telco 유형에서 선택)."""
     __tablename__ = "telcos"

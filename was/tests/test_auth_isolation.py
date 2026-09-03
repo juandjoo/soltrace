@@ -59,8 +59,18 @@ def test_user_ip_allowed_list_formats():
 
 # ── JWT / Principal ────────────────────────────────────────────────────────
 
+class _NoHeaderRequest:
+    """API 키 헤더가 없는 요청 — JWT 경로만 타게 한다."""
+    headers: dict = {}
+    method = "GET"
+
+
 def _principal_from(token: str) -> deps.Principal:
-    return deps.get_current_user(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token))
+    return deps.get_current_user(
+        _NoHeaderRequest(),
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials=token),
+        db=None,
+    )
 
 
 def test_customer_token_roundtrip():

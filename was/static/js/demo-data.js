@@ -277,6 +277,21 @@
     [/^\/settings\/notify\/mute$/, () => ({ muted: false })],
     [/^\/settings\/notify$/, () => ({ webhook_url: 'https://hooks.example.com/soltrace', hms_url: '' })],
     [/^\/users$/, () => ACCOUNTS],
+    [/^\/api-keys$/, () => [
+      { id: 1, user_id: null, username: 'admin', role: 'admin', customer: null,
+        label: '사내 대시보드 연동', key_prefix: 'slt_7Kd2mQ4a', is_active: true,
+        expires_at: null, last_used_at: new Date(now - 12 * 60 * 1000).toISOString(),
+        created_at: new Date(now - 20 * DAY).toISOString() },
+      { id: 2, user_id: 1, username: 'acme_view', role: 'customer', customer: 'ACME',
+        label: 'ACME 월간 리포트', key_prefix: 'slt_Xb91TpLs', is_active: true,
+        expires_at: new Date(now + 90 * DAY).toISOString(),
+        last_used_at: new Date(now - 3 * HOUR).toISOString(),
+        created_at: new Date(now - 8 * DAY).toISOString() },
+      { id: 3, user_id: 3, username: 'partner_ro', role: 'customer', customer: 'ACME',
+        label: '', key_prefix: 'slt_Qm38vZc1', is_active: false,
+        expires_at: null, last_used_at: null,
+        created_at: new Date(now - 40 * DAY).toISOString() },
+    ]],
   ];
 
   const DEMO_READONLY = '데모 모드에서는 변경할 수 없습니다.';

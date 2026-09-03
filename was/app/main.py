@@ -12,7 +12,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.database import SessionLocal, engine
 from app.gitinfo import git
 from app.models import Base
-from app.routers import auth, dashboard, devices, groups, ingest, logs, settings, telcos, users
+from app.routers import (
+    api_keys, auth, dashboard, devices, groups, ingest, logs, settings, telcos, users,
+)
 from app import write_buffer as wb
 from app import service_monitor as sm
 
@@ -237,6 +239,7 @@ app.include_router(dashboard.router)
 app.include_router(settings.router)
 app.include_router(telcos.router)
 app.include_router(users.router)
+app.include_router(api_keys.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

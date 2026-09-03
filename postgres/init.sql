@@ -21,6 +21,22 @@ CREATE TABLE IF NOT EXISTS users (
     created_at    TIMESTAMPTZ DEFAULT now()
 );
 
+-- 계정별 API 키 (조회 전용 토큰).
+-- user_id NULL = 관리자(admin) 키. 고객 계정 키는 users 를 참조하며 계정 삭제 시 함께 사라진다.
+-- 원본 키는 저장하지 않고 SHA-256 해시만 보관하며, 목록 표시는 key_prefix 로 한다.
+CREATE TABLE IF NOT EXISTS api_keys (
+    id           SERIAL PRIMARY KEY,
+    user_id      INT REFERENCES users(id) ON DELETE CASCADE,
+    label        VARCHAR(100) NOT NULL DEFAULT '',
+    key_prefix   VARCHAR(20)  NOT NULL,        -- 화면 식별용 앞부분 (예: slt_1a2b3c…)
+    key_hash     VARCHAR(64)  UNIQUE NOT NULL, -- sha256(원본키) hex
+    is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+    expires_at   TIMESTAMPTZ,                  -- NULL = 무기한
+    last_used_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
     hostname VARCHAR(255) NOT NULL,
