@@ -54,7 +54,68 @@ done
 # config.ini가 없으면 example 복사
 if [ ! -f config.ini ]; then
     cp config.ini.example config.ini
-    echo "[INFO] config.ini 생성됨 — 설정 후 서비스를 시작하세요."
+    echo "[INFO] config.ini 생성됨 (config.ini.example 기반)"
+fi
+
+# ── WAS 도메인 설정 ──────────────────────────────────────────────
+# 우선순위: SOLTRACE_WAS_URL 환경변수 > 대화형 입력 > 기존/example 값
+_read_was_url() {
+    [ -f "$1" ] || return 0
+    # set -o pipefail 이므로 매치 없을 때 grep 1 종료를 흡수한다
+    { grep -i '^[[:space:]]*was_url[[:space:]]*=' "$1" || true; } | head -1 \
+        | sed 's/^[^=]*=//; s/#.*//' | tr -d ' \t\r\n'
+}
+
+DEFAULT_WAS_URL=$(_read_was_url config.ini)
+[ -z "$DEFAULT_WAS_URL" ] && DEFAULT_WAS_URL=$(_read_was_url config.ini.example)
+
+WAS_URL="${SOLTRACE_WAS_URL:-}"
+if [ -n "$WAS_URL" ]; then
+    echo "[INFO] SOLTRACE_WAS_URL 환경변수 사용"
+elif ( : < /dev/tty ) 2>/dev/null; then   # 제어 터미널이 실제로 열리는지 확인
+    # curl | sudo bash 로 실행되면 stdin이 스크립트이므로 /dev/tty에서 직접 입력받는다
+    {
+        echo ""
+        echo "WAS 서버 주소를 입력하세요 (예: https://soltrace.example.com)"
+        printf "  [엔터 = %s]: " "$DEFAULT_WAS_URL"
+    } > /dev/tty
+    read -r WAS_URL < /dev/tty || WAS_URL=""
+else
+    echo "[WARN] 터미널이 없어 WAS 주소를 입력받지 못했습니다 — 기본값 사용: $DEFAULT_WAS_URL"
+    echo "       비대화형 설치는 SOLTRACE_WAS_URL=https://... 환경변수를 사용하세요."
+fi
+
+WAS_URL=$(printf '%s' "$WAS_URL" | tr -d ' \t\r\n')
+[ -z "$WAS_URL" ] && WAS_URL="$DEFAULT_WAS_URL"
+WAS_URL="${WAS_URL%/}"
+
+case "$WAS_URL" in
+    https://*) ;;
+    http://*)
+        echo "[WARN] http:// 주소입니다 — nginx가 HTTPS로 리다이렉트하면 POST 본문이 소실될 수 있어 https:// 를 권장합니다."
+        ;;
+    *)
+        echo "[ERROR] WAS 주소는 http:// 또는 https:// 로 시작해야 합니다: $WAS_URL"
+        exit 1
+        ;;
+esac
+
+if grep -qi '^[[:space:]]*was_url[[:space:]]*=' config.ini; then
+    sed -i "s|^[[:space:]]*[Ww][Aa][Ss]_[Uu][Rr][Ll][[:space:]]*=.*|was_url = ${WAS_URL}|" config.ini
+else
+    # was_url 키가 없으면 [daemon] 섹션 바로 아래에 추가
+    awk -v url="$WAS_URL" '
+        !ins && /^[[:space:]]*\[daemon\][[:space:]]*$/ { print; print "was_url = " url; ins=1; next }
+        { print }
+        END { if (!ins) { print "[daemon]"; print "was_url = " url } }
+    ' config.ini > config.ini.new && mv config.ini.new config.ini
+fi
+echo "[INFO] WAS 주소 설정: $WAS_URL"
+
+# 도달 확인 (실패해도 설치는 계속 — 방화벽/자체서명 인증서 환경 고려)
+if ! curl -fsS -k --max-time 5 -o /dev/null "$WAS_URL/"; then
+    echo "[WARN] WAS에 연결하지 못했습니다: $WAS_URL"
+    echo "       주소/방화벽을 확인하세요. 잘못된 경우: vi $INSTALL_DIR/config.ini"
 fi
 
 # ── 가상환경 생성 및 패키지 설치 ─────────────────────────────────
@@ -133,6 +194,7 @@ echo ""
 echo "======================================"
 echo " SolTrace 데몬 설치 완료"
 echo "======================================"
+echo " WAS 주소:   $WAS_URL"
 echo " 실행 계정:  $DAEMON_USER (비root)"
 echo " 설정 파일:  $INSTALL_DIR/config.ini"
 echo " 상태 저장:  $STATE_DIR"

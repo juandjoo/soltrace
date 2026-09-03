@@ -39,6 +39,18 @@ Python 3.8이 기본 제공되므로 별도 설정 없이 설치 가능.
 curl -fsSL https://raw.githubusercontent.com/juandjoo/soltrace/main/ftp-daemon/install.sh | sudo bash
 ```
 
+설치 중 **WAS 서버 주소**를 입력받아 `config.ini` 의 `was_url` 에 기록한다.
+
+- 엔터만 누르면 기존 `config.ini` 값(재설치 시) 또는 기본값을 유지한다.
+- `curl | sudo bash` 로 실행해도 `/dev/tty` 에서 직접 입력받으므로 프롬프트가 정상 동작한다.
+- 비대화형 설치(터미널 없음)는 환경변수로 지정한다. 미지정 시 기본값이 쓰이고 경고가 출력된다.
+
+```bash
+curl -fsSL .../install.sh | sudo SOLTRACE_WAS_URL=https://soltrace.example.com bash
+```
+
+`http://` / `https://` 로 시작하지 않으면 설치가 중단되고, 입력한 주소에 연결되지 않으면 경고만 출력한 뒤 설치는 계속된다.
+
 ### 2. 수동 설치
 
 ```bash
@@ -129,6 +141,7 @@ curl -fsSL https://raw.githubusercontent.com/juandjoo/soltrace/main/ftp-daemon/i
 ```
 
 `install.sh`이 SCL Python 3.8 경로(`/opt/rh/rh-python38/root/usr/bin/python3.8`)를 자동 감지하여 venv를 생성.
+WAS 주소 입력 프롬프트는 Rocky 설치와 동일하다([1. 스크립트로 자동 설치](#1-스크립트로-자동-설치-권장) 참고).
 
 ### 4. urllib3 다운그레이드 (OpenSSL 1.0.2k 대응)
 
@@ -176,7 +189,7 @@ grep -i "TransferLog\|ExtendedLog" /etc/proftpd.conf /etc/proftpd/*.conf 2>/dev/
 
 | 항목 | 기본값 | 설명 |
 |------|--------|------|
-| `was_url` | — | WAS 서버 주소 |
+| `was_url` | — | WAS 서버 주소 (설치 시 입력 / `SOLTRACE_WAS_URL`) |
 | `transfer_log` | — | xferlog 경로 (업로드/다운로드/삭제) |
 | `extended_log` | — | ExtendedLog 경로 (로그인/로그아웃/이름변경/CWD) |
 | `batch_size` | `200` | 1회 전송 최대 건수 |
