@@ -27,13 +27,12 @@ git reset --hard "origin/$BRANCH"
 # (설정>업데이트 확인)가 실패한다. 저장소 전체를 다시 soltrace 소유로 되돌린다.
 chown -R soltrace:soltrace "$APP_DIR"
 
-log ">> 앱 파일 배포"
-cp -r was/app "$DEPLOY_DIR/"
-cp -r was/static "$DEPLOY_DIR/"
-cp was/requirements.txt "$DEPLOY_DIR/"
-chown -R soltrace:soltrace "$DEPLOY_DIR/app" "$DEPLOY_DIR/static" "$DEPLOY_DIR/requirements.txt"
-
+# 새 코드(app/static)는 재시작 직전에 복사한다 — 복사 시점부터 재시작까지는
+# "디스크는 새 코드 / 프로세스는 옛 코드"인 어긋난 상태이고, unit 의 --max-requests 로
+# 워커가 재활용되면 새 코드가 옛 스키마·옛 의존성 위에서 기동해 500 이 난다.
 log ">> pip 패키지 업데이트"
+cp was/requirements.txt "$DEPLOY_DIR/"
+chown soltrace:soltrace "$DEPLOY_DIR/requirements.txt"
 "$DEPLOY_DIR/venv/bin/pip" install --quiet -r "$DEPLOY_DIR/requirements.txt"
 
 log ">> DB 스키마 마이그레이션"
@@ -63,7 +62,10 @@ sudo -u soltrace git config --global --add safe.directory "$APP_DIR" 2>/dev/null
 log ">> PostgreSQL 튜닝 확인 (RAM 비율, 변경 시에만 재시작)"
 bash "$APP_DIR/scripts/tune_pg_rocky8.sh" --restart || log "WARN: PG 튜닝 실패 — 기존 설정 유지"
 
-log ">> WAS 재시작"
+log ">> 앱 파일 배포 + WAS 재시작"
+cp -r was/app "$DEPLOY_DIR/"
+cp -r was/static "$DEPLOY_DIR/"
+chown -R soltrace:soltrace "$DEPLOY_DIR/app" "$DEPLOY_DIR/static"
 systemctl restart soltrace-was
 
 log ">> 헬스체크 대기..."
@@ -72,7 +74,7 @@ for i in $(seq 1 30); do
     if curl -sf http://localhost/ > /dev/null 2>&1; then
         log "   헬스체크 OK (${i}초)"; break
     fi
-    [ "$i" -eq 30 ] && { log "ERROR: 헬스체크 실패. journalctl -u soltrace-was 확인"; exit 1; }
+    [ "$i" -eq 30 ] && { log "ERROR: 헬스체크 실패. /var/log/soltrace/error.log 확인 (gunicorn 로그는 저널이 아니라 파일)"; exit 1; }
     sleep 2
 done
 

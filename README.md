@@ -573,6 +573,22 @@ sudo bash scripts/update_rocky8.sh main
 
 업데이트 시 `tune_pg_rocky8.sh` 가 함께 실행되어 PostgreSQL 설정이 서버 RAM 기준 권장값과 다르면 재적용하고 PostgreSQL 을 재시작한다(같으면 아무것도 하지 않음).
 
+### 배포 순서 (update_rocky8.sh · soltrace-selfupdate.sh 공통)
+
+```
+git reset --hard → pip install → init.sql(스키마) → nginx → [app/static 복사 → WAS 재시작] → 헬스체크
+```
+
+**새 코드 복사는 재시작 직전에** 한다. 복사 시점부터 재시작까지는 "디스크는 새 코드 / 프로세스는
+옛 코드"인 어긋난 상태이고, unit 의 `--max-requests 2000` 으로 워커가 그 사이 재활용되면
+**새 코드가 옛 스키마·옛 의존성 위에서 기동해 500** 이 난다. 예전에는 복사가 맨 앞이라 이 창이
+수 분이었다. 자가 업데이트는 복사 이후 실패해도 `trap` 으로 재시작을 반드시 수행하고,
+`/usr/local/sbin/soltrace-selfupdate` 를 저장소 최신본으로 갱신한다(배포 스크립트 수정이
+웹 업데이트에 반영되지 않던 구멍).
+
+> 앱 로그는 저널이 아니라 파일이다 — 500 조사는 `/var/log/soltrace/error.log`(트레이스백),
+> `/var/log/soltrace/access.log`(상태코드), 배포는 `/var/log/soltrace/selfupdate.log`.
+
 ## PostgreSQL 튜닝
 
 설치·업데이트 스크립트가 자동으로 적용하지만, 메모리를 증설했거나 수동 확인이 필요하면 직접 실행한다.
