@@ -62,7 +62,8 @@ systemctl restart soltrace-was
 
 log ">> 헬스체크 대기..."
 for i in $(seq 1 30); do
-    if curl -sf http://localhost/api/docs > /dev/null 2>&1; then
+    # /api/docs 는 문서를 꺼둔 상태라 항상 404 → SPA 루트로 확인한다
+    if curl -sf http://localhost/ > /dev/null 2>&1; then
         log "   헬스체크 OK (${i}초)"; break
     fi
     [ "$i" -eq 30 ] && { log "ERROR: 헬스체크 실패. journalctl -u soltrace-was 확인"; exit 1; }

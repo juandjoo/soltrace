@@ -323,9 +323,48 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 ## 보안
 
 - **XSS 방지**: 사용자 입력·DB 데이터를 innerHTML에 삽입 시 `esc()` 헬퍼로 이스케이프
-- **보안 헤더**: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Content-Security-Policy`
-- **인증**: JWT Bearer 토큰, 모든 API 엔드포인트에 `require_admin` 의존성
+- **보안 헤더**: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Content-Security-Policy`, HSTS
+- **인증**: JWT Bearer 토큰, 관리 API 전체에 `require_admin`, 조회 API는 `device_scope` 로 고객사 격리
+- **문서 비공개**: `docs_url` / `redoc_url` / `openapi_url` 모두 비활성 (스키마로 엔드포인트가 노출되지 않도록)
 - **알림**: SMTP 미지원, 웹훅 / HMS만 지원
+
+### 접속 IP 판정 (허용목록 우회 방지)
+
+접속 IP는 **`X-Real-IP` → `X-Forwarded-For`(첫 항목) → 소켓 peer** 순으로 판정한다.
+
+`X-Forwarded-For`를 먼저 믿으면 안 된다. nginx가 이 헤더를 `$proxy_add_x_forwarded_for`로
+넘기면 **클라이언트가 보낸 값 뒤에** 실제 IP가 덧붙으므로, 첫 항목이 공격자가 지정한 값이 된다.
+헤더 한 줄로 관리자 전역 허용 IP와 고객사 계정별 허용 IP를 모두 통과할 수 있다.
+
+방어는 두 겹이다.
+
+1. `nginx.conf`가 모든 location에서 `X-Real-IP`와 `X-Forwarded-For`를 `$remote_addr`로 **덮어쓴다**
+   (append하지 않는다).
+2. 앱이 위조 불가능한 `X-Real-IP`를 우선 참조한다 — nginx 설정이 어긋나도 막힌다.
+
+`was/tests/test_client_ip.py`가 이 동작을 회귀 테스트로 고정한다.
+**nginx를 거치지 않고 8000 포트를 직접 노출하면 두 방어가 모두 무력화**되므로,
+gunicorn은 `127.0.0.1`에만 바인딩된 상태를 유지한다.
+
+### TLS / 프록시
+
+- TLS 1.2·1.3만 허용, AEAD(GCM/ChaCha20) 암호군만 사용, 세션 티켓 비활성, OCSP 스테이플링
+- HSTS `max-age=31536000; includeSubDomains`
+  (`add_header`를 쓰는 location은 상위 헤더를 상속하지 않으므로 해당 블록에도 다시 명시)
+- slowloris 방어: `client_header_timeout` / `client_body_timeout` / `send_timeout`, `limit_conn`
+- 레이트리밋: 인증 10r/m, 일반 API 60r/m, 데몬 ingest 300r/m
+- nginx는 Rocky 8 기본 스트림(1.14, 2018년)을 쓰지 않고 설치 시 최신 스트림으로 올린다.
+  **1.25.1 이상으로 올릴 경우** `listen 443 ssl http2;` 를 `listen 443 ssl;` + `http2 on;` 으로 바꿔야 한다.
+
+### 남은 조치 (운영 판단 필요)
+
+- **데몬 등록 API 무인증**: `/api/v1/ingest/register` 는 인증이 없어 누구나 장비를 등록할 수 있다
+  (`pending` 상태라 데이터에는 섞이지 않으나 목록이 오염된다). `nginx.conf` 의
+  `location /api/v1/ingest/` 에 주석으로 둔 `allow` / `deny` 를 **실제 FTP 서버 대역으로 활성화**할 것.
+- **로그인 실패 잠금 없음**: nginx 레이트리밋(분당 10회)만으로 막고 있어 분산 IP 공격에는 약하고
+  실패 이력이 남지 않는다.
+- **CSP `unsafe-inline`**: 인라인 스크립트를 걷어내면 XSS 방어가 한 겹 늘어난다
+  (토큰을 localStorage에 두므로 XSS 시 탈취 가능).
 
 ---
 

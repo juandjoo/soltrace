@@ -179,13 +179,20 @@ def check_user_ip_allowed(allowed_ips_raw: str | None, client_ip: str) -> bool:
 
 
 def client_ip_from_request(request) -> str:
-    """리버스 프록시(nginx) 뒤에서는 client.host 가 127.0.0.1 이므로 XFF 우선 참조.
+    """접속 IP 판정. 리버스 프록시(nginx) 뒤에서는 client.host 가 127.0.0.1 이라 헤더를 본다.
 
-    settings.get_security 와 동일한 우선순위: X-Forwarded-For → X-Real-IP → client.host.
+    우선순위: X-Real-IP → X-Forwarded-For(첫 항목) → client.host
+
+    X-Real-IP 를 먼저 보는 이유: nginx 는 이 헤더를 항상 $remote_addr 로 **덮어쓰므로**
+    클라이언트가 위조할 수 없다. 반면 X-Forwarded-For 를 $proxy_add_x_forwarded_for 로
+    넘기면 클라이언트가 보낸 값 뒤에 실제 IP 가 덧붙어, 첫 항목이 공격자 값이 된다
+    (허용 IP 목록 우회). nginx.conf 도 XFF 를 $remote_addr 로 덮어쓰도록 맞춰져 있으며,
+    설정이 어긋나더라도 여기서 한 번 더 막는다.
     """
+    real = request.headers.get("x-real-ip")
+    if real:
+        return real.strip()
     xff = request.headers.get("x-forwarded-for")
     if xff:
         return xff.split(",")[0].strip()
-    return request.headers.get("x-real-ip") or (
-        request.client.host if request.client else "0.0.0.0"
-    )
+    return request.client.host if request.client else "0.0.0.0"

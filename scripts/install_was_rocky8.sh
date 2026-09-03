@@ -34,6 +34,15 @@ for repo in powertools crb codeready-builder-for-rhel-8-x86_64-rpms; do
     fi
 done
 
+# nginx: Rocky 8 기본 모듈 스트림은 1.14(2018년) — 가능한 최신 스트림으로 올린다.
+# (1.25.1+ 로 더 올릴 경우 nginx.conf 의 'listen 443 ssl http2' 를 'http2 on' 으로 바꿔야 함)
+if ! rpm -q nginx &>/dev/null; then
+    dnf module reset -y nginx 2>/dev/null || true
+    for stream in 1.24 1.22 1.20; do
+        dnf module enable -y "nginx:$stream" 2>/dev/null && break
+    done
+fi
+
 dnf install -y \
     postgresql16-server postgresql16 postgresql16-contrib \
     python3.11 python3.11-devel \
@@ -41,6 +50,8 @@ dnf install -y \
     gcc \
     git \
     libpq-devel
+
+echo "  >> $(nginx -v 2>&1)"
 
 # ── [2/7] PostgreSQL 초기화 ─────────────────────────────────────────────────
 echo "[2/7] PostgreSQL 초기화 중..."

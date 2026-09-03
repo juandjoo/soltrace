@@ -199,6 +199,9 @@ app = FastAPI(
     title="SolTrace - FTP Log Analyzer",
     version="1.0.0",
     lifespan=lifespan,
+    # 스키마/문서 비공개 — openapi_url 을 끄지 않으면 docs_url 을 꺼도 /openapi.json 이
+    # 인증 없이 열려 전체 엔드포인트·파라미터가 노출된다.
+    openapi_url=None,
     docs_url=None,
     redoc_url=None,
 )
