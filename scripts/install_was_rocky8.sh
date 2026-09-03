@@ -216,32 +216,27 @@ GRANT ALL PRIVILEGES ON DATABASE soltrace TO soltrace;
 SQL
 
 # 스키마 적용 (확장 생성 등은 슈퍼유저 필요 → postgres 로 적용)
-# psql 의 -f 는 postgres 계정으로 파일을 연다 — 저장소가 /root 나 홈 디렉터리(0700) 안에 있으면
-# root 는 읽어도 postgres 는 "Permission denied" 로 실패한다. root 가 읽어 stdin 으로 넘긴다.
-sudo -u postgres psql -d soltrace -f - < "$SCRIPT_DIR/postgres/init.sql"
+# 적용 규칙(락 타임아웃·재시도)은 업데이트 경로와 공유한다.
+# shellcheck source=scripts/db_migrate.sh
+source "$SCRIPT_DIR/scripts/db_migrate.sh"
+soltrace_apply_schema "$SCRIPT_DIR"
 
 # 소유권/권한 이관: 앱이 soltrace 로 접속해 런타임에 파티션을 생성하므로
 # (PG15+ public 스키마 CREATE 기본 회수 + 파티션 추가는 부모 테이블 소유자 필요)
 # DB·스키마 소유권과 init.sql 로 생성된 모든 객체를 soltrace 로 넘긴다.
 # REASSIGN OWNED BY postgres 는 슈퍼유저 시스템 객체까지 걸려 거부되므로,
 # public 스키마의 앱 테이블·시퀀스만 골라 소유권을 옮긴다.
+# 테이블/시퀀스 소유권은 soltrace_apply_schema 가 이미 이관했다(소유자가 다른 것만).
 sudo -u postgres psql -d soltrace <<'SQL'
 ALTER DATABASE soltrace OWNER TO soltrace;
 GRANT ALL ON SCHEMA public TO soltrace;
 ALTER SCHEMA public OWNER TO soltrace;
-DO $$
-DECLARE r record;
-BEGIN
-  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname='public' LOOP
-    EXECUTE format('ALTER TABLE public.%I OWNER TO soltrace', r.tablename);
-  END LOOP;
-  FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname='public' LOOP
-    EXECUTE format('ALTER SEQUENCE public.%I OWNER TO soltrace', r.sequencename);
-  END LOOP;
-END $$;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO soltrace;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO soltrace;
 SQL
+
+# 새 설치는 파티션이 비어 있어 즉시 끝난다 (부모 인덱스는 init.sql 이 ON ONLY 로 만든다)
+soltrace_build_mkdir_index || echo "WARN: mkdir 인덱스 보강 실패 — update_rocky8.sh 재실행 시 재시도된다"
 
 # ── [4/8] 앱 유저·디렉터리 준비 ─────────────────────────────────────────────
 echo "[4/8] 앱 유저 및 디렉터리 준비 중..."
@@ -389,6 +384,8 @@ install -m 0755 -o root -g root \
 # 래퍼가 참조하는 nginx 렌더링 라이브러리 (root 소유 경로에 둔다)
 install -D -m 0644 -o root -g root \
     "$SCRIPT_DIR/scripts/nginx_conf.sh" /usr/local/lib/soltrace/nginx_conf.sh
+install -D -m 0644 -o root -g root \
+    "$SCRIPT_DIR/scripts/db_migrate.sh" /usr/local/lib/soltrace/db_migrate.sh
 
 cat > /etc/sudoers.d/soltrace-update <<'SUDO'
 # WAS(soltrace) 가 웹 설정 페이지에서 자가 업데이트만 트리거하도록 허용.

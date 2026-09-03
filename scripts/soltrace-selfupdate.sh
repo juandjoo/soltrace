@@ -60,11 +60,11 @@ main() {
     "$DEPLOY_DIR/venv/bin/pip" install --quiet -r "$DEPLOY_DIR/requirements.txt"
 
     # ── 2) 스키마 (ADD COLUMN IF NOT EXISTS 형태라 옛 코드와도 호환) ──
-    # psql 의 -f 는 postgres 계정으로 파일을 연다 — 저장소가 /root 나 홈 디렉터리(0700) 안에 있으면
-    # root 는 읽어도 postgres 는 "Permission denied" 로 실패한다. root 가 읽어 stdin 으로 넘긴다.
-    sudo -u postgres psql -d soltrace -f - < "$REPO_DIR/postgres/init.sql"
-    # 새로 생긴 테이블/시퀀스 소유권을 soltrace 로 이관 (init.sql 은 postgres 로 적용됨)
-    sudo -u postgres psql -d soltrace -tAc "SELECT format('ALTER TABLE public.%I OWNER TO soltrace;', tablename) FROM pg_tables WHERE schemaname='public' UNION ALL SELECT format('ALTER SEQUENCE public.%I OWNER TO soltrace;', sequencename) FROM pg_sequences WHERE schemaname='public'" | sudo -u postgres psql -d soltrace
+    # 락 대기·소유권 이관 규칙은 세 배포 경로가 공유한다 (2026-09-03 장애 후 lock_timeout+재시도).
+    install -D -m 0644 -o root -g root "$REPO_DIR/scripts/db_migrate.sh" /usr/local/lib/soltrace/db_migrate.sh
+    # shellcheck source=/dev/null
+    source /usr/local/lib/soltrace/db_migrate.sh
+    soltrace_apply_schema "$REPO_DIR"
 
     # ── 3) nginx ──
     # nginx 렌더링은 공통 라이브러리로 (도메인·인증서 경로 치환이 여기저기 갈라지지 않도록).
@@ -96,7 +96,11 @@ main() {
         echo "[$(date '+%F %T')] 경고: 재시작 후 WAS 가 응답하지 않음 — /var/log/soltrace/error.log 확인"
     fi
 
-    # ── 6) 이 스크립트 자신을 최신본으로 (다음 웹 업데이트부터 반영) ──
+    # ── 6) ftp_logs 파티션 인덱스 보강 (CONCURRENTLY — 쓰기를 막지 않는다) ──
+    # 파티션 수만큼 시간이 걸릴 수 있어 재시작 뒤에, 실패해도 배포는 성공으로 둔다.
+    soltrace_build_mkdir_index || echo "[$(date '+%F %T')] WARN: mkdir 인덱스 보강 일부 실패"
+
+    # ── 7) 이 스크립트 자신을 최신본으로 (다음 웹 업데이트부터 반영) ──
     # 이 파일은 update_rocky8.sh/install 로만 갱신돼, 배포 스크립트 수정이 서버에
     # 영영 반영되지 않는 구멍이 있었다. 코드는 origin 에서만 받으므로 출처는 동일하다.
     install -m 0755 -o root -g root "$REPO_DIR/scripts/soltrace-selfupdate.sh" /usr/local/sbin/soltrace-selfupdate

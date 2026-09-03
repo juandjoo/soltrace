@@ -14,6 +14,9 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 # 설치 때 지정한 도메인이 템플릿 기본값으로 되돌아가 인증서 경로가 어긋난다.
 # shellcheck source=scripts/nginx_conf.sh
 source "$APP_DIR/scripts/nginx_conf.sh"
+# 스키마 적용/소유권 이관 — 락 대기로 서비스를 굶기지 않도록 lock_timeout + 재시도 (2026-09-03 장애)
+# shellcheck source=scripts/db_migrate.sh
+source "$APP_DIR/scripts/db_migrate.sh"
 
 cd "$APP_DIR"
 
@@ -36,12 +39,7 @@ chown soltrace:soltrace "$DEPLOY_DIR/requirements.txt"
 "$DEPLOY_DIR/venv/bin/pip" install --quiet -r "$DEPLOY_DIR/requirements.txt"
 
 log ">> DB 스키마 마이그레이션"
-# psql 의 -f 는 postgres 계정으로 파일을 연다 — 저장소가 /root 나 홈 디렉터리(0700) 안에 있으면
-# root 는 읽어도 postgres 는 "Permission denied" 로 실패한다. root 가 읽어 stdin 으로 넘긴다.
-sudo -u postgres psql -d soltrace -f - < "$APP_DIR/postgres/init.sql"
-# init.sql 은 postgres 로 적용되므로 새로 생긴 테이블/시퀀스 소유권을 soltrace 로 이관
-# (앱이 soltrace 로 접속해 INSERT/UPDATE/DDL 하려면 소유권 필요 — 예: app_config)
-sudo -u postgres psql -d soltrace -tAc "SELECT format('ALTER TABLE public.%I OWNER TO soltrace;', tablename) FROM pg_tables WHERE schemaname='public' UNION ALL SELECT format('ALTER SEQUENCE public.%I OWNER TO soltrace;', sequencename) FROM pg_sequences WHERE schemaname='public'" | sudo -u postgres psql -d soltrace
+soltrace_apply_schema "$APP_DIR"
 
 log ">> nginx 설정 반영 (도메인: $(soltrace_current_domain))"
 soltrace_apply_nginx "$APP_DIR"
@@ -52,6 +50,8 @@ install -m 0755 -o root -g root \
     "$APP_DIR/scripts/soltrace-selfupdate.sh" /usr/local/sbin/soltrace-selfupdate
 install -D -m 0644 -o root -g root \
     "$APP_DIR/scripts/nginx_conf.sh" /usr/local/lib/soltrace/nginx_conf.sh
+install -D -m 0644 -o root -g root \
+    "$APP_DIR/scripts/db_migrate.sh" /usr/local/lib/soltrace/db_migrate.sh
 cat > /etc/sudoers.d/soltrace-update <<'SUDO'
 soltrace ALL=(root) NOPASSWD: /usr/local/sbin/soltrace-selfupdate ""
 SUDO
@@ -67,6 +67,9 @@ cp -r was/app "$DEPLOY_DIR/"
 cp -r was/static "$DEPLOY_DIR/"
 chown -R soltrace:soltrace "$DEPLOY_DIR/app" "$DEPLOY_DIR/static"
 systemctl restart soltrace-was
+
+log ">> ftp_logs 파티션 인덱스 보강 (CONCURRENTLY, 쓰기 차단 없음)"
+soltrace_build_mkdir_index || log "WARN: mkdir 인덱스 보강 일부 실패 — 다음 업데이트에서 재시도된다"
 
 log ">> 헬스체크 대기..."
 for i in $(seq 1 30); do

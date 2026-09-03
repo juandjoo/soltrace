@@ -88,6 +88,7 @@ soltrace/
     ├── backup_db.sh                  # DB 증분 백업, 최대 3년 보관 (cron)
     ├── rebalance_default_partition.sql  # ftp_logs_default → 월 파티션 수동 이동
     ├── nginx_conf.sh                 # nginx.conf 렌더링 공통 로직 (도메인·인증서 경로 치환)
+    ├── db_migrate.sh                 # init.sql 적용·소유권 이관 공통 로직 (lock_timeout + 재시도)
     ├── setup_ssl.sh                  # Let's Encrypt 인증서 발급 + 자동 갱신 등록
     └── soltrace-selfupdate.sh        # 웹 설정페이지 git 자가 업데이트 래퍼
 ```
@@ -578,6 +579,18 @@ sudo bash scripts/update_rocky8.sh main
 ```
 git reset --hard → pip install → init.sql(스키마) → nginx → [app/static 복사 → WAS 재시작] → 헬스체크
 ```
+
+**스키마 적용은 락을 오래 잡지 않게** 한다(`scripts/db_migrate.sh` 를 세 배포 경로가 공유).
+`ALTER TABLE` 은 `ACCESS EXCLUSIVE` 락이 필요해서, 라이브 ingest 가 `ftp_logs` 를 잡고 있으면
+DDL 이 락 큐에서 대기하고 **그 뒤로 신규 쿼리가 전부 막힌다** → 커넥션 풀 고갈 →
+하트비트까지 500. 2026-09-03 에 스키마 단계가 30분을 끌어 그동안 서비스가 죽었다.
+
+- `lock_timeout=5s` 로 빨리 포기하고 파일 전체를 최대 3회 재시도한다(init.sql 은 멱등).
+- 소유권 이관은 **소유자가 실제로 다른 객체에만** 건다(정상 상태에서는 0건 → DDL 없음).
+  예전에는 매 배포마다 전 테이블에 `ALTER TABLE ... OWNER TO` 를 걸어 그 자체가 락 폭풍이었다.
+- `ftp_logs` 의 큰 인덱스는 `CREATE INDEX ... ON ONLY`(부모, 스캔 없음) + 파티션별
+  `CREATE INDEX CONCURRENTLY` + `ATTACH PARTITION` 으로 만든다 — 쓰기를 막지 않는다.
+  모든 파티션이 붙으면 부모 인덱스가 자동으로 valid 가 되고, 이후 새 파티션은 자동 상속된다.
 
 **새 코드 복사는 재시작 직전에** 한다. 복사 시점부터 재시작까지는 "디스크는 새 코드 / 프로세스는
 옛 코드"인 어긋난 상태이고, unit 의 `--max-requests 2000` 으로 워커가 그 사이 재활용되면

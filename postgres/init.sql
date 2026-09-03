@@ -194,8 +194,15 @@ CREATE INDEX IF NOT EXISTS idx_ftp_logs_client_ip_trgm
 -- [5] CWD 실패 판정용 — 실패 직후 같은 경로가 생성됐는지(존재 확인) 확인하는 anti-join.
 --     WHERE action='mkdir' AND device_id=? AND file_path=? AND log_time BETWEEN ...
 --     mkdir 만 담는 부분 인덱스라 크기가 작다 (service_monitor.cwd_real_fail_sql).
+--
+--     ON ONLY 인 이유: 여기서 파티션까지 한 번에 만들면 파티션마다 쓰기를 막고 전체를
+--     스캔한다(라이브 ingest 가 멈춘다). 부모에만 만들어 두면 스캔 없이 즉시 끝나고,
+--     실제 파티션 인덱스는 배포 스크립트가 CONCURRENTLY 로 만들어 붙인다
+--     (scripts/db_migrate.sh 의 soltrace_build_mkdir_index).
+--     모든 파티션이 붙으면 이 부모 인덱스는 자동으로 valid 가 되고, 이후 새로 생기는
+--     파티션은 부모를 따라 자동 생성된다(빈 파티션이라 즉시).
 CREATE INDEX IF NOT EXISTS idx_ftp_logs_mkdir_path
-    ON ftp_logs (device_id, file_path, log_time)
+    ON ONLY ftp_logs (device_id, file_path, log_time)
     WHERE action = 'mkdir';
 
 -- ────────────────────────────────────────────────────────────────────────────
