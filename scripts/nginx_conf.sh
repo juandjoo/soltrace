@@ -60,6 +60,29 @@ soltrace_ensure_self_signed() {
     chmod 644 "$SOLTRACE_SELF_CERT_DIR/fullchain.pem" "$SOLTRACE_SELF_CERT_DIR/chain.pem"
 }
 
+soltrace_nginx_version() {
+    { nginx -v 2>&1 || true; } | sed -n 's|.*nginx/\([0-9][0-9.]*\).*|\1|p'
+}
+
+# nginx 1.25.1+ 는 'listen ... http2' 파라미터가 폐지 예고 → 'http2 on;' 지시어로 분리한다.
+# 반대로 1.25.1 미만에서 'http2 on;' 을 쓰면 unknown directive 로 nginx 가 아예 뜨지 않으므로,
+# 템플릿은 옛 형식으로 두고 설치된 버전에 맞춰 여기서 변환한다.
+_soltrace_http2_filter() {
+    local ver
+    ver=$(soltrace_nginx_version)
+    if [ -n "$ver" ] && [ "$(printf '%s\n%s\n' 1.25.1 "$ver" | sort -V | head -1)" = "1.25.1" ]; then
+        awk '/^[[:space:]]*listen 443 ssl http2;[[:space:]]*$/ {
+                 indent = $0; sub(/[^[:space:]].*/, "", indent)
+                 print indent "listen 443 ssl;"
+                 print indent "http2 on;"
+                 next
+             }
+             { print }'
+    else
+        cat
+    fi
+}
+
 # /etc/nginx/nginx.conf 생성. LE 인증서가 있으면 그것을, 없으면 자체서명을 가리킨다.
 # 사용법: soltrace_render_nginx <repo_dir> [domain]
 soltrace_render_nginx() {
@@ -85,7 +108,7 @@ soltrace_render_nginx() {
         -e "s|/etc/letsencrypt/live/${SOLTRACE_TEMPLATE_DOMAIN}/|${cert_dir}/|g" \
         -e "s|${SOLTRACE_TEMPLATE_DOMAIN}|${domain}|g" \
         -e "$stapling_sed" \
-        "$repo/nginx/nginx.conf" > "$SOLTRACE_NGINX_CONF"
+        "$repo/nginx/nginx.conf" | _soltrace_http2_filter > "$SOLTRACE_NGINX_CONF"
 }
 
 # 렌더링 + 문법검사 + 반영. nginx 가 떠 있으면 reload, 아니면 호출측이 start 한다.

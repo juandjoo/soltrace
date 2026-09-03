@@ -83,12 +83,39 @@ for repo in powertools crb codeready-builder-for-rhel-8-x86_64-rpms; do
     fi
 done
 
-# nginx: Rocky 8 기본 모듈 스트림은 1.14(2018년) — 가능한 최신 스트림으로 올린다.
-# (1.25.1+ 로 더 올릴 경우 nginx.conf 의 'listen 443 ssl http2' 를 'http2 on' 으로 바꿔야 함)
-if ! rpm -q nginx &>/dev/null; then
-    dnf module reset -y nginx 2>/dev/null || true
+# nginx: Rocky 8 AppStream 모듈은 1.14(기본, 2018년 EOL) ~ 1.24 까지만 제공한다.
+# 1.30 같은 최신 안정판은 nginx.org 공식 저장소에서 받는다.
+#   SOLTRACE_NGINX_VERSION=1.30   원하는 버전 라인(설치 후 확인용)
+#   SOLTRACE_NGINX_BRANCH=stable  stable | mainline
+NGINX_TARGET="${SOLTRACE_NGINX_VERSION:-1.30}"
+NGINX_BRANCH="${SOLTRACE_NGINX_BRANCH:-stable}"
+if [ "$NGINX_BRANCH" = "mainline" ]; then
+    NGINX_BASEURL='https://nginx.org/packages/mainline/rhel/8/$basearch/'
+else
+    NGINX_BASEURL='https://nginx.org/packages/rhel/8/$basearch/'
+fi
+
+cat > /etc/yum.repos.d/nginx.repo <<REPO
+[nginx]
+name=nginx repo ($NGINX_BRANCH)
+baseurl=$NGINX_BASEURL
+gpgcheck=1
+enabled=1
+gpgkey=https://nginx.org/keys/nginx_signing.key
+# 모듈(AppStream nginx:1.14)이 비모듈 패키지를 가리지 않게 한다 — 없으면 계속 1.14 가 잡힌다
+module_hotfixes=true
+REPO
+
+# 폐쇄망 등으로 nginx.org 에 닿지 않으면 설치 자체가 막히므로 AppStream 모듈로 되돌린다
+if dnf -q --disablerepo='*' --enablerepo=nginx list available nginx &>/dev/null; then
+    dnf module reset -y nginx &>/dev/null || true
+    dnf -qy module disable nginx &>/dev/null || true
+else
+    echo "  [WARN] nginx.org($NGINX_BRANCH) 저장소에 접근할 수 없습니다 — Rocky AppStream 모듈로 대체합니다."
+    rm -f /etc/yum.repos.d/nginx.repo
+    dnf module reset -y nginx &>/dev/null || true
     for stream in 1.24 1.22 1.20; do
-        dnf module enable -y "nginx:$stream" 2>/dev/null && break
+        dnf module enable -y "nginx:$stream" &>/dev/null && break
     done
 fi
 
@@ -100,7 +127,26 @@ dnf install -y \
     git \
     libpq-devel
 
-echo "  >> $(nginx -v 2>&1)"
+# AppStream 동적 모듈 패키지(nginx-mod-*)는 'nginx = 1:1.14.1' 에 고정 의존이라 남아 있으면
+# 업그레이드 트랜잭션이 통째로 거부된다. 우리 nginx.conf 는 동적 모듈을 쓰지 않으므로 제거한다.
+NGINX_MODS=$(rpm -qa 'nginx-mod-*' 'nginx-all-modules' 2>/dev/null | tr '\n' ' ' || true)
+if [ -n "${NGINX_MODS// /}" ]; then
+    echo "  >> 미사용 nginx 동적 모듈 패키지 제거: $NGINX_MODS"
+    # shellcheck disable=SC2086
+    dnf remove -y $NGINX_MODS || echo "  [WARN] 모듈 패키지 제거 실패 — 업그레이드가 막힐 수 있습니다"
+fi
+
+# AppStream 버전이 이미 깔려 있었다면 dnf install 로는 교체되지 않는다 → distro-sync
+dnf distro-sync -y nginx &>/dev/null || true
+
+NGINX_VER=$({ nginx -v 2>&1 || true; } | sed -n 's|.*nginx/\([0-9][0-9.]*\).*|\1|p')
+echo "  >> nginx $NGINX_VER"
+case "$NGINX_VER" in
+    "$NGINX_TARGET".*|"$NGINX_TARGET") ;;
+    *) echo "  [WARN] 요청한 $NGINX_TARGET 라인이 아닙니다 ($NGINX_VER)."
+       echo "         nginx.org $NGINX_BRANCH 저장소에 해당 버전이 없을 수 있습니다."
+       echo "         mainline 을 쓰려면: SOLTRACE_NGINX_BRANCH=mainline 으로 재실행" ;;
+esac
 
 # ── [2/8] PostgreSQL 초기화 ─────────────────────────────────────────────────
 echo "[2/8] PostgreSQL 초기화 중..."
