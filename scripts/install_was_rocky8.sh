@@ -12,10 +12,59 @@ APP_USER="soltrace"
 # set -o pipefail + set -e 가 죽지 않도록 서브셸에서 pipefail 을 끈다.
 _rand() { ( set +o pipefail; LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c "$1" ); }
 
+# nginx.conf 렌더링(도메인·인증서 경로 치환) 공통 로직
+# shellcheck source=scripts/nginx_conf.sh
+source "$SCRIPT_DIR/scripts/nginx_conf.sh"
+
 echo "=== SolTrace WAS 설치 시작 (Rocky Linux 8) ==="
 
-# ── [1/7] 패키지 설치 ───────────────────────────────────────────────────────
-echo "[1/7] 패키지 설치 중..."
+# ── 설치 옵션 입력 (도메인 / HTTPS) ─────────────────────────────────────────
+# 긴 패키지 설치 전에 먼저 물어본다. 비대화형 설치는 환경변수로 지정:
+#   SOLTRACE_DOMAIN / SOLTRACE_LE_EMAIL / SOLTRACE_SETUP_SSL=yes|no
+DEFAULT_DOMAIN=$(soltrace_current_domain)
+DOMAIN="${SOLTRACE_DOMAIN:-}"
+LE_EMAIL="${SOLTRACE_LE_EMAIL:-}"
+SETUP_SSL="${SOLTRACE_SETUP_SSL:-}"
+
+if ( : < /dev/tty ) 2>/dev/null; then   # 제어 터미널이 실제로 열리는지 확인
+    if [ -z "$DOMAIN" ]; then
+        {
+            echo ""
+            echo "서비스 도메인을 입력하세요 (예: soltrace.example.com)"
+            printf "  [엔터 = %s]: " "$DEFAULT_DOMAIN"
+        } > /dev/tty
+        read -r DOMAIN < /dev/tty || DOMAIN=""
+    fi
+    if [ -z "$SETUP_SSL" ]; then
+        printf "Let's Encrypt 인증서를 발급하고 자동 갱신을 설정할까요? (Y/n): " > /dev/tty
+        read -r SETUP_SSL < /dev/tty || SETUP_SSL=""
+        [ -z "$SETUP_SSL" ] && SETUP_SSL="yes"
+    fi
+    case "${SETUP_SSL,,}" in y|yes) SETUP_SSL=yes ;; *) SETUP_SSL=no ;; esac
+    if [ "$SETUP_SSL" = "yes" ] && [ -z "$LE_EMAIL" ]; then
+        printf "인증서 만료 알림 이메일 (엔터 = 생략): " > /dev/tty
+        read -r LE_EMAIL < /dev/tty || LE_EMAIL=""
+    fi
+else
+    # 터미널이 없으면 인증서 발급을 자동으로 하지 않는다 —
+    # 잘못된 도메인으로 발급을 시도하면 Let's Encrypt 발급 한도(주당 5회)만 소모된다.
+    case "${SETUP_SSL,,}" in y|yes) SETUP_SSL=yes ;; *) SETUP_SSL=no ;; esac
+fi
+
+DOMAIN=$(printf '%s' "$DOMAIN" | tr -d ' \t\r\n')
+LE_EMAIL=$(printf '%s' "$LE_EMAIL" | tr -d ' \t\r\n')
+[ -z "$DOMAIN" ] && DOMAIN="$DEFAULT_DOMAIN"
+DOMAIN="${DOMAIN#http://}"; DOMAIN="${DOMAIN#https://}"; DOMAIN="${DOMAIN%%/*}"
+
+# IP 주소에는 Let's Encrypt 인증서를 발급할 수 없다 (자체서명으로 동작)
+if [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$SETUP_SSL" = "yes" ]; then
+    echo "  [WARN] IP($DOMAIN)로는 Let's Encrypt 인증서를 발급할 수 없습니다 — 인증서 발급을 건너뜁니다."
+    SETUP_SSL=no
+fi
+echo "  도메인: $DOMAIN / Let's Encrypt 발급: $SETUP_SSL"
+
+# ── [1/8] 패키지 설치 ───────────────────────────────────────────────────────
+echo "[1/8] 패키지 설치 중..."
 
 # PostgreSQL 16 공식 저장소
 if ! rpm -q pgdg-redhat-repo &>/dev/null; then
@@ -53,8 +102,8 @@ dnf install -y \
 
 echo "  >> $(nginx -v 2>&1)"
 
-# ── [2/7] PostgreSQL 초기화 ─────────────────────────────────────────────────
-echo "[2/7] PostgreSQL 초기화 중..."
+# ── [2/8] PostgreSQL 초기화 ─────────────────────────────────────────────────
+echo "[2/8] PostgreSQL 초기화 중..."
 
 if [ ! -f /var/lib/pgsql/16/data/PG_VERSION ]; then
     /usr/pgsql-16/bin/postgresql-16-setup initdb
@@ -72,8 +121,8 @@ bash "$SCRIPT_DIR/scripts/tune_pg_rocky8.sh"
 
 systemctl enable --now postgresql-16
 
-# ── [3/7] DB·유저 생성 ──────────────────────────────────────────────────────
-echo "[3/7] DB 유저 및 스키마 생성 중..."
+# ── [3/8] DB·유저 생성 ──────────────────────────────────────────────────────
+echo "[3/8] DB 유저 및 스키마 생성 중..."
 
 # .env에서 DB_PASSWORD 읽거나 새로 생성
 ENV_FILE="$APP_DIR/.env"
@@ -126,8 +175,8 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO soltrace;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO soltrace;
 SQL
 
-# ── [4/7] 앱 유저·디렉터리 준비 ─────────────────────────────────────────────
-echo "[4/7] 앱 유저 및 디렉터리 준비 중..."
+# ── [4/8] 앱 유저·디렉터리 준비 ─────────────────────────────────────────────
+echo "[4/8] 앱 유저 및 디렉터리 준비 중..."
 
 id "$APP_USER" &>/dev/null || useradd -r -s /sbin/nologin -d "$APP_DIR" "$APP_USER"
 
@@ -162,8 +211,8 @@ chmod 600 "$ENV_FILE"
 mkdir -p /var/log/soltrace
 chown -R "$APP_USER:$APP_USER" "$APP_DIR" /var/log/soltrace
 
-# ── [5/7] systemd 서비스 등록 ────────────────────────────────────────────────
-echo "[5/7] systemd 서비스 등록 중..."
+# ── [5/8] systemd 서비스 등록 ────────────────────────────────────────────────
+echo "[5/8] systemd 서비스 등록 중..."
 
 cat > /etc/systemd/system/soltrace-was.service <<'UNIT'
 [Unit]
@@ -202,20 +251,21 @@ UNIT
 systemctl daemon-reload
 systemctl enable soltrace-was
 
-# ── [6/7] nginx 설정 ─────────────────────────────────────────────────────────
-echo "[6/7] nginx 설정 중..."
+# ── [6/8] nginx 설정 ─────────────────────────────────────────────────────────
+echo "[6/8] nginx 설정 중..."
 
-# docker upstream(was:8000) → localhost
-sed 's/server was:8000/server 127.0.0.1:8000/' \
-    "$SCRIPT_DIR/nginx/nginx.conf" > /etc/nginx/nginx.conf
+# 도메인/인증서 경로 치환 + docker upstream(was:8000) → localhost.
+# 인증서가 아직 없으면 임시 자체서명으로 렌더링된다 (nginx 가 떠 있어야 LE 챌린지가 가능).
+soltrace_save_domain "$DOMAIN"
+soltrace_render_nginx "$SCRIPT_DIR" "$DOMAIN"
 
 # 설정 문법 검사
 nginx -t
 
 systemctl enable nginx
 
-# ── [7/7] 서비스 시작 ────────────────────────────────────────────────────────
-echo "[7/7] 서비스 시작 중..."
+# ── [7/8] 서비스 시작 ────────────────────────────────────────────────────────
+echo "[7/8] 서비스 시작 중..."
 
 systemctl restart soltrace-was
 systemctl restart nginx
@@ -254,6 +304,9 @@ chmod 644 /etc/cron.d/soltrace-backup
 echo "자가 업데이트 래퍼 및 sudoers 등록 중..."
 install -m 0755 -o root -g root \
     "$SCRIPT_DIR/scripts/soltrace-selfupdate.sh" /usr/local/sbin/soltrace-selfupdate
+# 래퍼가 참조하는 nginx 렌더링 라이브러리 (root 소유 경로에 둔다)
+install -D -m 0644 -o root -g root \
+    "$SCRIPT_DIR/scripts/nginx_conf.sh" /usr/local/lib/soltrace/nginx_conf.sh
 
 cat > /etc/sudoers.d/soltrace-update <<'SUDO'
 # WAS(soltrace) 가 웹 설정 페이지에서 자가 업데이트만 트리거하도록 허용.
@@ -269,11 +322,30 @@ sudo -u "$APP_USER" git config --global --add safe.directory "$APP_DIR" 2>/dev/n
 # root 가 저장소에서 git(업데이트/셀프업데이트) 실행 시 dubious ownership 방지 (HOME 비의존)
 git config --system --add safe.directory "$APP_DIR" 2>/dev/null || true
 
+# ── [8/8] HTTPS 인증서 (Let's Encrypt) ──────────────────────────────────────
+echo "[8/8] HTTPS 인증서 설정 중..."
+
+if [ "$SETUP_SSL" = "yes" ]; then
+    # 실패해도 설치 자체는 계속한다 (자체서명 인증서로 서비스는 동작)
+    bash "$SCRIPT_DIR/scripts/setup_ssl.sh" "$DOMAIN" "$LE_EMAIL" || {
+        echo "  [WARN] 인증서 발급 실패 — 임시 자체서명 인증서로 동작합니다."
+        echo "         원인 해결 후: sudo bash $SCRIPT_DIR/scripts/setup_ssl.sh $DOMAIN admin@example.com"
+    }
+else
+    echo "  Let's Encrypt 발급을 건너뜁니다 — 임시 자체서명 인증서로 동작합니다(브라우저 경고)."
+    echo "  나중에 발급: sudo bash $SCRIPT_DIR/scripts/setup_ssl.sh $DOMAIN admin@example.com"
+fi
+
 echo ""
 echo "=== 설치 완료 ==="
 echo "상태 확인: systemctl status soltrace-was nginx postgresql-16"
 echo "WAS 로그:  journalctl -u soltrace-was -f"
 echo "앱 로그:   tail -f /var/log/soltrace/error.log"
-echo "WAS URL:   http://$(hostname -I | awk '{print $1}')"
+echo "WAS URL:   https://$DOMAIN"
+if soltrace_have_le_cert "$DOMAIN"; then
+    echo "인증서:    Let's Encrypt (자동 갱신 등록됨 — certbot certificates 로 확인)"
+else
+    echo "인증서:    임시 자체서명 (발급: sudo bash $SCRIPT_DIR/scripts/setup_ssl.sh $DOMAIN)"
+fi
 echo ""
 echo "초기 관리자 비밀번호: $(grep ADMIN_PASSWORD $ENV_FILE | cut -d= -f2)"

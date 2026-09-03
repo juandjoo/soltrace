@@ -10,6 +10,11 @@ DEPLOY_DIR="/opt/soltrace"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
+# nginx.conf 렌더링(도메인·인증서 경로 치환) 공통 로직 — 여기서 단순 sed 로 덮어쓰면
+# 설치 때 지정한 도메인이 템플릿 기본값으로 되돌아가 인증서 경로가 어긋난다.
+# shellcheck source=scripts/nginx_conf.sh
+source "$APP_DIR/scripts/nginx_conf.sh"
+
 cd "$APP_DIR"
 
 log ">> 코드 pull: origin/$BRANCH"
@@ -37,16 +42,15 @@ sudo -u postgres psql -d soltrace -f "$APP_DIR/postgres/init.sql"
 # (앱이 soltrace 로 접속해 INSERT/UPDATE/DDL 하려면 소유권 필요 — 예: app_config)
 sudo -u postgres psql -d soltrace -tAc "SELECT format('ALTER TABLE public.%I OWNER TO soltrace;', tablename) FROM pg_tables WHERE schemaname='public' UNION ALL SELECT format('ALTER SEQUENCE public.%I OWNER TO soltrace;', sequencename) FROM pg_sequences WHERE schemaname='public'" | sudo -u postgres psql -d soltrace
 
-log ">> nginx 설정 반영"
-sed 's/server was:8000/server 127.0.0.1:8000/' \
-    "$APP_DIR/nginx/nginx.conf" > /etc/nginx/nginx.conf
-nginx -t
-systemctl reload nginx
+log ">> nginx 설정 반영 (도메인: $(soltrace_current_domain))"
+soltrace_apply_nginx "$APP_DIR"
 
 log ">> 자가 업데이트 래퍼/sudoers 동기화"
 # 웹 설정 페이지의 git 업데이트용. install 외 update 경로로도 항상 최신/존재하도록 보장.
 install -m 0755 -o root -g root \
     "$APP_DIR/scripts/soltrace-selfupdate.sh" /usr/local/sbin/soltrace-selfupdate
+install -D -m 0644 -o root -g root \
+    "$APP_DIR/scripts/nginx_conf.sh" /usr/local/lib/soltrace/nginx_conf.sh
 cat > /etc/sudoers.d/soltrace-update <<'SUDO'
 soltrace ALL=(root) NOPASSWD: /usr/local/sbin/soltrace-selfupdate ""
 SUDO

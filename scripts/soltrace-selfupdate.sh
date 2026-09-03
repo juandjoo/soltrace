@@ -55,8 +55,12 @@ sudo -u postgres psql -d soltrace -f "$REPO_DIR/postgres/init.sql"
 # 새로 생긴 테이블/시퀀스 소유권을 soltrace 로 이관 (init.sql 은 postgres 로 적용됨)
 sudo -u postgres psql -d soltrace -tAc "SELECT format('ALTER TABLE public.%I OWNER TO soltrace;', tablename) FROM pg_tables WHERE schemaname='public' UNION ALL SELECT format('ALTER SEQUENCE public.%I OWNER TO soltrace;', sequencename) FROM pg_sequences WHERE schemaname='public'" | sudo -u postgres psql -d soltrace
 
-sed 's/server was:8000/server 127.0.0.1:8000/' "$REPO_DIR/nginx/nginx.conf" > /etc/nginx/nginx.conf
-nginx -t && systemctl reload nginx
+# nginx 렌더링은 공통 라이브러리로 (도메인·인증서 경로 치환이 여기저기 갈라지지 않도록).
+# 라이브러리는 reset --hard 직후의 저장소에서 root 소유 경로로 복사해 두고 그것을 읽는다.
+install -D -m 0644 -o root -g root "$REPO_DIR/scripts/nginx_conf.sh" /usr/local/lib/soltrace/nginx_conf.sh
+# shellcheck source=/dev/null
+source /usr/local/lib/soltrace/nginx_conf.sh
+soltrace_apply_nginx "$REPO_DIR"
 
 systemctl restart soltrace-was
 echo "[$(date '+%F %T')] selfupdate 완료"

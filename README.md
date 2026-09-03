@@ -87,6 +87,8 @@ soltrace/
     ├── create_partitions.sh          # ftp_logs 월별 파티션 생성 (cron)
     ├── backup_db.sh                  # DB 증분 백업, 최대 3년 보관 (cron)
     ├── rebalance_default_partition.sql  # ftp_logs_default → 월 파티션 수동 이동
+    ├── nginx_conf.sh                 # nginx.conf 렌더링 공통 로직 (도메인·인증서 경로 치환)
+    ├── setup_ssl.sh                  # Let's Encrypt 인증서 발급 + 자동 갱신 등록
     └── soltrace-selfupdate.sh        # 웹 설정페이지 git 자가 업데이트 래퍼
 ```
 
@@ -104,8 +106,38 @@ cd soltrace
 sudo bash scripts/install_was_rocky8.sh
 ```
 
+설치 중 **서비스 도메인**과 **Let's Encrypt 인증서 발급 여부**를 물어본다. 발급을 선택하면 certbot 으로
+인증서를 받고 자동 갱신(certbot 타이머 + nginx reload 훅)까지 등록한다.
+
+비대화형 설치는 환경변수로 지정한다(터미널이 없으면 인증서 발급은 기본적으로 건너뛴다 — 잘못된
+도메인으로 시도하면 Let's Encrypt 발급 한도만 소모되기 때문):
+
+```bash
+sudo SOLTRACE_DOMAIN=soltrace.example.com \
+     SOLTRACE_LE_EMAIL=admin@example.com \
+     SOLTRACE_SETUP_SSL=yes \
+     bash scripts/install_was_rocky8.sh
+```
+
 설치 완료 후 출력되는 `ADMIN_PASSWORD`를 보관한다.  
-접속: `http://<WAS_IP>`
+접속: `https://<도메인>`
+
+#### HTTPS 인증서 (Let's Encrypt)
+
+- 발급 전제: 도메인 A레코드가 이 서버 공인 IP를 가리키고, **80 포트가 외부에 열려 있을 것**(ACME 챌린지 경로).
+- 인증서가 없는 동안에는 임시 **자체서명** 인증서로 nginx 가 뜬다(브라우저 경고). 인증서 발급 자체가
+  80 포트를 서빙하는 nginx 를 필요로 하기 때문이며, 발급이 끝나면 자동으로 실제 인증서로 교체된다.
+- 설치 때 건너뛰었거나 실패했다면 나중에 단독 실행:
+
+```bash
+sudo bash scripts/setup_ssl.sh soltrace.example.com admin@example.com
+```
+
+- 갱신 방식: `certonly --webroot`(nginx 플러그인 미사용 — 플러그인이 빠지면 갱신이 조용히 실패한다).
+  certbot 타이머(없으면 `/etc/cron.d/soltrace-certbot`)가 갱신하고, deploy 훅이 nginx 를 reload 한다.
+- 확인: `certbot certificates`, `certbot renew --dry-run`, 갱신 로그 `/var/log/soltrace/ssl_renew.log`
+- 선택한 도메인은 `/etc/soltrace/domain` 에 저장되어 이후 업데이트(`update_rocky8.sh`, 웹 자가 업데이트)에도
+  그대로 유지된다. 도메인을 바꾸려면 `setup_ssl.sh <새 도메인>` 을 다시 실행한다.
 
 ### FTP 서버 데몬
 
@@ -116,6 +148,13 @@ sudo bash scripts/install_was_rocky8.sh
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/juandjoo/soltrace/main/ftp-daemon/install.sh | sudo bash
+```
+
+설치 중 **WAS 서버 주소**를 물어본다(엔터 = 기존/기본값 유지). `curl | sudo bash` 로 실행해도 터미널에서 직접 입력받는다.
+비대화형(자동화) 설치는 환경변수로 지정한다:
+
+```bash
+curl -fsSL .../install.sh | sudo SOLTRACE_WAS_URL=https://soltrace.example.com bash
 ```
 
 **CentOS 7 (EOL) — 저장소 교체 + 자동 설치:**
@@ -170,7 +209,7 @@ sudo /opt/soltrace-daemon/venv/bin/pip install "urllib3<2"
 sudo systemctl restart soltrace-daemon
 ```
 
-설치 후 WAS 주소 설정 확인:
+설치 후 WAS 주소 확인 / 변경(설치 시 입력값이 이미 반영되어 있음):
 
 ```bash
 vi /opt/soltrace-daemon/config.ini     # was_url 반드시 https:// 로 설정
@@ -196,7 +235,7 @@ WAS 서버에 저장되며 설치 시 자동 생성된다.
 
 | 항목 | 기본값 | 설명 |
 |---|---|---|
-| `was_url` | — | WAS 주소 (`https://` 권장) |
+| `was_url` | — | WAS 주소 (`https://` 권장). 설치 시 입력받으며 `SOLTRACE_WAS_URL` 환경변수로도 지정 가능 |
 | `transfer_log` | — | proftpd TransferLog 경로 |
 | `extended_log` | — | proftpd ExtendedAllLog 경로 |
 | `poll_interval` | `10` | 로그 파일 폴링 주기 (초) |
