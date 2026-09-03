@@ -211,6 +211,11 @@ CREATE TABLE IF NOT EXISTS service_metrics (
     PRIMARY KEY (device_id, bucket)
 );
 ALTER TABLE service_metrics ADD COLUMN IF NOT EXISTS cwd_fails INT NOT NULL DEFAULT 0;
+-- 큰 파일 전용 집계 (전송 속도 판정용). 작은 파일은 연결/인증 오버헤드가 전송시간의
+-- 대부분이라 실효속도를 낮게 만들어, 소량 파일 대량 업로드가 성능 저하로 오인된다.
+ALTER TABLE service_metrics ADD COLUMN IF NOT EXISTS xfers_big INT NOT NULL DEFAULT 0;
+ALTER TABLE service_metrics ADD COLUMN IF NOT EXISTS bytes_big BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE service_metrics ADD COLUMN IF NOT EXISTS secs_big DOUBLE PRECISION NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_service_metrics_bucket ON service_metrics(bucket DESC);
 
 -- baseline 이탈로 판정된 서비스 이상 이벤트.

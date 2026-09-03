@@ -6,12 +6,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app import notifier
+from app import alert_settings, notifier
 from app.config import settings as cfg
 from app.database import get_db
 from app.deps import require_admin
 from app.gitinfo import git, git_run
 from app.schemas import (
+    AlertSettings, AlertSettingsInfo,
     PasswordChangeRequest, UpdateTriggerResponse, VersionInfo, NotifySettings,
     StorageInfo, StoragePartition,
 )
@@ -166,6 +167,30 @@ def save_notify(body: NotifySettings, db: Session = Depends(get_db), _: str = De
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{label} {e}")
     for k, v in {"notify_webhook_url": body.webhook_url, "notify_hms_url": body.hms_url}.items():
         set_config(db, k, v)
+
+
+@router.get("/alerts", response_model=AlertSettingsInfo)
+def get_alerts(db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    return AlertSettingsInfo(
+        **alert_settings.load(db),
+        large_file_bytes=cfg.alert_large_file_bytes,
+        bucket_minutes=cfg.alert_bucket_minutes,
+        baseline_days=cfg.alert_baseline_days,
+    )
+
+
+@router.put("/alerts", response_model=AlertSettingsInfo)
+def save_alerts(body: AlertSettings, db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    alert_settings.save(db, body.model_dump(exclude_unset=True))
+    log.info("Alert thresholds updated: %s", body.model_dump(exclude_none=True))
+    return get_alerts(db)
+
+
+@router.post("/alerts/reset", response_model=AlertSettingsInfo)
+def reset_alerts(db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    """.env 기본값으로 되돌린다."""
+    alert_settings.reset(db)
+    return get_alerts(db)
 
 
 @router.post("/notify/test", status_code=status.HTTP_204_NO_CONTENT)

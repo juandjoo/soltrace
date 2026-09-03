@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 
 from app.config import settings
-from app import notifier
+from app import alert_settings, notifier
 
 log = logging.getLogger("soltrace.monitor")
 
@@ -96,7 +96,8 @@ class ServiceMonitor:
         db.execute(text(f"""
             INSERT INTO service_metrics AS m
                 (device_id, bucket, transfers, transfer_fails, bytes,
-                 transfer_secs, login_attempts, login_fails, cwd_fails)
+                 transfer_secs, xfers_big, bytes_big, secs_big,
+                 login_attempts, login_fails, cwd_fails)
             SELECT
                 device_id,
                 date_bin(:iv, log_time, TIMESTAMPTZ '{_EPOCH}') AS bucket,
@@ -104,6 +105,14 @@ class ServiceMonitor:
                 COUNT(*) FILTER (WHERE action IN ('upload','download') AND status='fail'),
                 COALESCE(SUM(file_size) FILTER (WHERE action IN ('upload','download')), 0),
                 COALESCE(SUM(transfer_time) FILTER (WHERE action IN ('upload','download')), 0),
+                -- 전송 속도 판정용: 큰 파일 + 성공 전송만. 작은 파일은 고정 오버헤드가,
+                -- 중단된 전송은 부분 바이트가 실효속도를 왜곡한다.
+                COUNT(*) FILTER (
+                    WHERE action IN ('upload','download') AND status='success' AND file_size >= :large),
+                COALESCE(SUM(file_size) FILTER (
+                    WHERE action IN ('upload','download') AND status='success' AND file_size >= :large), 0),
+                COALESCE(SUM(transfer_time) FILTER (
+                    WHERE action IN ('upload','download') AND status='success' AND file_size >= :large), 0),
                 COUNT(*) FILTER (WHERE action='login'),
                 COUNT(*) FILTER (WHERE action='login' AND status='fail'),
                 COUNT(*) FILTER (WHERE action='cwd_fail')
@@ -115,11 +124,15 @@ class ServiceMonitor:
                 transfer_fails = EXCLUDED.transfer_fails,
                 bytes          = EXCLUDED.bytes,
                 transfer_secs  = EXCLUDED.transfer_secs,
+                xfers_big      = EXCLUDED.xfers_big,
+                bytes_big      = EXCLUDED.bytes_big,
+                secs_big       = EXCLUDED.secs_big,
                 login_attempts = EXCLUDED.login_attempts,
                 login_fails    = EXCLUDED.login_fails,
                 cwd_fails      = EXCLUDED.cwd_fails,
                 updated_at     = NOW()
-        """), {"iv": self._bucket, "win_start": win_start})
+        """), {"iv": self._bucket, "win_start": win_start,
+               "large": settings.alert_large_file_bytes})
         db.commit()
 
     # ── (2) 이상 판정 ────────────────────────────────────────────────────────
@@ -133,9 +146,12 @@ class ServiceMonitor:
         cand_start = now - timedelta(seconds=self._interval + 2 * bucket_sec)
         cand_end = now - self._bucket  # 진행 중 버킷 제외
 
+        cfg = alert_settings.load(db)   # 설정 페이지에서 바꾼 임계값을 매 주기 반영
+
         rows = db.execute(text("""
             SELECT device_id, bucket, transfers, transfer_fails, bytes,
-                   transfer_secs, login_attempts, login_fails, cwd_fails
+                   transfer_secs, xfers_big, bytes_big, secs_big,
+                   login_attempts, login_fails, cwd_fails
             FROM service_metrics
             WHERE bucket >= :base_start
             ORDER BY device_id, bucket
@@ -152,7 +168,7 @@ class ServiceMonitor:
             if not candidates:
                 continue
             for cand in candidates:
-                alerts.extend(self._eval_bucket(device_id, cand, baseline))
+                alerts.extend(self._eval_bucket(device_id, cand, baseline, cfg))
 
         if not alerts:
             return 0
@@ -172,70 +188,85 @@ class ServiceMonitor:
         db.commit()
         return inserted
 
-    def _eval_bucket(self, device_id, cand, baseline) -> list[dict]:
+    # 큰 파일 평균 크기가 평소와 이 배수 이상 차이 나면 전송 속도 판정을 보류한다.
+    # (같은 '큰 파일'이라도 5MB 묶음과 2GB 원본은 오버헤드 비중이 달라 비교가 성립하지 않음)
+    _SIZE_MIX_TOLERANCE = 4.0
+
+    @classmethod
+    def _eval_bucket(cls, device_id, cand, baseline, cfg) -> list[dict]:
         out = []
-        k = settings.alert_mad_k
+        k = cfg["mad_k"]
 
         # 전송 실패율 (높을수록 나쁨)
-        if cand.transfers >= settings.alert_min_samples:
+        if cand.transfers >= cfg["min_samples"]:
             value = cand.transfer_fails / cand.transfers
             base = [r.transfer_fails / r.transfers
-                    for r in baseline if r.transfers >= settings.alert_min_samples]
+                    for r in baseline if r.transfers >= cfg["min_samples"]]
             med = _median(base)
-            thr = settings.alert_fail_rate_floor
+            thr = cfg["fail_rate_floor"]
             if med is not None:
-                thr = max(med + k * _mad(base, med), settings.alert_fail_rate_floor)
+                thr = max(med + k * _mad(base, med), cfg["fail_rate_floor"])
             if value > thr and value > 0:
                 sev = "critical" if value >= max(2 * thr, 0.5) else "warning"
-                out.append(self._mk(device_id, cand, "fail_rate", sev, value, med, thr,
-                                     cand.transfers,
-                                     f"전송 실패율 {value*100:.1f}% (임계 {thr*100:.1f}%)"))
+                out.append(cls._mk(device_id, cand, "fail_rate", sev, value, med, thr,
+                                   cand.transfers,
+                                   f"전송 실패율 {value*100:.1f}% (임계 {thr*100:.1f}%)"))
 
         # 전송 속도 throughput (낮을수록 나쁨) — baseline 필수
-        if cand.transfers >= settings.alert_min_samples and cand.transfer_secs > 0:
-            value = cand.bytes / cand.transfer_secs
-            base = [r.bytes / r.transfer_secs for r in baseline
-                    if r.transfers >= settings.alert_min_samples and r.transfer_secs > 0]
-            med = _median(base)
-            if med and med > 0:
-                low = min(med - k * _mad(base, med), med * (1 - settings.alert_throughput_drop))
+        # 큰 파일(alert_large_file_bytes 이상) 성공 전송만으로 판정한다. 작은 파일은
+        # 연결/인증 오버헤드가 전송시간의 대부분이라, 소량 파일 대량 업로드가
+        # 성능 저하로 오인되던 문제를 막는다.
+        min_big = cfg["min_large_samples"]
+        if cand.xfers_big >= min_big and cand.secs_big > 0:
+            value = cand.bytes_big / cand.secs_big
+            base_rows = [r for r in baseline if r.xfers_big >= min_big and r.secs_big > 0]
+            med = _median([r.bytes_big / r.secs_big for r in base_rows])
+            # 보조 가드: 파일 크기 구성이 평소와 크게 다르면 비교 자체가 성립하지 않음
+            base_avg = _median([r.bytes_big / r.xfers_big for r in base_rows])
+            avg = cand.bytes_big / cand.xfers_big
+            mixed = bool(base_avg) and not (
+                base_avg / cls._SIZE_MIX_TOLERANCE <= avg <= base_avg * cls._SIZE_MIX_TOLERANCE
+            )
+            if med and med > 0 and not mixed:
+                low = min(med - k * _mad([r.bytes_big / r.secs_big for r in base_rows], med),
+                          med * (1 - cfg["throughput_drop"]))
                 if value < low:
                     sev = "critical" if value < med * 0.25 else "warning"
-                    out.append(self._mk(device_id, cand, "throughput", sev, value, med, low,
-                                        cand.transfers,
-                                        f"전송 속도 {value/1048576:.2f}MB/s "
-                                        f"(평소 {med/1048576:.2f}MB/s)"))
+                    out.append(cls._mk(device_id, cand, "throughput", sev, value, med, low,
+                                       cand.xfers_big,
+                                       f"전송 속도 {value/1048576:.2f}MB/s "
+                                       f"(평소 {med/1048576:.2f}MB/s)"))
 
         # 로그인 실패율 (식별된 계정 한정, 높을수록 나쁨)
-        if cand.login_attempts >= settings.alert_min_login_samples:
+        if cand.login_attempts >= cfg["min_login_samples"]:
             value = cand.login_fails / cand.login_attempts
             base = [r.login_fails / r.login_attempts
-                    for r in baseline if r.login_attempts >= settings.alert_min_login_samples]
+                    for r in baseline if r.login_attempts >= cfg["min_login_samples"]]
             med = _median(base)
-            thr = settings.alert_login_fail_rate_floor
+            thr = cfg["login_fail_rate_floor"]
             if med is not None:
-                thr = max(med + k * _mad(base, med), settings.alert_login_fail_rate_floor)
+                thr = max(med + k * _mad(base, med), cfg["login_fail_rate_floor"])
             if value > thr and value > 0:
                 sev = "critical" if value >= max(2 * thr, 0.7) else "warning"
-                out.append(self._mk(device_id, cand, "login_fail_rate", sev, value, med, thr,
-                                     cand.login_attempts,
-                                     f"로그인 실패율 {value*100:.1f}% (임계 {thr*100:.1f}%)"))
+                out.append(cls._mk(device_id, cand, "login_fail_rate", sev, value, med, thr,
+                                   cand.login_attempts,
+                                   f"로그인 실패율 {value*100:.1f}% (임계 {thr*100:.1f}%)"))
 
         # CWD 실패 급증 (절대 건수 기준 — 오탐 방지를 위해 높은 하한 적용)
-        if cand.cwd_fails >= settings.alert_min_cwd_samples:
+        if cand.cwd_fails >= cfg["min_cwd_samples"]:
             value = float(cand.cwd_fails)
             base = [float(r.cwd_fails) for r in baseline
-                    if r.cwd_fails >= settings.alert_min_cwd_samples]
+                    if r.cwd_fails >= cfg["min_cwd_samples"]]
             med = _median(base)
-            floor = float(settings.alert_cwd_fail_floor)
+            floor = float(cfg["cwd_fail_floor"])
             thr = floor
             if med is not None:
                 thr = max(med + k * _mad(base, med), floor)
             if value > thr:
                 sev = "critical" if value >= 2 * thr else "warning"
-                out.append(self._mk(device_id, cand, "cwd_fail_spike", sev, value,
-                                     med, thr, int(value),
-                                     f"CWD 실패 {int(value)}건 급증 (임계 {thr:.0f}건)"))
+                out.append(cls._mk(device_id, cand, "cwd_fail_spike", sev, value,
+                                   med, thr, int(value),
+                                   f"CWD 실패 {int(value)}건 급증 (임계 {thr:.0f}건)"))
         return out
 
     @staticmethod

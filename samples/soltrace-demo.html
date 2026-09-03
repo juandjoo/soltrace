@@ -590,6 +590,71 @@ body        { background: #f5f7fa; font-size: 14px; }
               <button class="btn btn-primary btn-sm" onclick="saveNotify()"><i class="bi bi-save me-1"></i>저장</button>
             </div>
             <div id="notifyMsg" class="mt-2 small"></div>
+
+            <!-- 이상 감지 임계값 -->
+            <div class="card mt-4">
+              <div class="card-header py-2 fw-semibold small d-flex align-items-center">
+                <span><i class="bi bi-sliders me-2"></i>이상 감지 임계값</span>
+                <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="resetAlerts()">기본값 복원</button>
+              </div>
+              <div class="card-body">
+                <div id="alertMsg" class="alert d-none py-2 small"></div>
+                <div class="row g-2">
+                  <div class="col-6">
+                    <label class="form-label small mb-1">이탈 배수 (MAD k)</label>
+                    <input type="number" step="0.1" min="1" max="20" class="form-control form-control-sm" id="alMadK">
+                    <div class="form-text">클수록 둔감해져 알림이 줄어듭니다.</div>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">전송 속도 하락 비율</label>
+                    <input type="number" step="0.05" min="0" max="1" class="form-control form-control-sm" id="alThroughputDrop">
+                    <div class="form-text">평소 대비 이 비율 이상 떨어지면 알림 (0.5 = 50%↓)</div>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">전송 실패율 하한</label>
+                    <input type="number" step="0.01" min="0" max="1" class="form-control form-control-sm" id="alFailFloor">
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">로그인 실패율 하한</label>
+                    <input type="number" step="0.05" min="0" max="1" class="form-control form-control-sm" id="alLoginFailFloor">
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">CWD 실패 하한 (건)</label>
+                    <input type="number" min="0" class="form-control form-control-sm" id="alCwdFloor">
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">전송 지표 최소 건수</label>
+                    <input type="number" min="1" class="form-control form-control-sm" id="alMinSamples">
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">로그인 최소 시도수</label>
+                    <input type="number" min="1" class="form-control form-control-sm" id="alMinLoginSamples">
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">CWD 최소 건수</label>
+                    <input type="number" min="1" class="form-control form-control-sm" id="alMinCwdSamples">
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">전송 속도 최소 대상 건수</label>
+                    <input type="number" min="1" class="form-control form-control-sm" id="alMinLargeSamples">
+                    <div class="form-text">아래 기준 크기 이상 전송이 이 건수 미만이면 속도 판정을 건너뜁니다.</div>
+                  </div>
+                </div>
+                <hr class="my-3">
+                <dl class="row small mb-0">
+                  <dt class="col-sm-5 text-muted">전송 속도 판정 기준 크기</dt><dd class="col-sm-7" id="alLargeBytes">-</dd>
+                  <dt class="col-sm-5 text-muted">집계 버킷 / baseline</dt><dd class="col-sm-7" id="alBucketInfo">-</dd>
+                </dl>
+                <div class="form-text">
+                  작은 파일은 연결·인증 오버헤드가 전송시간의 대부분이라 실효속도가 낮게 나옵니다.
+                  전송 속도 판정은 기준 크기 이상의 <b>성공한</b> 전송만 사용하므로, 소량 파일을 대량 업로드해도
+                  속도 저하로 오인하지 않습니다. 이 두 값은 <code>.env</code> 에서만 변경합니다(재배포 필요).
+                </div>
+                <div class="d-flex gap-2 mt-3">
+                  <button class="btn btn-primary btn-sm" onclick="saveAlerts()"><i class="bi bi-save me-1"></i>임계값 저장</button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- 고객 계정 -->
@@ -980,6 +1045,12 @@ body        { background: #f5f7fa; font-size: 14px; }
     })],
     [/^\/settings\/storage$/, storage],
     [/^\/settings\/security$/, () => ({ username: 'admin', allowed_ips: ['10.0.0.0/8', '203.0.113.0/24'], my_ip: '203.0.113.42' })],
+    [/^\/settings\/alerts$/, () => ({
+      mad_k: 4.0, fail_rate_floor: 0.05, login_fail_rate_floor: 0.3, throughput_drop: 0.5,
+      cwd_fail_floor: 20, min_samples: 20, min_login_samples: 10, min_cwd_samples: 5,
+      min_large_samples: 5,
+      large_file_bytes: 4 * 1024 * 1024, bucket_minutes: 10, baseline_days: 7,
+    })],
     [/^\/settings\/notify\/mute$/, () => ({ muted: false })],
     [/^\/settings\/notify$/, () => ({ webhook_url: 'https://hooks.example.com/soltrace', hms_url: '' })],
     [/^\/users$/, () => ACCOUNTS],
@@ -2152,6 +2223,60 @@ async function loadNotify() {
   document.getElementById('notifyWebhookUrl').value = d.webhook_url || '';
   document.getElementById('notifyHmsUrl').value     = d.hms_url || '';
   if (m) _applyMuteState(m.muted);
+  loadAlerts();
+}
+
+// ── 이상 감지 임계값 ────────────────────────────────────────────────────────
+// 입력 id ↔ API 필드. 저장 시 같은 표를 역방향으로 사용한다.
+const ALERT_FIELDS = {
+  alMadK: 'mad_k',
+  alThroughputDrop: 'throughput_drop',
+  alFailFloor: 'fail_rate_floor',
+  alLoginFailFloor: 'login_fail_rate_floor',
+  alCwdFloor: 'cwd_fail_floor',
+  alMinSamples: 'min_samples',
+  alMinLoginSamples: 'min_login_samples',
+  alMinCwdSamples: 'min_cwd_samples',
+  alMinLargeSamples: 'min_large_samples',
+};
+
+function _renderAlerts(a) {
+  if (!a) return;
+  for (const [id, key] of Object.entries(ALERT_FIELDS)) {
+    document.getElementById(id).value = a[key];
+  }
+  document.getElementById('alLargeBytes').textContent = fmtBytes(a.large_file_bytes) + ' 이상';
+  document.getElementById('alBucketInfo').textContent =
+    `${a.bucket_minutes}분 버킷 · 최근 ${a.baseline_days}일 기준`;
+}
+
+async function loadAlerts() {
+  const msg = document.getElementById('alertMsg');
+  msg.className = 'alert d-none py-2 small';
+  try {
+    _renderAlerts(await api('GET', '/settings/alerts'));
+  } catch (e) { settingsMsg('alertMsg', 'danger', e.message); }
+}
+
+async function saveAlerts() {
+  const body = {};
+  for (const [id, key] of Object.entries(ALERT_FIELDS)) {
+    const v = parseFloat(document.getElementById(id).value);
+    if (Number.isNaN(v)) { settingsMsg('alertMsg', 'danger', '빈 값이나 숫자가 아닌 값이 있습니다.'); return; }
+    body[key] = v;
+  }
+  try {
+    _renderAlerts(await api('PUT', '/settings/alerts', body));
+    settingsMsg('alertMsg', 'success', '저장했습니다. 다음 판정 주기(약 5분)부터 적용됩니다.');
+  } catch (e) { settingsMsg('alertMsg', 'danger', e.message); }
+}
+
+async function resetAlerts() {
+  if (!confirm('임계값을 기본값으로 되돌릴까요?')) return;
+  try {
+    _renderAlerts(await api('POST', '/settings/alerts/reset'));
+    settingsMsg('alertMsg', 'success', '기본값으로 되돌렸습니다.');
+  } catch (e) { settingsMsg('alertMsg', 'danger', e.message); }
 }
 
 async function toggleMute(muted) {

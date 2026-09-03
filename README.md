@@ -273,7 +273,40 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 - **알림**: 웹 UI 노출 + (설정 시) 웹훅 / HMS 발송
 - **데몬 상태 반영**: `degraded` / `disabled` / `error` 상태 장비는 서비스 알림 없어도 건강도 `warning`으로 표시
 
-> 임계값은 설정 페이지에서 조정 (`ALERT_MAD_K`, `ALERT_FAIL_RATE_FLOOR`, `ALERT_THROUGHPUT_DROP` 등)
+#### 전송 속도 판정 — 작은 파일 대량 전송 오탐 방지
+
+작은 파일은 연결·인증 오버헤드가 전송시간의 대부분을 차지해 실효속도(Σsize/Σtime)가 낮게 나온다.
+예를 들어 20KB 파일이 파일당 0.2초 걸리면 0.1MB/s로 계산되어, 평소 50MB/s이던 장비가
+**소량 파일을 대량 업로드하는 것만으로 성능 저하로 오인**된다.
+
+이를 막기 위해 전송 속도는 아래 조건을 만족하는 전송만으로 판정한다.
+
+| 조건 | 이유 |
+|---|---|
+| `ALERT_LARGE_FILE_BYTES`(기본 4MB) 이상 | 고정 오버헤드 비중이 낮아 회선 상태를 반영 |
+| 성공(`status=success`)한 전송 | 중단된 전송의 부분 바이트가 속도를 왜곡 |
+| 대상 건수 ≥ 최소 대상 건수(기본 5) | 소표본 판정 방지 (미달 시 판정 자체를 건너뜀) |
+| 평균 파일 크기가 평소의 1/4 ~ 4배 이내 | 크기 구성이 달라지면 비교가 성립하지 않음 → 보류 |
+
+집계는 `service_metrics.xfers_big / bytes_big / secs_big` 컬럼에 롤업 시점에 저장된다.
+`ALERT_LARGE_FILE_BYTES`는 롤업에 반영되는 값이라 `.env`에서만 바꾸며(재배포 필요),
+변경하면 baseline(기본 7일)이 새 기준으로 다시 쌓일 때까지 판정이 보수적으로 동작한다.
+
+#### 임계값 조정
+
+판정 임계값은 **설정 > 알림 설정 > 이상 감지 임계값**에서 바꾸며, 저장하면 다음 판정 주기
+(기본 5분)에 반영된다(WAS 재시작 불필요). `.env` 값은 기본값으로만 쓰이고, "기본값 복원"으로
+언제든 되돌릴 수 있다.
+
+| 항목 | 기본값 | 설명 |
+|---|---|---|
+| 이탈 배수 (`ALERT_MAD_K`) | 4.0 | 클수록 둔감 |
+| 전송 속도 하락 비율 (`ALERT_THROUGHPUT_DROP`) | 0.5 | 평소 대비 50%↓ |
+| 전송 실패율 하한 (`ALERT_FAIL_RATE_FLOOR`) | 0.05 | |
+| 로그인 실패율 하한 (`ALERT_LOGIN_FAIL_RATE_FLOOR`) | 0.30 | |
+| CWD 실패 하한 (`ALERT_CWD_FAIL_FLOOR`) | 20건 | |
+| 최소 표본 (`ALERT_MIN_SAMPLES` 등) | 20 / 10 / 5 | 전송 / 로그인 / CWD |
+| 전송 속도 최소 대상 건수 (`ALERT_MIN_LARGE_SAMPLES`) | 5 | 큰 파일 건수 |
 
 ### 드릴다운 필터
 
@@ -330,6 +363,8 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 | `GET/POST` | `/api/v1/settings/notify` | 알림 채널 설정 |
 | `GET/POST` | `/api/v1/settings/notify/mute` | 알림 음소거 |
 | `GET` | `/api/v1/settings/storage` | DB 저장소 현황 (파티션별 크기·행수, default 잔존) |
+| `GET/PUT` | `/api/v1/settings/alerts` | 이상 감지 임계값 조회 / 저장 |
+| `POST` | `/api/v1/settings/alerts/reset` | 임계값 기본값 복원 |
 | `GET/POST` | `/api/v1/users` | 고객 계정 목록 / 생성 (admin) |
 | `PUT/DELETE` | `/api/v1/users/{id}` | 고객 계정 수정(비밀번호·customer·IP·활성) / 삭제 (admin) |
 

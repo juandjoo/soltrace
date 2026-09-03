@@ -190,6 +190,60 @@ async function loadNotify() {
   document.getElementById('notifyWebhookUrl').value = d.webhook_url || '';
   document.getElementById('notifyHmsUrl').value     = d.hms_url || '';
   if (m) _applyMuteState(m.muted);
+  loadAlerts();
+}
+
+// ── 이상 감지 임계값 ────────────────────────────────────────────────────────
+// 입력 id ↔ API 필드. 저장 시 같은 표를 역방향으로 사용한다.
+const ALERT_FIELDS = {
+  alMadK: 'mad_k',
+  alThroughputDrop: 'throughput_drop',
+  alFailFloor: 'fail_rate_floor',
+  alLoginFailFloor: 'login_fail_rate_floor',
+  alCwdFloor: 'cwd_fail_floor',
+  alMinSamples: 'min_samples',
+  alMinLoginSamples: 'min_login_samples',
+  alMinCwdSamples: 'min_cwd_samples',
+  alMinLargeSamples: 'min_large_samples',
+};
+
+function _renderAlerts(a) {
+  if (!a) return;
+  for (const [id, key] of Object.entries(ALERT_FIELDS)) {
+    document.getElementById(id).value = a[key];
+  }
+  document.getElementById('alLargeBytes').textContent = fmtBytes(a.large_file_bytes) + ' 이상';
+  document.getElementById('alBucketInfo').textContent =
+    `${a.bucket_minutes}분 버킷 · 최근 ${a.baseline_days}일 기준`;
+}
+
+async function loadAlerts() {
+  const msg = document.getElementById('alertMsg');
+  msg.className = 'alert d-none py-2 small';
+  try {
+    _renderAlerts(await api('GET', '/settings/alerts'));
+  } catch (e) { settingsMsg('alertMsg', 'danger', e.message); }
+}
+
+async function saveAlerts() {
+  const body = {};
+  for (const [id, key] of Object.entries(ALERT_FIELDS)) {
+    const v = parseFloat(document.getElementById(id).value);
+    if (Number.isNaN(v)) { settingsMsg('alertMsg', 'danger', '빈 값이나 숫자가 아닌 값이 있습니다.'); return; }
+    body[key] = v;
+  }
+  try {
+    _renderAlerts(await api('PUT', '/settings/alerts', body));
+    settingsMsg('alertMsg', 'success', '저장했습니다. 다음 판정 주기(약 5분)부터 적용됩니다.');
+  } catch (e) { settingsMsg('alertMsg', 'danger', e.message); }
+}
+
+async function resetAlerts() {
+  if (!confirm('임계값을 기본값으로 되돌릴까요?')) return;
+  try {
+    _renderAlerts(await api('POST', '/settings/alerts/reset'));
+    settingsMsg('alertMsg', 'success', '기본값으로 되돌렸습니다.');
+  } catch (e) { settingsMsg('alertMsg', 'danger', e.message); }
 }
 
 async function toggleMute(muted) {

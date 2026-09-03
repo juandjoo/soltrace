@@ -167,6 +167,11 @@ class ServiceMetric(Base):
     transfer_fails = Column(Integer, nullable=False, default=0)
     bytes = Column(BigInteger, nullable=False, default=0)
     transfer_secs = Column(Float, nullable=False, default=0)
+    # 큰 파일(settings.alert_large_file_bytes 이상)만 따로 집계 — 전송 속도 판정용.
+    # 작은 파일의 고정 오버헤드가 실효속도를 끌어내려 오탐을 내는 것을 막는다.
+    xfers_big = Column(Integer, nullable=False, default=0)
+    bytes_big = Column(BigInteger, nullable=False, default=0)
+    secs_big = Column(Float, nullable=False, default=0)
     login_attempts = Column(Integer, nullable=False, default=0)
     login_fails = Column(Integer, nullable=False, default=0)
     cwd_fails = Column(Integer, nullable=False, default=0)

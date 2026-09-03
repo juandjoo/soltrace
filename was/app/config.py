@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     alert_baseline_days: int = 7            # baseline 산출 기간
     alert_mad_k: float = 4.0               # median + k·MAD 이탈 임계
     alert_min_samples: int = 20            # 전송 지표 평가 최소 건수 (소표본 오탐 방지)
+    # 전송 속도(throughput) 판정 대상 — 이 크기 이상의 전송만 집계한다.
+    # 작은 파일은 연결/인증 오버헤드가 전송시간의 대부분이라 실효속도가 낮게 나오고,
+    # 소량 파일 대량 업로드가 성능 저하로 오인된다. 롤업 시점에 반영되는 값이므로
+    # 변경 시 baseline(기본 7일)이 새 기준으로 다시 쌓일 때까지 판정이 보수적으로 동작한다.
+    alert_large_file_bytes: int = 4 * 1024 * 1024   # 4MB
+    alert_min_large_samples: int = 5       # 전송 속도 평가 최소 '큰 파일' 건수
     alert_min_login_samples: int = 10      # 로그인 지표 평가 최소 시도수
     alert_min_cwd_samples: int = 5         # CWD fail 평가 최소 건수
     alert_fail_rate_floor: float = 0.05    # 전송 실패율 절대 하한 (5%)

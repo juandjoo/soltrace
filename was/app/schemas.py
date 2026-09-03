@@ -342,6 +342,26 @@ class NotifySettings(BaseModel):
     hms_url: str = ""              # HMS 메일 게이트웨이 URL
 
 
+class AlertSettings(BaseModel):
+    """이상 감지 임계값. 저장하면 다음 판정 주기(기본 5분)에 반영된다."""
+    mad_k: Optional[float] = Field(default=None, ge=1, le=20)
+    fail_rate_floor: Optional[float] = Field(default=None, ge=0, le=1)
+    login_fail_rate_floor: Optional[float] = Field(default=None, ge=0, le=1)
+    throughput_drop: Optional[float] = Field(default=None, ge=0, le=1)
+    cwd_fail_floor: Optional[int] = Field(default=None, ge=0)
+    min_samples: Optional[int] = Field(default=None, ge=1)
+    min_login_samples: Optional[int] = Field(default=None, ge=1)
+    min_cwd_samples: Optional[int] = Field(default=None, ge=1)
+    min_large_samples: Optional[int] = Field(default=None, ge=1)
+
+
+class AlertSettingsInfo(AlertSettings):
+    # 참고용 (읽기 전용) — 롤업 시점에 반영되는 값이라 화면에서 바꾸지 않는다
+    large_file_bytes: int = 0
+    bucket_minutes: int = 0
+    baseline_days: int = 0
+
+
 class ServiceHealthResponse(BaseModel):
     devices: List[ServiceHealthDevice]
     alerts: List[ServiceAlertItem]
