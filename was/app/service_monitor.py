@@ -28,6 +28,26 @@ _EPOCH = "2000-01-01 00:00:00+00"  # date_bin origin (버킷 경계 고정)
 _CWD_PROBE_WINDOW = "10 minutes"
 
 
+def cwd_probe_sql(alias: str, since: str, until: str) -> str:
+    """이 cwd_fail 이 '존재 확인'인가 — 실패 직후 같은 경로가 생성됐는지 보는 조건.
+
+    폴더로 이동하다 실패한 게 아니라 업로드 전에 있는지 떠본 것이므로 실패가 아니다.
+    since/until 은 바깥 조회의 기간 SQL 식(예: ":since", "NOW()") — mkdir 쪽에도 같은
+    기간을 걸어야 파티션 프루닝이 되고, 없으면 전체 월 파티션을 훑는다.
+    idx_ftp_logs_mkdir_path(부분 인덱스)를 탄다.
+    """
+    return f"""EXISTS (
+                      SELECT 1 FROM ftp_logs mk
+                      WHERE mk.action = 'mkdir'
+                        AND mk.device_id = {alias}.device_id
+                        AND mk.file_path = {alias}.file_path
+                        AND mk.log_time >= {since}
+                        AND mk.log_time < ({until}) + INTERVAL '{_CWD_PROBE_WINDOW}'
+                        AND mk.log_time >= {alias}.log_time
+                        AND mk.log_time < {alias}.log_time + INTERVAL '{_CWD_PROBE_WINDOW}'
+                  )"""
+
+
 def cwd_real_fail_sql(alias: str, since: str, until: str) -> str:
     """진짜 디렉토리 이동 실패만 남기는 조건 (:cwd_ignore 바인딩 필요).
 
@@ -43,16 +63,7 @@ def cwd_real_fail_sql(alias: str, since: str, until: str) -> str:
     2번 조회는 idx_ftp_logs_mkdir_path(부분 인덱스)를 탄다.
     """
     return f"""{cwd_not_ignored_sql(f'{alias}.file_path')}
-                  AND NOT EXISTS (
-                      SELECT 1 FROM ftp_logs mk
-                      WHERE mk.action = 'mkdir'
-                        AND mk.device_id = {alias}.device_id
-                        AND mk.file_path = {alias}.file_path
-                        AND mk.log_time >= {since}
-                        AND mk.log_time < ({until}) + INTERVAL '{_CWD_PROBE_WINDOW}'
-                        AND mk.log_time >= {alias}.log_time
-                        AND mk.log_time < {alias}.log_time + INTERVAL '{_CWD_PROBE_WINDOW}'
-                  )"""
+                  AND NOT {cwd_probe_sql(alias, since, until)}"""
 
 
 def cwd_not_ignored_sql(col: str = "file_path") -> str:

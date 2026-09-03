@@ -8,12 +8,13 @@ from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Font
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import device_scope
 from app.models import Device, DeviceGroup, FtpLog
+from app.service_monitor import cwd_probe_sql
 from app.schemas import FtpLogResponse, LogCountResponse, LogListResponse
 
 router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
@@ -79,7 +80,24 @@ class LogFilters:
             q = q.filter(FtpLog.log_time >= self.start_time)
         if self.end_time:
             q = q.filter(FtpLog.log_time <= self.end_time)
-        return q
+        return self._hide_cwd_probes(q)
+
+    def _hide_cwd_probes(self, q):
+        """존재 확인(CWD 실패 직후 그 경로가 생성된 건)은 목록에서도 감춘다.
+
+        폴더로 이동하다 실패한 게 아니라 업로드 전에 떠본 것이라 '실패'로 보여줄 게 아니다.
+        집계·알림과 같은 판정(service_monitor.cwd_probe_sql)을 쓴다.
+        cwd_fail 행에만 EXISTS 가 붙도록 action 비교를 앞에 두어 다른 행은 그대로 통과한다.
+        """
+        # mkdir 쪽 파티션 프루닝용 절대 구간 — 기간을 지정하지 않은 조회에도 항상 채운다.
+        until = self.end_time or datetime.now(timezone.utc)
+        since = self.start_time or (until - timedelta(days=DEFAULT_RANGE_DAYS))
+        # 괄호 필수 — OR 이 다른 필터(기간·장비·사용자)까지 삼키면 조회 결과가 통째로 어긋난다.
+        cond = text(
+            f"(ftp_logs.action <> 'cwd_fail'"
+            f" OR NOT {cwd_probe_sql('ftp_logs', ':probe_since', ':probe_until')})"
+        ).bindparams(probe_since=since, probe_until=until)
+        return q.filter(cond)
 
 
 # CSV/XLSX 내보내기 공통 컬럼 — ORM 객체 생성 없이 튜플로 스트리밍
