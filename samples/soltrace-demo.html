@@ -1,0 +1,2949 @@
+<!--
+  이 파일은 scripts/build_demo.py 로 생성된 샘플 페이지입니다. 직접 수정하지 마세요.
+  화면을 바꾸려면 was/static 을 고친 뒤 스크립트를 다시 실행하세요.
+-->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SolTrace 데모 — FTP Log Analyzer</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+/* ── CSS 변수 ─────────────────────────────────────────────────── */
+:root {
+  --st-brand:    #e85d04;
+  --st-brand-bg: #fff5ee;
+  --st-text:     #475569;
+}
+
+/* ── 레이아웃 ──────────────────────────────────────────────────── */
+body        { background: #f5f7fa; font-size: 14px; }
+#main       { overflow: auto; }
+.page       { display: none; }
+.page.active { display: block; }
+.app-hidden { display: none !important; }
+.text-brand { color: var(--st-brand); }
+
+/* ── 상단 탭바 ─────────────────────────────────────────────────── */
+#topbar {
+  background: #fff;
+  border-bottom: 1px solid #d1d5db;
+  box-shadow: 0 2px 4px rgba(0,0,0,.06);
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+}
+#topbar .navbar-brand {
+  font-weight: 700;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+#topbar .navbar-brand:hover { opacity: .8; }
+#topbar .nav-link {
+  color: var(--st-text);
+  font-weight: 500;
+  border-radius: 10px;
+  padding: 6px 14px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+#topbar .nav-link i          { font-size: 1.1rem; }
+#topbar .nav-link:hover      { color: var(--st-brand); background: var(--st-brand-bg); }
+#topbar .nav-link.active     { color: var(--st-brand); background: var(--st-brand-bg); font-weight: 600; }
+
+/* 세션 타이머 · 연장 버튼 · 로그아웃 버튼 */
+.session-timer             { color: #6c757d; }
+.session-timer--warn       { color: #fd7e14; }
+.session-timer--danger     { color: #dc3545; }
+.btn-extend {
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid #ced4da;
+  color: var(--st-text);
+  line-height: 1.8;
+}
+.btn-extend:hover  { background: var(--st-brand-bg); border-color: var(--st-brand); color: var(--st-brand); }
+.btn-topbar-icon   { padding: 8px 10px; border-radius: 10px; color: var(--st-text); }
+.btn-topbar-icon:hover { background: var(--st-brand-bg); color: var(--st-brand); }
+
+/* ── 설정 좌측 세로 탭 ─────────────────────────────────────────── */
+.settings-vnav .nav-link        { color: var(--st-text); border-radius: 8px; padding: 8px 14px; margin-bottom: 3px; font-size: 13.5px; }
+.settings-vnav .nav-link i      { font-size: 1.1rem; width: 1.5rem; }
+.settings-vnav .nav-link:hover  { background: var(--st-brand-bg); color: var(--st-brand); }
+.settings-vnav .nav-link.active { background: var(--st-brand); color: #fff; }
+
+/* ── 공통 컴포넌트 ─────────────────────────────────────────────── */
+.card                    { border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.btn-xs                  { padding: 2px 8px; font-size: 12px; }
+
+.table th                { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #6c757d; }
+#loginModal .modal-dialog { max-width: 380px; margin-top: 15vh; }
+
+/* ── 대시보드 ──────────────────────────────────────────────────── */
+.dash-card       { border: 1px solid rgba(13,110,253,.15) !important; transition: box-shadow .15s ease, transform .15s ease; }
+.dash-card:hover { box-shadow: 0 8px 22px rgba(13,110,253,.18); transform: translateY(-3px); border-color: rgba(13,110,253,.35) !important; }
+
+.stat-card.upload       { border-color: #0d6efd; }
+.stat-card.download     { border-color: #198754; }
+.stat-card.delete       { border-color: #dc3545; }
+.stat-card.device       { border-color: #6f42c1; }
+
+/* ── 로그 테이블 ───────────────────────────────────────────────── */
+#page-logs table td, #page-logs table th { padding: 5px 10px; }
+#page-logs table thead th:not(:last-child) { border-right: 2px solid #ced4da; }
+.action-upload            { color: #0d6efd; }
+.action-download          { color: #198754; }
+.action-delete            { color: #dc3545; }
+.action-rename            { color: #fd7e14; }
+.action-login,
+.action-logout            { color: #6c757d; }
+.size-val                 { font-family: monospace; }
+
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+</head>
+<body>
+
+<!-- Login Modal -->
+<div class="modal fade" id="loginModal" data-bs-backdrop="static" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title"><i class="bi bi-hdd-network me-2 text-primary"></i>SolTrace</h5>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">FTP Log Analyzer에 로그인하세요.</p>
+        <div id="loginError" class="alert alert-danger d-none small py-2"></div>
+        <div id="loginIpBlocked" class="alert alert-warning d-none small py-2">
+          <i class="bi bi-shield-x me-1"></i>이 IP에서는 접속이 차단되어 있습니다.<br>
+          <span>차단된 IP: <code id="blockedIpDisplay"></code></span>
+        </div>
+        <form id="loginForm">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">아이디</label>
+            <input type="text" class="form-control" id="loginUser" placeholder="아이디 입력" autofocus autocomplete="username">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">비밀번호</label>
+            <input type="password" class="form-control" id="loginPwd" placeholder="비밀번호 입력" autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn btn-primary w-100" id="loginBtn">로그인</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Layout -->
+<div id="appLayout" class="app-hidden">
+
+  <!-- 상단 탭바 -->
+  <nav id="topbar" class="navbar navbar-expand px-4 py-2">
+    <button class="navbar-brand" onclick="nav('dashboard')">
+      <i class="bi bi-hdd-network me-2 text-brand"></i><span class="text-brand">Sol</span><span>Trace</span>
+    </button>
+    <ul class="nav gap-1 flex-nowrap" style="position:absolute;left:50%;transform:translateX(-50%)">
+      <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i>대시보드</a></li>
+      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
+      <li class="nav-item" data-admin-only><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear-fill"></i>설정</a></li>
+    </ul>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <span id="sessionTimerDisplay" class="session-timer d-flex align-items-center gap-1 small">
+        <i class="bi bi-clock" style="font-size:.85rem"></i>
+        <span id="sessionTimerText" style="font-variant-numeric:tabular-nums;min-width:2.6rem;font-weight:500">--:--</span>
+      </span>
+      <button class="btn btn-sm btn-extend py-0 px-2" onclick="extendSession()">연장</button>
+      <button class="btn btn-sm btn-topbar-icon" onclick="logout()" title="로그아웃">
+        <i class="bi bi-box-arrow-right" style="font-size:1.25rem"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- 콘텐츠 -->
+  <div id="main" class="p-4">
+
+    <!-- 대시보드 -->
+    <div id="page-dashboard" class="page active">
+      <div class="d-flex align-items-center gap-2 mb-4 flex-wrap">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-speedometer2 me-2 text-brand"></i>대시보드</h5>
+        <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-primary dash-quick" data-h24="true" onclick="dashLast24()">24H</button>
+            <button class="btn btn-outline-secondary dash-quick" data-days="7" onclick="dashQuick(7)">주</button>
+            <button class="btn btn-outline-secondary dash-quick" data-days="30" onclick="dashQuick(30)">월</button>
+          </div>
+          <input type="date" class="form-control form-control-sm" id="dashStart" style="width:130px" onchange="dashCustom()">
+          <span class="text-muted small">~</span>
+          <input type="date" class="form-control form-control-sm" id="dashEnd" style="width:130px" onchange="dashCustom()">
+          <button class="btn btn-sm btn-outline-secondary" id="btnDashAuto" onclick="toggleDashAutoRefresh()" title="자동 새로고침 켜기"><i class="bi bi-arrow-repeat"></i> <span>자동</span></button>
+          <button class="btn btn-sm btn-outline-primary" onclick="loadAll()"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+      </div>
+      <!-- 1행: 사용자별 사용량 + 장비 그룹별 시간대별 사용량 -->
+      <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+          <div class="card dash-card p-3 h-100">
+            <div class="d-flex align-items-center mb-2">
+              <span class="fw-semibold small">사용자별 사용량</span>
+              <button id="resetUserZoomBtn" class="btn btn-xs btn-outline-secondary ms-2 d-none" onclick="resetUserHourlyZoom()"><i class="bi bi-zoom-out me-1"></i>초기화</button>
+            </div>
+            <div class="d-flex gap-2">
+              <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartUserHourly"></canvas></div>
+              <div id="userHourlyLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card dash-card p-3 h-100">
+            <div class="d-flex align-items-center mb-2">
+              <span class="fw-semibold small">장비 그룹별 시간대별 사용량</span>
+              <button id="resetHourlyZoomBtn" class="btn btn-xs btn-outline-secondary ms-2 d-none" onclick="resetHourlyZoom()"><i class="bi bi-zoom-out me-1"></i>초기화</button>
+            </div>
+            <div class="d-flex gap-2">
+              <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartHourly"></canvas></div>
+              <div id="hourlyGroupLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- 2행: 영향도 + 실패건수 -->
+      <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+          <div class="card dash-card p-3 h-100">
+            <div class="d-flex align-items-baseline gap-2 mb-2">
+              <span class="fw-semibold small">서비스 영향도 (상태)</span>
+              <span id="healthStatusPeriod" class="text-muted" style="font-size:0.75rem"></span>
+            </div>
+            <div style="position:relative;height:220px"><canvas id="chartHealthStatus"></canvas></div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card dash-card p-3 h-100">
+            <div class="d-flex align-items-baseline gap-2 mb-2">
+              <span class="fw-semibold small">전송/로그인 실패 건수</span>
+              <span id="healthRatePeriod" class="text-muted" style="font-size:0.75rem"></span>
+            </div>
+            <div style="position:relative;height:220px"><canvas id="chartHealthRate"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <!-- 3행: 이상 알림 -->
+      <div class="row g-3">
+        <div class="col-12">
+          <div class="card dash-card p-3">
+            <div class="fw-semibold mb-2 small">최근 이상 알림</div>
+            <div class="table-responsive" style="max-height:260px;overflow:auto">
+              <table class="table table-sm align-middle mb-0">
+                <thead><tr class="text-muted small">
+                  <th>시각(KST)</th><th>장비</th><th>지표</th><th>심각도</th><th>값</th><th>평소</th><th>내용</th>
+                </tr></thead>
+                <tbody id="healthAlerts"><tr><td colspan="7" class="text-muted small">-</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Device Status Modal -->
+    <div class="modal fade" id="deviceStatusModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title"><i class="bi bi-activity me-1"></i>데몬 상태 상세 - <span id="dsHostname"></span></h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="dsBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 로그 조회 -->
+    <div id="page-logs" class="page">
+      <div class="d-flex align-items-center mb-3">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-list-ul me-2 text-brand"></i>로그 조회</h5>
+        <div class="ms-auto d-flex gap-2 align-items-center">
+          <select class="form-select form-select-sm" id="logPageSize" onchange="searchLogs(1)" style="width:90px">
+            <option value="25">25건</option>
+            <option value="50" selected>50건</option>
+            <option value="100">100건</option>
+            <option value="200">200건</option>
+          </select>
+          <button class="btn btn-sm btn-outline-success" onclick="exportLogs()">
+            <i class="bi bi-filetype-csv me-1"></i>CSV
+          </button>
+          <button class="btn btn-sm btn-outline-primary" onclick="exportXlsx()">
+            <i class="bi bi-file-earmark-excel me-1"></i>Excel
+          </button>
+        </div>
+      </div>
+      <!-- 검색 필터 -->
+      <div class="card mb-3 px-3 py-2">
+        <div class="d-flex gap-1 align-items-center flex-wrap">
+          <select class="form-select form-select-sm" style="flex:0.8;min-width:80px" id="logTelcoFilter" onchange="onTelcoFilter()">
+            <option value="">전체 텔코</option>
+          </select>
+          <div style="position:relative;flex:1;min-width:90px">
+            <select class="form-select form-select-sm w-100" id="logGroupFilter" onchange="searchLogs(1)">
+              <option value="">전체 그룹</option>
+            </select>
+            <div id="logGroupTip" class="d-none position-absolute bg-white border rounded shadow-sm px-2 py-1 small" style="top:calc(100% + 4px);left:0;z-index:1055;min-width:200px;line-height:1.6;pointer-events:none"></div>
+          </div>
+          <input class="form-control form-control-sm" style="flex:0.8;min-width:80px" id="logUserFilter" placeholder="사용자ID" readonly autocomplete="off" onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')searchLogs(1)">
+          <input class="form-control form-control-sm" style="flex:0.9;min-width:95px" id="logIpFilter" placeholder="사용자IP" readonly autocomplete="off" onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')searchLogs(1)">
+          <input class="form-control form-control-sm" style="flex:1.4;min-width:110px" id="logFileFilter" placeholder="파일명/경로" autocomplete="off" onkeydown="if(event.key==='Enter')searchLogs(1)">
+          <select class="form-select form-select-sm" style="flex:0.9;min-width:90px" id="logActionFilter" onchange="searchLogs(1)">
+            <option value="__exclude_login_logout__" selected>전체 (로그인 제외)</option>
+            <option value="">전체</option>
+            <option value="__transfer_only__">전송 (업로드/다운로드)</option>
+            <option value="upload">업로드</option>
+            <option value="download">다운로드</option>
+            <option value="delete">삭제</option>
+            <option value="rename">이름변경</option>
+            <option value="login">로그인</option>
+            <option value="logout">로그아웃</option>
+            <option value="mkdir">폴더생성</option>
+            <option value="rmdir">폴더삭제</option>
+            <option value="cwd_fail">디렉토리 이동 실패</option>
+          </select>
+          <select class="form-select form-select-sm" style="flex:0.7;min-width:80px" id="logStatusFilter" onchange="searchLogs(1)">
+            <option value="">전체 상태</option>
+            <option value="success">성공</option>
+            <option value="fail">실패</option>
+          </select>
+          <div class="vr mx-1 flex-shrink-0" style="opacity:.25"></div>
+          <div class="d-flex gap-1 flex-shrink-0">
+            <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(0)">오늘</button>
+            <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(-1)">어제</button>
+            <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(-7)">7일</button>
+          </div>
+          <input type="datetime-local" class="form-control form-control-sm" style="flex:1.3;min-width:135px" id="logStartTime">
+          <span class="flex-shrink-0 text-muted small">~</span>
+          <input type="datetime-local" class="form-control form-control-sm" style="flex:1.3;min-width:135px" id="logEndTime">
+          <button class="btn btn-primary btn-sm flex-shrink-0" onclick="searchLogs(1)"><i class="bi bi-search"></i></button>
+          <button class="btn btn-outline-secondary btn-sm flex-shrink-0" onclick="resetLogFilters()" title="검색 초기화"><i class="bi bi-x-circle"></i></button>
+        </div>
+        <div class="px-1 pt-1 pb-0">
+          <span class="text-muted" style="font-size:0.72rem"><i class="bi bi-info-circle me-1"></i>기본 조회 3개월, 이상 조회 시 날짜 지정 후 진행</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 table-sm" style="table-layout:fixed;min-width:1260px">
+            <colgroup id="logColGroup">
+              <col data-idx="0" style="width:140px"> <!-- 시간 -->
+              <col data-idx="1" style="width:140px"> <!-- 장비 -->
+              <col data-idx="2" style="width:120px"> <!-- 사용자 -->
+              <col data-idx="3" style="width:130px"> <!-- IP -->
+              <col data-idx="4" style="width:90px">  <!-- 작업 -->
+              <col data-idx="5">                     <!-- 파일 경로 -->
+              <col data-idx="6" style="width:90px">  <!-- 크기 -->
+              <col data-idx="7" style="width:90px">  <!-- 전송시간 -->
+              <col data-idx="8" style="width:70px">  <!-- 상태 -->
+            </colgroup>
+            <thead class="table-light">
+              <tr style="white-space:nowrap">
+                <th class="text-center">시간</th><th class="text-center">업로드 장비</th><th class="text-center">사용자</th><th class="text-center">사용자 IP</th><th class="text-center">작업</th>
+                <th>파일 경로</th><th class="text-center">크기</th><th class="text-center">전송시간</th><th class="text-center">상태</th>
+              </tr>
+            </thead>
+            <tbody id="logTable"><tr><td colspan="9" class="text-center text-muted py-4">검색 조건을 입력하고 조회하세요.</td></tr></tbody>
+          </table>
+        </div>
+        <div class="d-flex align-items-center px-3 py-2 border-top">
+          <span class="text-muted small" id="logTotal"></span>
+          <nav class="ms-auto"><ul class="pagination pagination-sm mb-0" id="logPager"></ul></nav>
+        </div>
+      </div>
+    </div>
+
+    <!-- 설정 -->
+    <div id="page-settings" class="page">
+      <h5 class="mb-3 fw-bold"><i class="bi bi-gear-fill me-2 text-brand"></i>설정</h5>
+      <div class="row g-4 align-items-start">
+        <div class="col-auto">
+          <!-- 좌측 세로 탭 -->
+          <ul class="nav settings-vnav flex-column" style="min-width:170px">
+            <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-telephone-fill me-2"></i>텔코 정보</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('security')"><i class="bi bi-shield-lock-fill me-2"></i>계정 보안</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('storage')"><i class="bi bi-database-fill me-2"></i>DB 저장소</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack-fill me-2"></i>장비 관리</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3-fill me-2"></i>그룹 관리</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('notify')"><i class="bi bi-bell-fill me-2"></i>알림 설정</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('users')"><i class="bi bi-people-fill me-2"></i>고객 계정</a></li>
+          </ul>
+        </div>
+
+        <!-- 우측 내용 -->
+        <div class="col" style="min-width:0">
+
+          <!-- 텔코 정보 -->
+          <div id="settings-telco" class="settings-pane" style="max-width:620px">
+            <div class="card">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-broadcast-pin me-1"></i>통신사 목록</div>
+              <div class="card-body">
+                <div id="telcoMsg" class="alert d-none py-2 small"></div>
+                <div class="input-group input-group-sm mb-3">
+                  <input class="form-control" id="telcoName" placeholder="통신사명 입력 (예: KT)" onkeydown="if(event.key==='Enter')addTelco()">
+                  <button class="btn btn-primary" onclick="addTelco()"><i class="bi bi-plus-lg me-1"></i>추가</button>
+                </div>
+                <ul class="list-group list-group-flush" id="telcoList">
+                  <li class="list-group-item text-muted small">불러오는 중…</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- 계정 보안 -->
+          <div id="settings-security" class="settings-pane d-none" style="max-width:620px">
+            <div class="d-flex flex-column gap-3">
+              <!-- 비밀번호 변경 -->
+              <div class="card">
+                <div class="card-header bg-white fw-semibold"><i class="bi bi-key me-1"></i>비밀번호 변경</div>
+                <div class="card-body">
+                  <div id="pwMsg" class="alert d-none py-2 small"></div>
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold">현재 비밀번호</label>
+                    <input type="password" class="form-control form-control-sm" id="pwCurrent">
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold">새 비밀번호 (8자 이상)</label>
+                    <input type="password" class="form-control form-control-sm" id="pwNew">
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold">새 비밀번호 확인</label>
+                    <input type="password" class="form-control form-control-sm" id="pwConfirm">
+                  </div>
+                  <button class="btn btn-sm btn-primary" onclick="changePassword()">변경</button>
+                </div>
+              </div>
+              <!-- 접속 IP 허용 목록 -->
+              <div class="card">
+                <div class="card-header bg-white fw-semibold"><i class="bi bi-shield-lock me-1"></i>접속 허용 IP</div>
+                <div class="card-body">
+                  <div id="ipMsg" class="alert d-none py-2 small"></div>
+                  <div class="d-flex align-items-center gap-2 mb-3 p-2 bg-light rounded">
+                    <span class="small text-muted">현재 접속 IP:</span>
+                    <code id="myIpDisplay" class="small fw-semibold">-</code>
+                    <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-1" onclick="addMyIp()">목록에 추가</button>
+                  </div>
+                  <div class="form-text mb-1">한 줄에 하나씩. CIDR 대역 가능. 비워두면 모든 IP 허용.<br>예: <code>192.168.1.0/24</code>, <code>10.0.0.5</code></div>
+                  <textarea class="form-control form-control-sm font-monospace" id="allowedIps" rows="8" placeholder="비워두면 제한 없음"></textarea>
+                  <div class="form-text mt-2 text-warning-emphasis"><i class="bi bi-exclamation-triangle me-1"></i>저장 전 현재 IP 포함 여부를 확인하세요.</div>
+                  <button class="btn btn-sm btn-primary mt-3" onclick="saveAllowedIps()">저장</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 시스템 업데이트 -->
+          <div id="settings-update" class="settings-pane d-none" style="max-width:620px">
+            <div class="card">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-arrow-repeat me-1"></i>시스템 업데이트 (git)</div>
+              <div class="card-body">
+                <div id="updMsg" class="alert d-none py-2 small"></div>
+                <dl class="row small mb-3">
+                  <dt class="col-sm-3 text-muted">브랜치</dt><dd class="col-sm-9" id="verBranch">-</dd>
+                  <dt class="col-sm-3 text-muted">현재 커밋</dt><dd class="col-sm-9" id="verCommit">-</dd>
+                  <dt class="col-sm-3 text-muted">커밋 일시</dt><dd class="col-sm-9" id="verDate">-</dd>
+                  <dt class="col-sm-3 text-muted">메시지</dt><dd class="col-sm-9" id="verSubject">-</dd>
+                  <dt class="col-sm-3 text-muted">상태</dt><dd class="col-sm-9" id="verStatus">-</dd>
+                </dl>
+                <button class="btn btn-sm btn-outline-secondary" id="checkUpdBtn" onclick="checkUpdate()">업데이트 확인</button>
+                <button class="btn btn-sm btn-warning" id="runUpdBtn" onclick="runUpdate()"><i class="bi bi-download me-1"></i>지금 업데이트</button>
+                <div class="form-text mt-2">업데이트 시 origin/main을 받아 재배포하며, 서비스가 1~2분간 재시작됩니다.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DB 저장소 -->
+          <div id="settings-storage" class="settings-pane d-none" style="max-width:760px">
+            <div class="card mb-3">
+              <div class="card-header bg-white fw-semibold d-flex align-items-center">
+                <i class="bi bi-database-fill me-1"></i>DB 저장소 현황
+                <button class="btn btn-sm btn-outline-primary ms-auto" onclick="loadStorage()"><i class="bi bi-arrow-clockwise"></i></button>
+              </div>
+              <div class="card-body">
+                <div id="storageMsg" class="alert d-none py-2 small"></div>
+                <dl class="row small mb-2">
+                  <dt class="col-sm-4 text-muted">데이터베이스 전체</dt><dd class="col-sm-8" id="stDbSize">-</dd>
+                  <dt class="col-sm-4 text-muted">ftp_logs (전체 파티션)</dt><dd class="col-sm-8" id="stLogsSize">-</dd>
+                  <dt class="col-sm-4 text-muted">보존 기간</dt><dd class="col-sm-8" id="stRetention">-</dd>
+                  <dt class="col-sm-4 text-muted">default 파티션</dt><dd class="col-sm-8" id="stDefault">-</dd>
+                </dl>
+                <div class="form-text">행 수는 통계 추정치입니다. default 파티션에 행이 남아 있으면 해당 월 파티션이 만들어지지 않고 보존기간 정리에서도 제외되므로 <code>scripts/rebalance_default_partition.sql</code> 로 재배치하세요.</div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-table me-1"></i>월별 파티션</div>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0 small">
+                  <thead class="table-light"><tr>
+                    <th>파티션</th><th class="text-end">행 수(추정)</th><th class="text-end">테이블</th><th class="text-end">인덱스</th><th class="text-end">합계</th>
+                  </tr></thead>
+                  <tbody id="storageTable"><tr><td colspan="5" class="text-center text-muted py-3">불러오는 중…</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 장비 관리 -->
+          <div id="settings-devices" class="settings-pane d-none">
+            <div class="d-flex align-items-center justify-content-center gap-3 mb-3">
+              <h6 class="mb-0 fw-bold">장비 관리</h6>
+              <div class="d-flex gap-2">
+                <select class="form-select form-select-sm" id="deviceFilter" onchange="loadDevices()" style="width:120px">
+                  <option value="">전체</option>
+                  <option value="pending">대기중</option>
+                  <option value="confirmed">확인됨</option>
+                  <option value="disabled">비활성</option>
+                </select>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadDevices()"><i class="bi bi-arrow-clockwise"></i></button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="text-center">호스트명</th><th class="text-center">IP</th><th class="text-center">장비상태</th><th class="text-center">데몬상태</th>
+                      <th class="text-center">CPU / MEM / Disk</th><th class="text-center">버퍼</th>
+                      <th class="text-center">마지막 연결</th><th class="text-center">그룹</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="deviceTable"><tr><td colspan="9" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 그룹 관리 -->
+          <div id="settings-groups" class="settings-pane d-none">
+            <div class="d-flex align-items-center mb-3">
+              <h6 class="mb-0 fw-bold">그룹 관리</h6>
+              <button class="btn btn-sm btn-primary ms-auto" onclick="openGroupModal()">
+                <i class="bi bi-plus-lg me-1"></i>그룹 추가
+              </button>
+            </div>
+            <div class="d-flex align-items-center mb-2 gap-2 flex-wrap">
+              <div id="groupFilter" class="d-flex gap-2 flex-wrap"></div>
+              <div class="ms-auto d-flex align-items-center gap-1">
+                <label class="form-label mb-0 small text-muted">페이지당</label>
+                <select class="form-select form-select-sm" style="width:72px" id="groupPageSize" onchange="renderGroupPage(1)">
+                  <option value="10">10</option>
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                  <option value="0">전체</option>
+                </select>
+              </div>
+            </div>
+            <div id="groupCards">
+              <div class="text-center text-muted py-4">로딩 중...</div>
+            </div>
+            <div id="groupPager" class="d-flex justify-content-center mt-2"></div>
+          </div>
+
+          <!-- 알림 설정 -->
+          <div id="settings-notify" class="settings-pane d-none" style="max-width:620px">
+            <div class="d-flex align-items-center mb-3">
+              <h6 class="fw-bold mb-0">알림 설정</h6>
+              <div class="ms-auto d-flex align-items-center gap-2">
+                <span id="notifyMuteLabel" class="small text-muted">발송 중</span>
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input" type="checkbox" role="switch" id="notifyMuteToggle" onchange="toggleMute(this.checked)">
+                  <label class="form-check-label small" for="notifyMuteToggle">일시 중지</label>
+                </div>
+              </div>
+            </div>
+            <!-- 웹훅 -->
+            <div class="card mb-3">
+              <div class="card-header py-2 fw-semibold small d-flex align-items-center">
+                <span><i class="bi bi-globe2 me-2"></i>웹훅</span>
+                <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="testNotify('webhook')"><i class="bi bi-send me-1"></i>테스트</button>
+              </div>
+              <div class="card-body">
+                <label class="form-label small mb-1">웹훅 URL</label>
+                <input class="form-control form-control-sm" id="notifyWebhookUrl" placeholder="https://hooks.example.com/...">
+              </div>
+            </div>
+            <!-- HMS 메일 게이트웨이 -->
+            <div class="card mb-3">
+              <div class="card-header py-2 fw-semibold small d-flex align-items-center">
+                <span><i class="bi bi-envelope-arrow-up-fill me-2"></i>HMS 메일 게이트웨이</span>
+                <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="testNotify('hms')"><i class="bi bi-send me-1"></i>테스트</button>
+              </div>
+              <div class="card-body">
+                <label class="form-label small mb-1">HMS URL</label>
+                <input class="form-control form-control-sm" id="notifyHmsUrl" placeholder="https://hms.example.com/api/mail">
+              </div>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary btn-sm" onclick="saveNotify()"><i class="bi bi-save me-1"></i>저장</button>
+            </div>
+            <div id="notifyMsg" class="mt-2 small"></div>
+          </div>
+
+          <!-- 고객 계정 -->
+          <div id="settings-users" class="settings-pane d-none" style="max-width:760px">
+            <div class="card mb-3">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-person-plus me-1"></i>고객 계정 추가</div>
+              <div class="card-body">
+                <div id="userMsg" class="alert d-none py-2 small"></div>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <label class="form-label small fw-semibold">아이디</label>
+                    <input class="form-control form-control-sm" id="newUserName" placeholder="예: customerA">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-semibold">비밀번호 (8자 이상)</label>
+                    <input type="password" class="form-control form-control-sm" id="newUserPwd">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-semibold">고객사 (그룹의 customer 와 일치)</label>
+                    <input class="form-control form-control-sm" id="newUserCustomer" list="customerOptions" placeholder="예: ACME">
+                    <datalist id="customerOptions"></datalist>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-semibold">허용 IP/CIDR (선택, 줄바꿈 구분)</label>
+                    <textarea class="form-control form-control-sm" id="newUserIps" rows="2" placeholder="비우면 IP 제한 없음&#10;예: 203.0.113.0/24"></textarea>
+                  </div>
+                </div>
+                <button class="btn btn-sm btn-primary mt-3" onclick="createUser()"><i class="bi bi-plus-lg me-1"></i>계정 생성</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-people me-1"></i>고객 계정 목록</div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover mb-0 align-middle">
+                    <thead><tr class="small text-muted">
+                      <th class="ps-3">아이디</th><th>고객사</th><th>허용 IP</th><th>상태</th><th class="text-end pe-3">작업</th>
+                    </tr></thead>
+                    <tbody id="userList"><tr><td colspan="5" class="text-muted small p-3">불러오는 중…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /col -->
+      </div><!-- /row -->
+    </div><!-- /page-settings -->
+
+  </div><!-- /main -->
+</div><!-- /appLayout -->
+
+<!-- 그룹 모달 -->
+<div class="modal fade" id="groupModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title" id="groupModalTitle">그룹 추가</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="groupId">
+        <div class="row g-3 mb-3">
+          <div class="col-sm-7">
+            <label class="form-label small fw-semibold">그룹명 *</label>
+            <input class="form-control form-control-sm" id="groupName">
+          </div>
+          <div class="col-sm-5">
+            <label class="form-label small fw-semibold">통신사</label>
+            <select class="form-select form-select-sm" id="groupTelco"></select>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">고객사</label>
+          <textarea class="form-control form-control-sm" id="groupCustomer" rows="3" placeholder="예) LG CNS&#10;SK브로드밴드"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">업로드 도메인</label>
+          <textarea class="form-control form-control-sm" id="groupUploadDomains" rows="6" placeholder="한 줄에 하나씩 입력&#10;예) vivasambackup-ftp.lgucdn.com&#10;    cjclip-ftp.lgucdn.com"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Application</label>
+          <textarea class="form-control form-control-sm" id="groupApplication" rows="3" placeholder="예) CMS&#10;Ingest Server&#10;관련 시스템명 또는 연동 정보"></textarea>
+        </div>
+        <div class="mb-0">
+          <label class="form-label small fw-semibold">비고</label>
+          <textarea class="form-control form-control-sm" id="groupDesc" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="saveGroup()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 장비 그룹 배정 모달 -->
+<div class="modal fade" id="deviceGroupModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">그룹 배정 - <span id="dgDeviceName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="dgDeviceId">
+        <div id="dgGroupList" class="d-flex flex-column gap-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="saveDeviceGroups()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+/* === demo-data.js === */
+/* SolTrace 데모 모드 — 백엔드 없이 UI 를 그대로 보여주기 위한 API 스텁.
+ *
+ * 실제 화면(index.html + 실제 css/js)을 그대로 쓰고 네트워크 응답만 가짜로 채운다.
+ * 따라서 UI 를 고쳐도 데모가 따로 낡지 않는다.
+ *
+ * 로드 조건: utils.js 보다 **먼저** 실행되어야 한다 (token 을 미리 심고 fetch 를 가로챈다).
+ * 사용처:
+ *   - scripts/build_demo.py 가 만드는 단일 파일 샘플(samples/soltrace-demo.html)
+ *   - 서버 실행 중에는 /demo 경로로 접속 (index.html 이 쿼리/경로를 보고 이 파일을 로드)
+ */
+(function () {
+  'use strict';
+
+  const HOUR = 3600 * 1000;
+  const DAY = 24 * HOUR;
+  const now = Date.now();
+
+  // 결정적 난수 — 새로고침해도 같은 화면이 나오도록
+  let _seed = 20260903;
+  function rnd() {
+    _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
+    return _seed / 0x7fffffff;
+  }
+  const pick = arr => arr[Math.floor(rnd() * arr.length)];
+  const between = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+
+  // ── 로그인 상태 위조: role=admin 인 서명 없는 토큰 (데모 전용, 서버 검증 없음) ──
+  function b64url(obj) {
+    return btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  const demoToken = [
+    b64url({ alg: 'none', typ: 'JWT' }),
+    b64url({ sub: 'admin', role: 'admin', exp: Math.floor((now + HOUR) / 1000) }),
+    'demo',
+  ].join('.');
+  localStorage.setItem('soltrace_token', demoToken);
+
+  // ── 기준 데이터 ────────────────────────────────────────────────────────────
+  const TELCOS = [{ id: 1, name: 'SKT' }, { id: 2, name: 'KT' }, { id: 3, name: 'LG U+' }];
+
+  const GROUPS = [
+    { id: 1, name: 'VOD-서울', telco: 'SKT',   customer: 'ACME',    application: 'VOD 배포',    upload_domains: 'vod.acme.co.kr',   description: '서울 IDC VOD 원본 수집', device_count: 2 },
+    { id: 2, name: 'VOD-부산', telco: 'SKT',   customer: 'ACME',    application: 'VOD 배포',    upload_domains: 'vod-bs.acme.co.kr', description: '부산 IDC 이중화',        device_count: 1 },
+    { id: 3, name: 'CDN-원본', telco: 'KT',    customer: 'BLUEWAVE', application: 'CDN Origin', upload_domains: 'origin.bluewave.kr', description: 'CDN 원본 서버',         device_count: 1 },
+    { id: 4, name: '백업-야간', telco: 'LG U+', customer: 'BLUEWAVE', application: '백업',       upload_domains: '',                  description: '야간 배치 백업',         device_count: 1 },
+  ].map(g => ({ ...g, created_at: new Date(now - 120 * DAY).toISOString() }));
+
+  const GROUP_BRIEF = GROUPS.map(g => ({ id: g.id, name: g.name, telco: g.telco }));
+
+  const DEVICES = [
+    { id: 1, hostname: 'ftp-seoul-01', ip_address: '10.20.1.11', status: 'confirmed', daemon_status: 'running',  cpu: 12.4, mem: 88.2,  disk: 412.5, buf: 0,     fail: 0, groups: [0] },
+    { id: 2, hostname: 'ftp-seoul-02', ip_address: '10.20.1.12', status: 'confirmed', daemon_status: 'running',  cpu: 31.7, mem: 104.6, disk: 233.1, buf: 0,     fail: 0, groups: [0] },
+    { id: 3, hostname: 'ftp-busan-01', ip_address: '10.30.2.21', status: 'confirmed', daemon_status: 'degraded', cpu: 68.9, mem: 151.3, disk: 41.8,  buf: 12400, fail: 3, groups: [1], err: 'WAS 응답 지연 — 로컬 버퍼 사용 중' },
+    { id: 4, hostname: 'ftp-origin-01', ip_address: '10.40.3.31', status: 'confirmed', daemon_status: 'running', cpu: 22.1, mem: 96.0,  disk: 890.2, buf: 0,     fail: 0, groups: [2] },
+    { id: 5, hostname: 'ftp-backup-01', ip_address: '10.40.3.32', status: 'pending',   daemon_status: 'unknown', cpu: null, mem: null,  disk: null,  buf: 0,     fail: 0, groups: [] },
+  ].map(d => ({
+    id: d.id,
+    hostname: d.hostname,
+    ip_address: d.ip_address,
+    device_key: 'demo-key-' + String(d.id).padStart(4, '0'),
+    status: d.status,
+    os_info: 'Rocky Linux 8.9 (Green Obsidian)',
+    kernel_version: '4.18.0-513.el8.x86_64',
+    proftpd_version: '1.3.6',
+    daemon_version: '1.0.0',
+    last_heartbeat: new Date(now - (d.daemon_status === 'unknown' ? 6 * HOUR : between(5, 90) * 1000)).toISOString(),
+    daemon_status: d.daemon_status,
+    last_send_time: new Date(now - between(10, 120) * 1000).toISOString(),
+    buffer_lines: d.buf,
+    queue_size: d.buf ? 320 : 0,
+    consecutive_failures: d.fail,
+    error_message: d.err || null,
+    cpu_percent: d.cpu,
+    mem_mb: d.mem,
+    disk_free_gb: d.disk,
+    daemon_uptime: d.daemon_status === 'unknown' ? null : between(3600, 720000),
+    update_requested: false,
+    created_at: new Date(now - 100 * DAY).toISOString(),
+    groups: d.groups.map(i => GROUP_BRIEF[i]),
+  }));
+
+  const ACTIVE_DEVICES = DEVICES.filter(d => d.status === 'confirmed');
+  const USERS = ['vod_ingest', 'cdn_sync', 'batch_night', 'media_ops', 'partner_a', 'partner_b'];
+  const PATHS = [
+    '/upload/vod/2026/09/ep_{n}.mp4', '/upload/vod/2026/09/ep_{n}.ts',
+    '/origin/live/ch{n}/segment_{n}.m4s', '/backup/db/dump_{n}.sql.gz',
+    '/upload/thumb/{n}.jpg', '/partner/drop/{n}.zip',
+  ];
+
+  // ── 로그 (총 12,483건 중 페이지 단위로 잘라 응답) ──────────────────────────
+  const LOG_TOTAL = 12483;
+  function makeLog(i) {
+    const dev = ACTIVE_DEVICES[i % ACTIVE_DEVICES.length];
+    const action = pick(['upload', 'upload', 'download', 'download', 'delete', 'login', 'logout', 'mkdir', 'cwd_fail']);
+    const failed = rnd() < 0.06;
+    const isTransfer = action === 'upload' || action === 'download';
+    const size = isTransfer ? between(120 * 1024, 4 * 1024 * 1024 * 1024) : 0;
+    return {
+      id: LOG_TOTAL - i,
+      device_id: dev.id,
+      device_hostname: dev.hostname,
+      device_ip: dev.ip_address,
+      log_time: new Date(now - i * 137 * 1000 - between(0, 60) * 1000).toISOString(),
+      client_ip: `192.168.${between(1, 40)}.${between(2, 250)}`,
+      username: action === 'logout' ? pick(USERS) : pick(USERS),
+      action,
+      file_path: isTransfer || action === 'delete' || action === 'mkdir'
+        ? pick(PATHS).replace(/\{n\}/g, () => String(between(1, 9999)))
+        : (action === 'cwd_fail' ? '/upload/vod/2026/08' : null),
+      file_size: size,
+      transfer_time: isTransfer ? Number((size / (1024 * 1024) / between(8, 90) + 0.2).toFixed(2)) : 0,
+      transfer_type: isTransfer ? 'b' : null,
+      status: action === 'cwd_fail' ? 'fail' : (failed ? 'fail' : 'success'),
+    };
+  }
+
+  // ── 대시보드 ───────────────────────────────────────────────────────────────
+  function dashboard() {
+    const timeseries = [];
+    for (let d = 6; d >= 0; d--) {
+      const day = new Date(now - d * DAY);
+      const up = between(900, 2600), down = between(1400, 3800);
+      timeseries.push({
+        date: `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`,
+        uploads: up, downloads: down, deletes: between(20, 160),
+        bytes_in: up * between(40, 120) * 1024 * 1024,
+        bytes_out: down * between(30, 90) * 1024 * 1024,
+      });
+    }
+    const sum = k => timeseries.reduce((a, b) => a + b[k], 0);
+    return {
+      stats: {
+        total_uploads: sum('uploads'), total_downloads: sum('downloads'), total_deletes: sum('deletes'),
+        total_bytes_in: sum('bytes_in'), total_bytes_out: sum('bytes_out'),
+        active_devices: ACTIVE_DEVICES.length, active_users: USERS.length, period_days: 7,
+      },
+      timeseries,
+      top_users: USERS.map(u => ({ label: u, count: between(300, 3000), bytes: between(20, 900) * 1024 * 1024 * 1024 }))
+        .sort((a, b) => b.count - a.count),
+      top_devices: ACTIVE_DEVICES.map(d => ({ label: d.hostname, count: between(800, 4200), bytes: between(50, 1200) * 1024 * 1024 * 1024 }))
+        .sort((a, b) => b.count - a.count),
+      top_groups: GROUPS.map(g => ({ label: g.name, customer: g.customer, count: between(500, 3500), bytes: between(40, 1000) * 1024 * 1024 * 1024 }))
+        .sort((a, b) => b.bytes - a.bytes),
+      by_action: { upload: sum('uploads'), download: sum('downloads'), delete: sum('deletes'), login: between(400, 900), logout: between(380, 880), mkdir: between(30, 120), cwd_fail: between(10, 90) },
+    };
+  }
+
+  function hourlyPoints(scale) {
+    const pts = [];
+    for (let h = 23; h >= 0; h--) {
+      const b = new Date(now - h * HOUR);
+      b.setUTCMinutes(0, 0, 0);
+      // 업무시간(UTC+9 기준 낮)에 트래픽이 몰리는 모양
+      const kst = (b.getUTCHours() + 9) % 24;
+      const busy = kst >= 9 && kst <= 21 ? 1 : 0.25;
+      const up = Math.round(between(20, 160) * busy * scale);
+      const down = Math.round(between(40, 260) * busy * scale);
+      pts.push({
+        bucket: b.toISOString().replace(/\.\d+Z$/, 'Z'),
+        uploads: up, downloads: down,
+        bytes_in: up * between(30, 90) * 1024 * 1024,
+        bytes_out: down * between(20, 70) * 1024 * 1024,
+      });
+    }
+    return pts;
+  }
+
+  function serviceHealth() {
+    const trend = [];
+    for (let i = 23; i >= 0; i--) {
+      const b = new Date(now - i * HOUR);
+      b.setUTCMinutes(0, 0, 0);
+      const spike = i >= 4 && i <= 6;   // 몇 시간 전 장애 구간
+      trend.push({
+        bucket: b.toISOString(),
+        fail_rate: spike ? 0.18 + rnd() * 0.09 : rnd() * 0.03,
+        throughput_mb: spike ? 12 + rnd() * 6 : 48 + rnd() * 22,
+        login_fail_rate: spike ? 0.34 + rnd() * 0.1 : rnd() * 0.05,
+        cwd_fails: spike ? between(30, 80) : between(0, 6),
+      });
+    }
+    const alerts = [
+      { metric: 'fail_rate',       severity: 'critical', value: 0.241, baseline: 0.021, dev: 2, msg: '전송 실패율 24.1% (기준 2.1%)' },
+      { metric: 'throughput',      severity: 'warning',  value: 13.4,  baseline: 51.2,  dev: 2, msg: '실효 전송속도 13.4MB/s (기준 51.2MB/s)' },
+      { metric: 'login_fail_rate', severity: 'warning',  value: 0.382, baseline: 0.042, dev: 3, msg: '로그인 실패율 38.2% (기준 4.2%)' },
+      { metric: 'cwd_fail_spike',  severity: 'warning',  value: 64,    baseline: 3,     dev: 1, msg: 'CWD 실패 64건 (기준 3건)' },
+    ].map((a, i) => {
+      const d = ACTIVE_DEVICES[a.dev];
+      const t = new Date(now - (5 - i * 0.3) * HOUR);
+      return {
+        id: 900 + i, device_id: d.id, hostname: d.hostname,
+        bucket: t.toISOString(), metric: a.metric, severity: a.severity,
+        value: a.value, baseline: a.baseline, message: a.msg, created_at: t.toISOString(),
+      };
+    });
+    const statuses = { 1: 'ok', 2: 'ok', 3: 'critical', 4: 'warning' };
+    return {
+      devices: ACTIVE_DEVICES.map(d => ({
+        device_id: d.id, hostname: d.hostname,
+        status: statuses[d.id] || 'ok',
+        last_bucket: new Date(now - 10 * 60 * 1000).toISOString(),
+        fail_rate: d.id === 3 ? 0.241 : rnd() * 0.02,
+        throughput_mb: d.id === 3 ? 13.4 : 40 + rnd() * 25,
+        login_fail_rate: d.id === 4 ? 0.382 : rnd() * 0.04,
+        open_alerts: d.id === 3 ? 2 : (d.id === 4 ? 2 : 0),
+      })),
+      alerts,
+      trend,
+      fail_totals: { transfer_fails: 812, login_fails: 143, cwd_fails: 291 },
+    };
+  }
+
+  function storage() {
+    const partitions = [];
+    let total = 0;
+    for (let m = 0; m < 9; m++) {
+      const d = new Date(now - m * 30 * DAY);
+      const rows = m === 0 ? between(900000, 1400000) : between(2400000, 4200000);
+      const table = rows * 210;
+      const index = Math.round(table * 0.78);
+      total += table + index;
+      partitions.push({
+        name: `ftp_logs_${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}`,
+        rows_est: rows, table_bytes: table, index_bytes: index, total_bytes: table + index,
+      });
+    }
+    partitions.push({ name: 'ftp_logs_default', rows_est: 0, table_bytes: 8192, index_bytes: 16384, total_bytes: 24576 });
+    return {
+      db_bytes: total + 380 * 1024 * 1024,
+      ftp_logs_bytes: total + 24576,
+      partitions,
+      default_rows: 0,
+      default_months: [],
+      retention_months: 36,
+    };
+  }
+
+  const ACCOUNTS = [
+    { id: 1, username: 'acme_view',  customer: 'ACME',     allowed_ips: ['203.0.113.0/24'], is_active: true },
+    { id: 2, username: 'bluewave',   customer: 'BLUEWAVE', allowed_ips: [],                 is_active: true },
+    { id: 3, username: 'partner_ro', customer: 'ACME',     allowed_ips: ['198.51.100.7'],   is_active: false },
+  ].map(u => ({ ...u, role: 'customer', created_at: new Date(now - 30 * DAY).toISOString() }));
+
+  // ── 라우팅 ─────────────────────────────────────────────────────────────────
+  const ROUTES = [
+    [/^\/auth\/refresh$/, () => ({ access_token: demoToken, token_type: 'bearer', role: 'admin', customer: null })],
+    [/^\/telcos$/, () => TELCOS],
+    [/^\/groups$/, () => GROUPS],
+    [/^\/devices/, () => DEVICES],
+    [/^\/logs\/count/, () => ({ total: LOG_TOTAL })],
+    [/^\/logs\?/, (path) => {
+      const q = new URLSearchParams(path.split('?')[1] || '');
+      const page = parseInt(q.get('page') || '1', 10);
+      const size = parseInt(q.get('size') || '50', 10);
+      const start = (page - 1) * size;
+      const items = [];
+      for (let i = start; i < Math.min(start + size, LOG_TOTAL); i++) items.push(makeLog(i));
+      return { total: null, page, size, items };
+    }],
+    [/^\/dashboard\/users-hourly/, () => USERS.slice(0, 5).map(u => ({ username: u, data: hourlyPoints(0.6 + rnd()) }))],
+    [/^\/dashboard\/hourly/, () => GROUPS.map(g => ({ group_id: g.id, name: g.name, telco: g.telco, data: hourlyPoints(0.5 + rnd()) }))],
+    [/^\/dashboard\/service-health/, serviceHealth],
+    [/^\/dashboard/, dashboard],
+    [/^\/settings\/version$/, () => ({
+      branch: 'main', commit: 'demo123', commit_date: '2026-09-03 10:20',
+      subject: '대량 데이터 보관 개선 + 죽은 코드/중복 정리',
+      behind: 0, update_available: false, checked: false, error: null,
+    })],
+    [/^\/settings\/storage$/, storage],
+    [/^\/settings\/security$/, () => ({ username: 'admin', allowed_ips: ['10.0.0.0/8', '203.0.113.0/24'], my_ip: '203.0.113.42' })],
+    [/^\/settings\/notify\/mute$/, () => ({ muted: false })],
+    [/^\/settings\/notify$/, () => ({ webhook_url: 'https://hooks.example.com/soltrace', hms_url: '' })],
+    [/^\/users$/, () => ACCOUNTS],
+  ];
+
+  const DEMO_READONLY = '데모 모드에서는 변경할 수 없습니다.';
+
+  const _realFetch = window.fetch.bind(window);
+  window.fetch = function (url, opts) {
+    const u = String(url);
+    if (!u.startsWith('/api/v1')) return _realFetch(url, opts);
+
+    const path = u.slice('/api/v1'.length);
+    const method = ((opts && opts.method) || 'GET').toUpperCase();
+    const json = (body, status = 200) => Promise.resolve(new Response(
+      status === 204 ? null : JSON.stringify(body),
+      { status, headers: { 'Content-Type': 'application/json' } }
+    ));
+
+    // 내보내기: 실제 파일이 받아지도록 작은 CSV 를 돌려준다
+    if (path.startsWith('/logs/export')) {
+      const rows = [['id', 'device', 'log_time', 'client_ip', 'username', 'action', 'file_path', 'file_size', 'transfer_time', 'status']];
+      for (let i = 0; i < 200; i++) {
+        const l = makeLog(i);
+        rows.push([l.id, l.device_hostname, l.log_time, l.client_ip, l.username, l.action, l.file_path || '', l.file_size, l.transfer_time, l.status]);
+      }
+      const csv = rows.map(r => r.join(',')).join('\n');
+      return Promise.resolve(new Response(csv, { status: 200, headers: { 'Content-Type': 'text/csv' } }));
+    }
+
+    if (method !== 'GET') {
+      // 로그인은 통과시켜 화면 진입만 가능하게, 나머지 변경 요청은 안내 후 차단
+      if (path === '/auth/login') return json({ access_token: demoToken, token_type: 'bearer', role: 'admin', customer: null });
+      if (path === '/auth/refresh') return json({ access_token: demoToken, token_type: 'bearer', role: 'admin', customer: null });
+      return json({ detail: DEMO_READONLY }, 403);
+    }
+
+    for (const [re, handler] of ROUTES) {
+      if (re.test(path)) return json(handler(path));
+    }
+    return json({ detail: `데모 데이터 없음: ${path}` }, 404);
+  };
+
+  // 데모 안내 배너
+  document.addEventListener('DOMContentLoaded', function () {
+    const bar = document.createElement('div');
+    bar.className = 'alert alert-info d-flex align-items-center gap-2 mb-0 rounded-0 py-2 small';
+    bar.innerHTML = '<i class="bi bi-info-circle-fill"></i>'
+      + '<span><b>데모 모드</b> — 모든 수치는 예시 데이터입니다. 조회·차트·탭 이동은 동작하며, 저장/삭제 등 변경 기능은 막혀 있습니다.</span>';
+    document.body.prepend(bar);
+  });
+})();
+
+/* === utils.js === */
+const API = '/api/v1';
+let token = localStorage.getItem('soltrace_token');
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+let charts = {};
+let allGroups = [];
+let allTelcos = [];
+let logPage = 1;
+let logPageSize = 50;
+
+// ── 세션 타이머 ──────────────────────────────────────────────────────────────
+let _expireTimer = null;
+let _countdownInterval = null;
+
+function _parseJwt(tok) {
+  try {
+    return JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+  } catch { return null; }
+}
+
+function _parseJwtExp(tok) {
+  const p = _parseJwt(tok);
+  return p?.exp || null;
+}
+
+// 현재 토큰의 role ('admin' | 'customer'). role 클레임 없는 구버전 토큰은 admin 취급.
+function getRole() {
+  const p = token ? _parseJwt(token) : null;
+  return p?.role || (p?.sub === 'admin' ? 'admin' : 'customer');
+}
+
+// role 에 따라 admin 전용 UI(설정 등) 표시/숨김. data-admin-only 요소를 토글한다.
+function applyRoleUI() {
+  const isAdmin = getRole() === 'admin';
+  document.querySelectorAll('[data-admin-only]').forEach(el => {
+    el.classList.toggle('d-none', !isAdmin);
+  });
+}
+
+function _updateTopbarTimer(expiresAt) {
+  const left = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+  const m = Math.floor(left / 60);
+  const s = String(left % 60).padStart(2, '0');
+  const txt  = document.getElementById('sessionTimerText');
+  const disp = document.getElementById('sessionTimerDisplay');
+  if (!txt || !disp) return;
+  txt.textContent = `${m}:${s}`;
+  disp.classList.toggle('session-timer--warn',   left <= 600 && left > 300);
+  disp.classList.toggle('session-timer--danger', left <= 300);
+}
+
+function _clearSessionTimers() {
+  if (_expireTimer)      { clearTimeout(_expireTimer);        _expireTimer = null; }
+  if (_countdownInterval){ clearInterval(_countdownInterval); _countdownInterval = null; }
+  const txt  = document.getElementById('sessionTimerText');
+  const disp = document.getElementById('sessionTimerDisplay');
+  if (txt)  txt.textContent = '--:--';
+  if (disp) disp.classList.remove('session-timer--warn', 'session-timer--danger');
+}
+
+function startSessionTimers(tok) {
+  _clearSessionTimers();
+  const exp = _parseJwtExp(tok);
+  if (!exp) return;
+  const expiresAt = exp * 1000;
+  const msLeft = expiresAt - Date.now();
+  if (msLeft <= 0) { showLogin(); return; }
+  _updateTopbarTimer(expiresAt);
+  _countdownInterval = setInterval(() => _updateTopbarTimer(expiresAt), 1000);
+  _expireTimer = setTimeout(() => { _clearSessionTimers(); showLogin(); }, msLeft);
+}
+
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: {'Content-Type':'application/json'},
+  };
+  if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (r.status === 401) { showLogin(); return null; }
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({detail: r.statusText}));
+    throw new Error(err.detail || r.statusText);
+  }
+  if (r.status === 204) return null;
+  return r.json();
+}
+
+function showLogin() {
+  _clearSessionTimers();
+  token = null;
+  localStorage.removeItem('soltrace_token');
+  document.getElementById('appLayout').classList.add('app-hidden');
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('loginModal')).show();
+}
+
+async function extendSession(retry = 1) {
+  try {
+    const r = await fetch(API + '/auth/refresh', {
+      method: 'POST',
+      headers: {'Authorization': `Bearer ${token}`},
+    });
+    if (!r.ok) { showLogin(); return; }
+    const data = await r.json();
+    token = data.access_token;
+    localStorage.setItem('soltrace_token', token);
+    startSessionTimers(token);
+  } catch {
+    if (retry > 0) setTimeout(() => extendSession(retry - 1), 2000);
+    else showLogin();
+  }
+}
+
+function logout() {
+  showLogin();
+}
+
+function fmtBytes(b) {
+  if (!b) return '0 B';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+
+// ── 로컬 시각 포맷 (대시보드/로그 조회가 공유) ──────────────────────────────
+function pad2(n) { return String(n).padStart(2, '0'); }
+// datetime-local input 값: YYYY-MM-DDTHH:MM
+function fmtLocalInput(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+// YYYY-MM-DD
+function fmtLocalDate(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+}
+// YYYY-MM-DD HH:MM
+function fmtLocalDateTime(d) {
+  return `${fmtLocalDate(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function fmtUptime(s) {
+  if (!s) return '-';
+  if (s < 60) return s + '초';
+  if (s < 3600) return Math.floor(s/60) + '분';
+  if (s < 86400) return Math.floor(s/3600) + '시간';
+  return Math.floor(s/86400) + '일';
+}
+
+function timeAgo(dt) {
+  if (!dt) return '-';
+  const diff = (Date.now() - new Date(dt)) / 1000;
+  if (diff < 60) return '방금';
+  if (diff < 3600) return Math.floor(diff/60) + '분 전';
+  if (diff < 86400) return Math.floor(diff/3600) + '시간 전';
+  return new Date(dt).toLocaleDateString('ko-KR');
+}
+
+/* === dashboard.js === */
+// Register center-text plugin for doughnut charts (used by all donut charts on dashboard)
+const _centerPlugin = {
+  id: 'centerText',
+  afterDraw(chart) {
+    const ct = chart.options?.plugins?.centerText;
+    if (!ct) return;
+    const {ctx, chartArea: {top, bottom, left, right}} = chart;
+    const cx = (left + right) / 2, cy = (top + bottom) / 2;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${ct.size || 13}px sans-serif`;
+    ctx.fillStyle = ct.color || '#333';
+    ctx.fillText(ct.line1 || '', cx, ct.line2 ? cy - 9 : cy);
+    if (ct.line2) {
+      ctx.font = `${(ct.size || 13) - 1}px sans-serif`;
+      ctx.fillStyle = ct.subColor || '#888';
+      ctx.fillText(ct.line2, cx, cy + 9);
+    }
+    ctx.restore();
+  }
+};
+if (!Chart.registry.plugins.get('centerText')) Chart.register(_centerPlugin);
+
+const METRIC_LABEL = {fail_rate:'전송 실패율', throughput:'전송 속도', login_fail_rate:'로그인 실패율', cwd_fail_spike:'CWD 실패 급증'};
+
+function fmtPct(v) { return v == null ? '-' : (v*100).toFixed(1) + '%'; }
+function fmtBytesPerSec(v) { return v == null ? '-' : (v / 1024 / 1024).toFixed(2) + ' MB/s'; }
+function fmtTime(s) {
+  if (!s) return '-';
+  // timezone 없는 문자열은 브라우저가 로컬시간으로 파싱하므로 Z 추가해 UTC 강제
+  return fmtLocalDateTime(new Date(/[Z+]/.test(s) ? s : s + 'Z'));
+}
+
+// 시간대별 차트 x축 라벨: 하루 이내면 'HH시', 그 이상이면 'MM/DD HH시' (UTC 버킷 기준)
+function _fmtHourBucket(b, withDate) {
+  const d = new Date(b);
+  const hh = pad2(d.getUTCHours());
+  return withDate ? `${pad2(d.getUTCMonth() + 1)}/${pad2(d.getUTCDate())} ${hh}시` : hh + '시';
+}
+function fmtMetricVal(metric, v) { return metric === 'throughput' ? fmtBytesPerSec(v) : fmtPct(v); }
+
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+let _dashExactStart = null;
+let _dashExactEnd   = null;
+
+function _dashDateParams() {
+  if (_dashExactStart && _dashExactEnd) {
+    return `start_date=${encodeURIComponent(_dashExactStart)}&end_date=${encodeURIComponent(_dashExactEnd)}`;
+  }
+  const s = document.getElementById('dashStart').value;
+  const e = document.getElementById('dashEnd').value;
+  if (s && e) {
+    return `start_date=${encodeURIComponent(new Date(s + 'T00:00:00').toISOString())}&end_date=${encodeURIComponent(new Date(e + 'T23:59:59').toISOString())}`;
+  }
+  return 'days=7';
+}
+
+function dashLast24() {
+  const end   = new Date();
+  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+  _dashExactStart = start.toISOString();
+  _dashExactEnd   = end.toISOString();
+  document.getElementById('dashStart').value = fmtLocalDate(start);
+  document.getElementById('dashEnd').value   = fmtLocalDate(end);
+  document.querySelectorAll('.dash-quick').forEach(b => {
+    const active = b.dataset.h24 === 'true';
+    b.classList.toggle('btn-primary', active);
+    b.classList.toggle('btn-outline-secondary', !active);
+  });
+  loadAll();
+}
+
+function dashQuick(days) {
+  _dashExactStart = null;
+  _dashExactEnd   = null;
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - days + 1);
+  document.getElementById('dashStart').value = fmtLocalDate(start);
+  document.getElementById('dashEnd').value   = fmtLocalDate(end);
+  document.querySelectorAll('.dash-quick').forEach(b => {
+    const active = parseInt(b.dataset.days) === days;
+    b.classList.toggle('btn-primary', active);
+    b.classList.toggle('btn-outline-secondary', !active);
+  });
+  loadAll();
+}
+
+function dashCustom() {
+  _dashExactStart = null;
+  _dashExactEnd   = null;
+  document.querySelectorAll('.dash-quick').forEach(b => {
+    b.classList.remove('btn-primary');
+    b.classList.add('btn-outline-secondary');
+  });
+  loadAll();
+}
+
+function loadAll() {
+  loadDashboard();
+  loadServiceHealth();
+  loadUserHourly();
+  loadHourly();
+}
+
+// 슬라이스 인덱스 0=전송 실패, 1=로그인 실패, 2=CWD 실패
+const RATE_DRILL_FILTERS = [
+  {action: '__transfer_only__', status: 'fail'},
+  {action: 'login', status: 'fail'},
+  {action: 'cwd_fail', status: ''},
+];
+
+// 대시보드 날짜 범위를 유지하면서 로그 조회 페이지로 드릴다운
+function navToLogsFilters({action = '', status = ''} = {}) {
+  if (_dashExactStart && _dashExactEnd) {
+    document.getElementById('logStartTime').value = fmtLocalInput(new Date(_dashExactStart));
+    document.getElementById('logEndTime').value   = fmtLocalInput(new Date(_dashExactEnd));
+  } else {
+    const s = document.getElementById('dashStart').value;
+    const e = document.getElementById('dashEnd').value;
+    if (s) document.getElementById('logStartTime').value = s + 'T00:00';
+    if (e) document.getElementById('logEndTime').value   = e + 'T23:59';
+  }
+  document.getElementById('logActionFilter').value = action;
+  document.getElementById('logStatusFilter').value  = status;
+  _pendingSearch = true;  // initLogsPage 완료 후 자동 검색 (logs.js)
+  nav('logs');
+}
+
+async function loadDashboard() {
+  const data = await api('GET', `/dashboard?${_dashDateParams()}`);
+  if (!data) return;
+
+  const bytesBarOpts = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {display: false},
+      tooltip: {callbacks: {label: c => fmtBytes(c.parsed.x)}},
+    },
+    scales: {x: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}}},
+  };
+
+}
+
+let _userHourlyFocusIdx = null;
+
+async function loadUserHourly() {
+  _userHourlyFocusIdx = null;
+  const data = await api('GET', `/dashboard/users-hourly?${_dashDateParams()}`);
+  if (!data) return;
+
+  const legendEl = document.getElementById('userHourlyLegend');
+  if (!data.length) {
+    destroyChart('userHourly');
+    legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
+    return;
+  }
+
+  const active = data.filter(u => u.data.some(h => (h.uploads || 0) + (h.downloads || 0) > 0));
+  if (!active.length) {
+    destroyChart('userHourly');
+    legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
+    return;
+  }
+  const bucketSet = new Set(active.flatMap(u => u.data.map(h => h.bucket)));
+  const allBuckets = [...bucketSet].sort();
+
+  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
+
+  const datasets = active.map((u, i) => {
+    const map = Object.fromEntries(u.data.map(h => [h.bucket, h]));
+    return {
+      label: u.username,
+      data: allBuckets.map(b => (map[b]?.uploads || 0) + (map[b]?.downloads || 0)),
+      borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
+      backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
+      borderWidth: 1.5,
+      tension: 0,
+      pointRadius: allBuckets.length > 48 ? 0 : 2,
+      fill: false,
+    };
+  });
+
+  document.getElementById('resetUserZoomBtn')?.classList.add('d-none');
+  destroyChart('userHourly');
+  charts.userHourly = new Chart(document.getElementById('chartUserHourly'), {
+    type: 'line',
+    data: {labels: allBuckets.map(fmtBucket), datasets},
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {mode: 'index', intersect: false},
+      plugins: {
+        legend: {display: false},
+        tooltip: {callbacks: {label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}건`}},
+        zoom: {
+          zoom: {
+            drag: {enabled: true, backgroundColor: 'rgba(13,110,253,0.08)', borderColor: 'rgba(13,110,253,0.4)', borderWidth: 1},
+            mode: 'x',
+            onZoomComplete: () => document.getElementById('resetUserZoomBtn')?.classList.remove('d-none'),
+          },
+        },
+      },
+      scales: {
+        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
+        y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
+      },
+    },
+  });
+
+  const userRows = active.map((u, i) => {
+    const vals = datasets[i].data;
+    const maxVal = Math.max(0, ...vals);
+    const curVal = vals[vals.length - 1] ?? 0;
+    const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
+    return `<tr onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}" style="cursor:pointer" data-name="${u.username}" data-max="${maxVal}" data-cur="${curVal}">
+      <td style="padding:3px 4px;min-width:0;max-width:0">
+        <div class="d-flex align-items-center gap-1" style="min-width:0">
+          <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
+          <span class="text-truncate" style="font-size:0.75rem" title="${u.username}">${u.username}</span>
+        </div>
+      </td>
+      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${maxVal.toLocaleString()}</td>
+      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+  _userLegendSort = {col: null, asc: true};
+  legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
+    <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
+    <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
+      <th data-col="name" onclick="sortUserLegend('name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">사용자<span class="sort-arrow"></span></th>
+      <th data-col="max" onclick="sortUserLegend('max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
+      <th data-col="cur" onclick="sortUserLegend('cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
+    </tr></thead>
+    <tbody>${userRows}</tbody>
+  </table>`;
+}
+
+let _userLegendSort   = {col: null, asc: true};
+let _hourlyLegendSort = {col: null, asc: true};
+
+function _applyLegendSort(legendId, state) {
+  const legendEl = document.getElementById(legendId);
+  const tbody = legendEl?.querySelector('tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort((a, b) => {
+    if (state.col === 'name') {
+      const cmp = (a.dataset.name || '').localeCompare(b.dataset.name || '');
+      return state.asc ? cmp : -cmp;
+    }
+    const av = parseFloat(a.dataset[state.col]) || 0;
+    const bv = parseFloat(b.dataset[state.col]) || 0;
+    return state.asc ? av - bv : bv - av;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+  legendEl.querySelectorAll('thead th').forEach(th => {
+    const arrow = th.querySelector('.sort-arrow');
+    if (!arrow) return;
+    arrow.textContent = th.dataset.col === state.col ? (state.asc ? ' ▲' : ' ▼') : '';
+  });
+}
+
+function sortUserLegend(col) {
+  if (_userLegendSort.col === col) _userLegendSort.asc = !_userLegendSort.asc;
+  else _userLegendSort = {col, asc: col === 'name'};
+  _applyLegendSort('userHourlyLegend', _userLegendSort);
+}
+
+function sortHourlyLegend(col) {
+  if (_hourlyLegendSort.col === col) _hourlyLegendSort.asc = !_hourlyLegendSort.asc;
+  else _hourlyLegendSort = {col, asc: col === 'name'};
+  _applyLegendSort('hourlyGroupLegend', _hourlyLegendSort);
+}
+
+function resetUserHourlyZoom() {
+  charts.userHourly?.resetZoom();
+  document.getElementById('resetUserZoomBtn')?.classList.add('d-none');
+}
+
+function focusUserSeries(idx) {
+  if (!charts.userHourly) return;
+  const total = charts.userHourly.data.datasets.length;
+  if (_userHourlyFocusIdx === idx) {
+    _userHourlyFocusIdx = null;
+    for (let i = 0; i < total; i++) {
+      charts.userHourly.setDatasetVisibility(i, true);
+      const el = document.getElementById('userHourlyLegendItem' + i);
+      if (el) el.style.opacity = '1';
+    }
+  } else {
+    _userHourlyFocusIdx = idx;
+    for (let i = 0; i < total; i++) {
+      const show = i === idx;
+      charts.userHourly.setDatasetVisibility(i, show);
+      const el = document.getElementById('userHourlyLegendItem' + i);
+      if (el) el.style.opacity = show ? '1' : '0.3';
+    }
+  }
+  charts.userHourly.update();
+}
+
+const HOURLY_PALETTE = ['#0d6efd','#198754','#dc3545','#fd7e14','#6f42c1','#20c997','#0dcaf0','#ffc107','#e83e8c','#6c757d'];
+
+async function loadHourly() {
+  _hourlyFocusIdx = null;
+  const data = await api('GET', `/dashboard/hourly?${_dashDateParams()}`);
+  if (!data) return;
+
+  const legendEl = document.getElementById('hourlyGroupLegend');
+  if (!data.length) {
+    destroyChart('hourly');
+    legendEl.innerHTML = '<div class="text-muted small">그룹 데이터 없음</div>';
+    return;
+  }
+
+  const active = data.filter(g => g.data.some(h => (h.uploads || 0) + (h.downloads || 0) > 0));
+  if (!active.length) {
+    destroyChart('hourly');
+    legendEl.innerHTML = '<div class="text-muted small">그룹 데이터 없음</div>';
+    return;
+  }
+  const bucketSet = new Set(active.flatMap(g => g.data.map(h => h.bucket)));
+  const allBuckets = [...bucketSet].sort();
+
+  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
+
+  const datasets = active.map((g, i) => {
+    const map = Object.fromEntries(g.data.map(h => [h.bucket, h]));
+    return {
+      label: g.name,
+      data: allBuckets.map(b => (map[b]?.uploads || 0) + (map[b]?.downloads || 0)),
+      borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
+      backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
+      borderWidth: 1.5,
+      tension: 0,
+      pointRadius: allBuckets.length > 48 ? 0 : 2,
+      fill: false,
+    };
+  });
+
+  document.getElementById('resetHourlyZoomBtn')?.classList.add('d-none');
+  destroyChart('hourly');
+  charts.hourly = new Chart(document.getElementById('chartHourly'), {
+    type: 'line',
+    data: {labels: allBuckets.map(fmtBucket), datasets},
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {mode: 'index', intersect: false},
+      plugins: {
+        legend: {display: false},
+        tooltip: {callbacks: {label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}건`}},
+        zoom: {
+          zoom: {
+            drag: {enabled: true, backgroundColor: 'rgba(13,110,253,0.08)', borderColor: 'rgba(13,110,253,0.4)', borderWidth: 1},
+            mode: 'x',
+            onZoomComplete: () => document.getElementById('resetHourlyZoomBtn')?.classList.remove('d-none'),
+          },
+        },
+      },
+      scales: {
+        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
+        y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
+      },
+    },
+  });
+
+  const groupRows = active.map((g, i) => {
+    const vals = datasets[i].data;
+    const maxVal = Math.max(0, ...vals);
+    const curVal = vals[vals.length - 1] ?? 0;
+    const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
+    return `<tr onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}" style="cursor:pointer" data-name="${g.name}" data-max="${maxVal}" data-cur="${curVal}">
+      <td style="padding:3px 4px;min-width:0;max-width:0">
+        <div class="d-flex align-items-center gap-1" style="min-width:0">
+          <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
+          <span class="text-truncate" style="font-size:0.75rem" title="${g.name}">${g.name}</span>
+        </div>
+      </td>
+      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${maxVal.toLocaleString()}</td>
+      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+  _hourlyLegendSort = {col: null, asc: true};
+  legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
+    <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
+    <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
+      <th data-col="name" onclick="sortHourlyLegend('name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">그룹<span class="sort-arrow"></span></th>
+      <th data-col="max" onclick="sortHourlyLegend('max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
+      <th data-col="cur" onclick="sortHourlyLegend('cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
+    </tr></thead>
+    <tbody>${groupRows}</tbody>
+  </table>`;
+}
+
+function resetHourlyZoom() {
+  charts.hourly?.resetZoom();
+  document.getElementById('resetHourlyZoomBtn')?.classList.add('d-none');
+}
+
+let _hourlyFocusIdx = null;
+
+function focusHourlySeries(idx) {
+  if (!charts.hourly) return;
+  const total = charts.hourly.data.datasets.length;
+  if (_hourlyFocusIdx === idx) {
+    // 같은 그룹 재클릭 → 전체 표시 복원
+    _hourlyFocusIdx = null;
+    for (let i = 0; i < total; i++) {
+      charts.hourly.setDatasetVisibility(i, true);
+      const el = document.getElementById('hourlyLegendItem' + i);
+      if (el) el.style.opacity = '1';
+    }
+  } else {
+    // 선택 그룹만 표시, 나머지 숨김
+    _hourlyFocusIdx = idx;
+    for (let i = 0; i < total; i++) {
+      const show = i === idx;
+      charts.hourly.setDatasetVisibility(i, show);
+      const el = document.getElementById('hourlyLegendItem' + i);
+      if (el) el.style.opacity = show ? '1' : '0.3';
+    }
+  }
+  charts.hourly.update();
+}
+
+function _dashPeriodLabel() {
+  const s = document.getElementById('dashStart').value;
+  const e = document.getElementById('dashEnd').value;
+  if (s && e) return `${s} ~ ${e}`;
+  return '';
+}
+
+async function loadServiceHealth() {
+  const periodLabel = _dashPeriodLabel();
+  ['healthStatusPeriod', 'healthRatePeriod'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = periodLabel;
+  });
+  const data = await api('GET', `/dashboard/service-health?${_dashDateParams()}`);
+  if (!data) return;
+
+  // 서비스 영향도 도넛
+  destroyChart('healthStatus');
+  const counts = {ok: 0, warning: 0, critical: 0};
+  data.devices.forEach(d => { if (counts[d.status] != null) counts[d.status]++; });
+  const totalDevices = counts.ok + counts.warning + counts.critical;
+  charts.healthStatus = new Chart(document.getElementById('chartHealthStatus'), {
+    type: 'doughnut',
+    data: {
+      labels: ['정상', '주의', '심각'],
+      datasets: [{
+        data: [counts.ok, counts.warning, counts.critical],
+        backgroundColor: ['#198754', '#ffc107', '#dc3545'],
+        hoverOffset: 12, borderWidth: 1,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {position: 'right', labels: {boxWidth: 12, font: {size: 11}}},
+        tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed}대`}},
+        centerText: {line1: `${totalDevices}대`, line2: '전체 장비', size: 13},
+      },
+    },
+  });
+
+  // 실패 건수 — 0건이면 이상 없음 표시
+  destroyChart('healthRate');
+  const ft = data.fail_totals || {};
+  const failTotal = (ft.transfer_fails || 0) + (ft.login_fails || 0) + (ft.cwd_fails || 0);
+  const rateEl = document.getElementById('chartHealthRate');
+  const rateWrap = rateEl.parentElement;
+
+  if (failTotal === 0) {
+    rateEl.style.display = 'none';
+    if (!rateWrap.querySelector('.no-fail')) {
+      const d = document.createElement('div');
+      d.className = 'no-fail d-flex flex-column align-items-center justify-content-center h-100 text-success gap-2';
+      d.innerHTML = '<i class="bi bi-check-circle-fill" style="font-size:2.8rem"></i>'
+        + '<span class="fw-semibold">이상 없음</span>'
+        + '<span class="small text-muted">전송 · 로그인 · CWD 실패 없음</span>';
+      rateWrap.appendChild(d);
+    }
+  } else {
+    rateEl.style.display = '';
+    rateWrap.querySelector('.no-fail')?.remove();
+    charts.healthRate = new Chart(rateEl, {
+      type: 'doughnut',
+      data: {
+        labels: ['전송 실패', '로그인 실패', 'CWD 실패 (디렉토리 이동)'],
+        datasets: [{
+          data: [ft.transfer_fails || 0, ft.login_fails || 0, ft.cwd_fails || 0],
+          backgroundColor: ['#dc3545', '#fd7e14', '#6f42c1'],
+          hoverOffset: 12, borderWidth: 1,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        onClick: (evt, elems) => {
+          if (!elems.length) return;
+          navToLogsFilters(RATE_DRILL_FILTERS[elems[0].index]);
+        },
+        onHover: (evt, elems) => {
+          evt.native.target.style.cursor = elems.length ? 'pointer' : 'default';
+        },
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              boxWidth: 12, font: {size: 11},
+              generateLabels: chart => {
+                const ds = chart.data.datasets[0];
+                return chart.data.labels.map((label, i) => ({
+                  text: `${label}: ${ds.data[i].toLocaleString()}건`,
+                  fillStyle: ds.backgroundColor[i],
+                  strokeStyle: ds.backgroundColor[i],
+                  hidden: false, index: i,
+                }));
+              },
+            },
+          },
+          tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 조회`}},
+          centerText: {line1: `${failTotal.toLocaleString()}건`, line2: '총 실패', size: 13, color: '#dc3545'},
+        },
+      },
+    });
+  }
+
+  const tb = document.getElementById('healthAlerts');
+  if (!data.alerts.length) {
+    tb.innerHTML = '<tr><td colspan="7" class="text-muted small">최근 알림이 없습니다.</td></tr>';
+  } else {
+    tb.innerHTML = data.alerts.map(a => {
+      const sev = a.severity === 'critical'
+        ? '<span class="badge bg-danger">심각</span>'
+        : '<span class="badge bg-warning text-dark">주의</span>';
+      return `<tr>
+        <td class="small">${fmtTime(a.bucket)}</td>
+        <td class="small">${a.hostname}</td>
+        <td class="small">${METRIC_LABEL[a.metric] || a.metric}</td>
+        <td>${sev}</td>
+        <td class="small fw-semibold">${fmtMetricVal(a.metric, a.value)}</td>
+        <td class="small text-muted">${a.baseline==null?'-':fmtMetricVal(a.metric, a.baseline)}</td>
+        <td class="small text-muted">${a.message || ''}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+// 자동 새로고침 (60초)
+let _dashTimer = null;
+function toggleDashAutoRefresh() {
+  const btn = document.getElementById('btnDashAuto');
+  if (_dashTimer) {
+    clearInterval(_dashTimer);
+    _dashTimer = null;
+    btn.classList.remove('btn-primary');
+    btn.classList.add('btn-outline-secondary');
+    btn.title = '자동 새로고침 켜기';
+    btn.querySelector('span').textContent = '자동';
+  } else {
+    _dashTimer = setInterval(() => { loadAll(); }, 60000);
+    btn.classList.add('btn-primary');
+    btn.classList.remove('btn-outline-secondary');
+    btn.title = '자동 새로고침 끄기 (60초)';
+    btn.querySelector('span').textContent = '자동 ON';
+  }
+}
+
+/* === devices.js === */
+function statusBadge(s) {
+  const map = {pending:'warning', confirmed:'success', disabled:'secondary'};
+  const labels = {pending:'대기중', confirmed:'확인됨', disabled:'비활성'};
+  return `<span class="badge bg-${map[s]||'secondary'} text-${s==='pending'?'dark':''}">${labels[s]||s}</span>`;
+}
+
+function daemonBadge(s, errMsg) {
+  const cfg = {
+    running:  {cls:'success',  icon:'bi-check-circle-fill', label:'정상'},
+    degraded: {cls:'warning',  icon:'bi-exclamation-triangle-fill', label:'저하'},
+    error:    {cls:'danger',   icon:'bi-x-circle-fill', label:'오류'},
+    stopping: {cls:'secondary',icon:'bi-stop-circle', label:'종료중'},
+    unknown:  {cls:'light',    icon:'bi-question-circle', label:'미확인'},
+  };
+  const c = cfg[s] || cfg.unknown;
+  const tip = errMsg ? ` title="${esc(errMsg)}" data-bs-toggle="tooltip"` : '';
+  return `<span class="badge bg-${c.cls} text-${s==='unknown'?'dark':''}"${tip}><i class="bi ${c.icon} me-1"></i>${c.label}</span>`;
+}
+
+function metricBar(val, max, unit, warnAt, dangerAt) {
+  if (val == null) return '<span class="text-muted small">-</span>';
+  const pct = Math.min(100, (val / max) * 100);
+  const color = val >= dangerAt ? 'danger' : val >= warnAt ? 'warning' : 'success';
+  return `<div style="min-width:70px">
+    <div class="d-flex justify-content-between" style="font-size:11px">
+      <span>${val.toFixed(1)}${unit}</span>
+    </div>
+    <div class="progress" style="height:4px">
+      <div class="progress-bar bg-${color}" style="width:${pct}%"></div>
+    </div>
+  </div>`;
+}
+
+let _deviceCache = [];
+
+async function loadDevices() {
+  const filter = document.getElementById('deviceFilter').value;
+  const url = '/devices' + (filter ? `?status=${filter}` : '');
+  const devices = await api('GET', url);
+  if (!devices) return;
+  _deviceCache = devices;
+
+  const tbody = document.getElementById('deviceTable');
+  if (!devices.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">등록된 장비가 없습니다.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = devices.map(d => {
+    const hbDiff = d.last_heartbeat ? (Date.now() - new Date(d.last_heartbeat)) / 1000 : 9999;
+    const offline = hbDiff > 120;
+    const _offlineOverride = {running: 'degraded', stopping: 'unknown', degraded: 'degraded'};
+    const dStatus = offline && d.daemon_status in _offlineOverride
+        ? _offlineOverride[d.daemon_status]
+        : (d.daemon_status || 'unknown');
+    const errMsg = d.error_message || (offline ? `마지막 하트비트: ${timeAgo(d.last_heartbeat)}` : null);
+
+    return `<tr class="${dStatus==='error'?'table-danger-subtle':''}">
+      <td>
+        <strong>${esc(d.hostname)}</strong>
+        <div class="text-muted" style="font-size:11px">${esc(d.daemon_version||'')}</div>
+      </td>
+      <td class="text-center text-muted small">${esc(d.ip_address||'-')}</td>
+      <td class="text-center">${statusBadge(d.status)}</td>
+      <td class="text-center">
+        ${daemonBadge(dStatus, errMsg)}
+        <div class="text-muted" style="font-size:11px">${fmtUptime(d.daemon_uptime)} 가동</div>
+      </td>
+      <td class="text-center">
+        <div class="d-flex gap-2 align-items-center justify-content-center">
+          ${metricBar(d.cpu_percent, 100, '%', 70, 90)}
+          ${metricBar(d.mem_mb, 512, 'MB', 400, 480)}
+          ${d.disk_free_gb != null ? `<span class="small text-muted">💾${d.disk_free_gb.toFixed(1)}G</span>` : ''}
+        </div>
+      </td>
+      <td class="text-center small">
+        ${d.buffer_lines > 0 ? `<span class="badge bg-warning text-dark">${d.buffer_lines.toLocaleString()}건</span>` : '<span class="text-muted">-</span>'}
+        ${d.queue_size > 0 ? `<span class="badge bg-info text-dark ms-1">Q:${d.queue_size}</span>` : ''}
+      </td>
+      <td class="text-center text-muted small">${timeAgo(d.last_heartbeat)}</td>
+      <td>${d.groups.map(g=>`<span class="badge bg-light text-dark border me-1">${esc(g.name)}</span>`).join('')||'<span class="text-muted small">-</span>'}</td>
+      <td class="text-end text-nowrap">
+        ${d.status === 'pending' ? `<button class="btn btn-xs btn-success me-1" onclick="confirmDevice(${d.id})">확인</button>` : ''}
+        ${d.status === 'confirmed' ? `<button class="btn btn-xs btn-warning me-1" onclick="disableDevice(${d.id})">비활성</button>` : ''}
+        ${d.status === 'disabled' ? `<button class="btn btn-xs btn-success me-1" onclick="enableDevice(${d.id})">활성화</button>` : ''}
+        <button class="btn btn-xs btn-outline-info me-1" onclick="showDeviceStatus(${d.id})"><i class="bi bi-activity"></i></button>
+        <button class="btn btn-xs btn-outline-secondary me-1" onclick="openDeviceGroups(${d.id})">그룹</button>
+        <button class="btn btn-xs ${d.update_requested ? 'btn-warning' : 'btn-outline-success'} me-1" onclick="requestDaemonUpdate(${d.id})" title="데몬 업데이트"><i class="bi bi-arrow-repeat"></i></button>
+        <button class="btn btn-xs btn-outline-danger" onclick="deleteDevice(${d.id})"><i class="bi bi-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
+    new bootstrap.Tooltip(el, {placement:'top'})
+  );
+}
+
+function showDeviceStatus(id) {
+  const d = _deviceCache.find(x => x.id === id);
+  if (!d) return;
+  document.getElementById('dsHostname').textContent = d.hostname;
+  const rows = [
+    ['데몬 상태',       daemonBadge(d.daemon_status||'unknown', d.error_message)],
+    ['에러 메시지',     d.error_message ? `<span class="text-danger">${esc(d.error_message)}</span>` : '-'],
+    ['마지막 전송',     d.last_send_time ? new Date(d.last_send_time).toLocaleString('ko-KR') : '-'],
+    ['연속 실패',       d.consecutive_failures != null ? `${d.consecutive_failures}회` : '-'],
+    ['버퍼 대기',       d.buffer_lines != null ? `${d.buffer_lines.toLocaleString()}건` : '-'],
+    ['큐 대기',         d.queue_size != null ? `${d.queue_size}건` : '-'],
+    ['CPU 사용률',      d.cpu_percent != null ? `${d.cpu_percent.toFixed(1)}%` : '-'],
+    ['메모리 사용',     d.mem_mb != null ? `${d.mem_mb.toFixed(0)} MB` : '-'],
+    ['디스크 여유',     d.disk_free_gb != null ? `${d.disk_free_gb.toFixed(2)} GB` : '-'],
+    ['데몬 가동시간',   fmtUptime(d.daemon_uptime)],
+    ['마지막 하트비트', d.last_heartbeat ? new Date(d.last_heartbeat).toLocaleString('ko-KR') : '-'],
+    ['OS',              esc(d.os_info || '-')],
+    ['커널',            esc(d.kernel_version || '-')],
+    ['proftpd',         esc(d.proftpd_version || '-')],
+    ['데몬 버전',       esc(d.daemon_version || '-')],
+  ];
+  document.getElementById('dsBody').innerHTML = `
+    <table class="table table-sm">
+      <tbody>${rows.map(([k,v])=>`<tr><th class="text-muted fw-normal" style="width:140px">${k}</th><td>${v}</td></tr>`).join('')}</tbody>
+    </table>`;
+  new bootstrap.Modal(document.getElementById('deviceStatusModal')).show();
+}
+
+async function confirmDevice(id) {
+  await api('PUT', `/devices/${id}/status`, {status:'confirmed'});
+  loadDevices();
+}
+async function disableDevice(id) {
+  await api('PUT', `/devices/${id}/status`, {status:'disabled'});
+  loadDevices();
+}
+async function enableDevice(id) {
+  await api('PUT', `/devices/${id}/status`, {status:'confirmed'});
+  loadDevices();
+}
+async function deleteDevice(id) {
+  if (!confirm('장비를 삭제하시겠습니까? 관련 로그도 모두 삭제됩니다.')) return;
+  await api('DELETE', `/devices/${id}`);
+  loadDevices();
+}
+
+async function requestDaemonUpdate(id) {
+  const d = _deviceCache.find(x => x.id === id);
+  const name = d?.hostname || `#${id}`;
+  if (!confirm(`${name} 데몬을 업데이트하시겠습니까?\n다음 하트비트(30초 내)에 자동으로 최신 버전을 다운로드하고 재시작합니다.`)) return;
+  try {
+    await api('POST', `/devices/${id}/update`);
+    alert(`${name}: 업데이트 요청이 전송되었습니다.\n다음 하트비트에서 데몬이 자동으로 재시작됩니다.`);
+    loadDevices();
+  } catch(e) { alert('업데이트 요청 실패: ' + e.message); }
+}
+
+async function openDeviceGroups(deviceId) {
+  const d = _deviceCache.find(x => x.id === deviceId);
+  if (!d) return;
+  document.getElementById('dgDeviceId').value = deviceId;
+  document.getElementById('dgDeviceName').textContent = d.hostname;
+  const currentGroupIds = d.groups.map(g => g.id);
+  const groups = await api('GET', '/groups');
+  if (!groups) return;
+  allGroups = groups;
+  const list = document.getElementById('dgGroupList');
+  list.innerHTML = groups.map(g => `
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="dgg${g.id}" value="${g.id}"
+        ${currentGroupIds.includes(g.id)?'checked':''}>
+      <label class="form-check-label" for="dgg${g.id}">
+        ${g.telco ? `<span class="badge bg-info text-dark me-1">${esc(g.telco)}</span>` : ''}
+        ${esc(g.name)}
+      </label>
+    </div>
+  `).join('');
+  new bootstrap.Modal(document.getElementById('deviceGroupModal')).show();
+}
+
+async function saveDeviceGroups() {
+  const id = document.getElementById('dgDeviceId').value;
+  const checked = [...document.querySelectorAll('#dgGroupList input:checked')].map(el=>parseInt(el.value));
+  await api('PUT', `/devices/${id}/groups`, {group_ids: checked});
+  bootstrap.Modal.getInstance(document.getElementById('deviceGroupModal')).hide();
+  loadDevices();
+}
+
+/* === settings.js === */
+function settingsMsg(id, type, text) {
+  const el = document.getElementById(id);
+  el.className = `alert alert-${type} py-2 small`;
+  el.textContent = text;
+}
+
+function renderVersion(v) {
+  if (!v) return;
+  document.getElementById('verBranch').textContent = v.branch || '-';
+  document.getElementById('verCommit').textContent = v.commit || '-';
+  document.getElementById('verDate').textContent = v.commit_date || '-';
+  document.getElementById('verSubject').textContent = v.subject || '-';
+  const st = document.getElementById('verStatus');
+  if (v.error) {
+    st.innerHTML = `<span class="text-danger">원격 확인 실패: ${v.error}</span>`;
+  } else if (!v.checked) {
+    st.innerHTML = '<span class="text-muted">미확인 — "업데이트 확인"을 눌러주세요</span>';
+  } else if (v.update_available) {
+    st.innerHTML = `<span class="text-warning fw-semibold">업데이트 가능 (원격이 ${v.behind} 커밋 앞섬)</span>`;
+  } else {
+    st.innerHTML = '<span class="text-success">최신 상태</span>';
+  }
+}
+
+async function loadVersion() {
+  const updMsg = document.getElementById('updMsg');
+  updMsg.className = 'alert d-none py-2 small';
+  updMsg.textContent = '';
+  const runBtn = document.getElementById('runUpdBtn');
+  if (runBtn) runBtn.disabled = false;
+  try {
+    renderVersion(await api('GET', '/settings/version'));
+  } catch (e) { settingsMsg('updMsg', 'danger', e.message); }
+}
+
+async function loadStorage() {
+  const msg = document.getElementById('storageMsg');
+  msg.className = 'alert d-none py-2 small';
+  const tbody = document.getElementById('storageTable');
+  try {
+    const s = await api('GET', '/settings/storage');
+    if (!s) return;
+    document.getElementById('stDbSize').textContent = fmtBytes(s.db_bytes);
+    document.getElementById('stLogsSize').textContent = fmtBytes(s.ftp_logs_bytes);
+    document.getElementById('stRetention').textContent = `${s.retention_months}개월 (초과 파티션은 백업 후 자동 삭제)`;
+    const def = document.getElementById('stDefault');
+    if (s.default_rows > 0) {
+      def.innerHTML = `<span class="text-danger fw-semibold">${s.default_rows.toLocaleString()}행 잔존</span>`
+        + ` <span class="text-muted">(${s.default_months.map(esc).join(', ')})</span>`;
+      settingsMsg('storageMsg', 'warning', 'default 파티션에 데이터가 남아 있습니다. 재배치가 필요합니다.');
+    } else {
+      def.innerHTML = '<span class="text-success">비어 있음</span>';
+    }
+    if (!s.partitions.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">파티션이 없습니다.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = s.partitions.map(p => `
+      <tr class="${p.name === 'ftp_logs_default' && s.default_rows > 0 ? 'table-warning' : ''}">
+        <td class="font-monospace">${esc(p.name)}</td>
+        <td class="text-end">${p.rows_est.toLocaleString()}</td>
+        <td class="text-end">${fmtBytes(p.table_bytes)}</td>
+        <td class="text-end">${fmtBytes(p.index_bytes)}</td>
+        <td class="text-end fw-semibold">${fmtBytes(p.total_bytes)}</td>
+      </tr>`).join('');
+  } catch (e) {
+    settingsMsg('storageMsg', 'danger', e.message);
+    tbody.innerHTML = '';
+  }
+}
+
+async function getTelcos() {
+  allTelcos = (await api('GET', '/telcos')) || [];
+  return allTelcos;
+}
+
+async function loadTelcos() {
+  const list = document.getElementById('telcoList');
+  try {
+    const telcos = await getTelcos();
+    list.innerHTML = telcos.length
+      ? telcos.map(t => `
+          <li class="list-group-item d-flex align-items-center px-0">
+            <span>${t.name}</span>
+            <button class="btn btn-xs btn-outline-danger ms-auto" onclick="deleteTelco(${t.id})"><i class="bi bi-trash"></i></button>
+          </li>`).join('')
+      : '<li class="list-group-item text-muted small px-0">등록된 통신사가 없습니다.</li>';
+  } catch (e) { settingsMsg('telcoMsg', 'danger', e.message); }
+}
+
+async function addTelco() {
+  const input = document.getElementById('telcoName');
+  const name = input.value.trim();
+  if (!name) return;
+  try {
+    await api('POST', '/telcos', {name});
+    input.value = '';
+    settingsMsg('telcoMsg', 'success', `'${name}' 추가됨`);
+    loadTelcos();
+  } catch (e) { settingsMsg('telcoMsg', 'danger', e.message); }
+}
+
+async function deleteTelco(id) {
+  if (!confirm('이 통신사를 삭제하시겠습니까?')) return;
+  try {
+    await api('DELETE', `/telcos/${id}`);
+    loadTelcos();
+  } catch (e) { settingsMsg('telcoMsg', 'danger', e.message); }
+}
+
+async function changePassword() {
+  const cur = document.getElementById('pwCurrent').value;
+  const nw = document.getElementById('pwNew').value;
+  const cf = document.getElementById('pwConfirm').value;
+  if (nw.length < 8) { settingsMsg('pwMsg', 'danger', '새 비밀번호는 8자 이상이어야 합니다.'); return; }
+  if (nw !== cf) { settingsMsg('pwMsg', 'danger', '새 비밀번호 확인이 일치하지 않습니다.'); return; }
+  try {
+    await api('POST', '/settings/password', {current_password: cur, new_password: nw});
+    settingsMsg('pwMsg', 'success', '비밀번호가 변경되었습니다.');
+    document.getElementById('pwCurrent').value = '';
+    document.getElementById('pwNew').value = '';
+    document.getElementById('pwConfirm').value = '';
+  } catch (e) { settingsMsg('pwMsg', 'danger', e.message); }
+}
+
+async function checkUpdate() {
+  const btn = document.getElementById('checkUpdBtn');
+  btn.disabled = true; btn.textContent = '확인 중...';
+  try {
+    const v = await api('POST', '/settings/check-update');
+    renderVersion(v);
+  } catch (e) { settingsMsg('updMsg', 'danger', e.message); }
+  finally { btn.disabled = false; btn.textContent = '업데이트 확인'; }
+}
+
+async function runUpdate() {
+  if (!confirm('지금 업데이트하시겠습니까?\norigin/main을 받아 재배포하며 서비스가 1~2분간 재시작됩니다.')) return;
+  const btn = document.getElementById('runUpdBtn');
+  btn.disabled = true;
+  try {
+    const r = await api('POST', '/settings/update');
+    settingsMsg('updMsg', 'success', (r && r.message) || '업데이트를 시작했습니다.');
+    _pollRestart();
+  } catch (e) {
+    settingsMsg('updMsg', 'danger', e.message);
+    btn.disabled = false;
+  }
+}
+
+function _pollRestart() {
+  let attempts = 0;
+  const MAX = 40;
+  settingsMsg('updMsg', 'warning', '재시작 대기 중... (최대 2분)');
+  const timer = setInterval(async () => {
+    attempts++;
+    try {
+      await api('GET', '/settings/version');
+      clearInterval(timer);
+      settingsMsg('updMsg', 'success', '재시작이 완료되었습니다. 버전 정보를 갱신합니다.');
+      loadVersion();
+      document.getElementById('runUpdBtn').disabled = false;
+    } catch (_) {
+      if (attempts >= MAX) {
+        clearInterval(timer);
+        settingsMsg('updMsg', 'danger', '재시작 대기 시간이 초과되었습니다. 페이지를 새로고침하세요.');
+        document.getElementById('runUpdBtn').disabled = false;
+      }
+    }
+  }, 3000);
+}
+
+function _applyMuteState(muted) {
+  document.getElementById('notifyMuteToggle').checked = muted;
+  const label = document.getElementById('notifyMuteLabel');
+  if (muted) {
+    label.textContent = '알림 중지됨';
+    label.className = 'small text-danger fw-semibold';
+  } else {
+    label.textContent = '발송 중';
+    label.className = 'small text-muted';
+  }
+}
+
+async function loadNotify() {
+  const [d, m] = await Promise.all([
+    api('GET', '/settings/notify'),
+    api('GET', '/settings/notify/mute'),
+  ]);
+  if (!d) return;
+  document.getElementById('notifyWebhookUrl').value = d.webhook_url || '';
+  document.getElementById('notifyHmsUrl').value     = d.hms_url || '';
+  if (m) _applyMuteState(m.muted);
+}
+
+async function toggleMute(muted) {
+  const msg = document.getElementById('notifyMsg');
+  try {
+    await api('POST', `/settings/notify/mute?muted=${muted}`);
+    _applyMuteState(muted);
+    msg.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>알림 ${muted ? '중지' : '재개'}됨</span>`;
+  } catch(e) {
+    document.getElementById('notifyMuteToggle').checked = !muted;
+    msg.innerHTML = `<span class="text-danger">변경 실패: ${e.message}</span>`;
+  }
+  setTimeout(() => { msg.innerHTML = ''; }, 3000);
+}
+
+async function saveNotify() {
+  const body = {
+    webhook_url: document.getElementById('notifyWebhookUrl').value.trim(),
+    hms_url:     document.getElementById('notifyHmsUrl').value.trim(),
+  };
+  const msg = document.getElementById('notifyMsg');
+  try {
+    await api('PUT', '/settings/notify', body);
+    msg.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>저장되었습니다.</span>';
+  } catch(e) {
+    msg.innerHTML = `<span class="text-danger">저장 실패: ${e.message}</span>`;
+  }
+  setTimeout(() => { msg.innerHTML = ''; }, 3000);
+}
+
+async function testNotify(channel = 'all') {
+  const label = {webhook:'웹훅', hms:'HMS', all:'전체'}[channel] || channel;
+  const msg = document.getElementById('notifyMsg');
+  msg.innerHTML = `<span class="text-muted">${label} 테스트 발송 중...</span>`;
+  try {
+    await api('POST', `/settings/notify/test?channel=${channel}`);
+    msg.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${label} 테스트 발송 성공</span>`;
+  } catch(e) {
+    msg.innerHTML = `<span class="text-danger">발송 실패: ${e.message}</span>`;
+  }
+  setTimeout(() => { msg.innerHTML = ''; }, 4000);
+}
+
+// ── 계정 보안 탭 ──────────────────────────────────────────────────────────────
+
+async function loadSecurity() {
+  try {
+    const d = await api('GET', '/settings/security');
+    if (!d) return;
+    document.getElementById('allowedIps').value = (d.allowed_ips || []).join('\n');
+    document.getElementById('myIpDisplay').textContent = d.my_ip || '-';
+  } catch(e) { settingsMsg('ipMsg', 'danger', e.message); }
+}
+
+function _taLines(id) {
+  return document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+}
+
+function addMyIp() {
+  const ip = document.getElementById('myIpDisplay').textContent;
+  if (!ip || ip === '-') return;
+  const el = document.getElementById('allowedIps');
+  const lines = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!lines.includes(ip)) { lines.push(ip); el.value = lines.join('\n'); }
+}
+
+async function saveAllowedIps() {
+  const allowed_ips = _taLines('allowedIps');
+  const myIp = document.getElementById('myIpDisplay').textContent;
+  if (allowed_ips.length > 0 && myIp && myIp !== '-') {
+    const covered = allowed_ips.some(e => e.includes('/') || e === myIp);
+    if (!covered && !confirm(`현재 접속 IP(${myIp})가 허용 목록에 없습니다.\n저장하면 이 IP에서 접속이 차단됩니다. 계속하시겠습니까?`)) return;
+  }
+  try {
+    await api('PUT', '/settings/allowed-ips', {allowed_ips});
+    settingsMsg('ipMsg', 'success', '접속 허용 IP가 저장되었습니다.');
+  } catch(e) { settingsMsg('ipMsg', 'danger', e.message); }
+}
+
+// ── 고객 계정 관리 (admin 전용) ───────────────────────────────────────────────
+async function loadUsers() {
+  const tbody = document.getElementById('userList');
+  try {
+    const [users, groups] = await Promise.all([
+      api('GET', '/users'),
+      api('GET', '/groups').catch(() => []),
+    ]);
+    // 고객사 자동완성: 그룹의 customer 값 중복 제거
+    const customers = [...new Set((groups || []).map(g => g.customer).filter(Boolean))].sort();
+    document.getElementById('customerOptions').innerHTML =
+      customers.map(c => `<option value="${esc(c)}">`).join('');
+
+    if (!users || users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-muted small p-3">등록된 고객 계정이 없습니다.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = users.map(u => {
+      const ips = u.allowed_ips && u.allowed_ips.length ? u.allowed_ips.join(', ') : '<span class="text-muted">제한 없음</span>';
+      const badge = u.is_active
+        ? '<span class="badge bg-success-subtle text-success">활성</span>'
+        : '<span class="badge bg-secondary-subtle text-secondary">비활성</span>';
+      return `<tr>
+        <td class="ps-3 fw-semibold">${esc(u.username)}</td>
+        <td>${esc(u.customer || '-')}</td>
+        <td class="small">${ips}</td>
+        <td>${badge}</td>
+        <td class="text-end pe-3">
+          <button class="btn btn-xs btn-outline-secondary" onclick="resetUserPwd(${u.id}, '${esc(u.username)}')" title="비밀번호 재설정"><i class="bi bi-key"></i></button>
+          <button class="btn btn-xs btn-outline-secondary" onclick="toggleUser(${u.id}, ${u.is_active ? 'false' : 'true'})">${u.is_active ? '비활성화' : '활성화'}</button>
+          <button class="btn btn-xs btn-outline-danger" onclick="deleteUser(${u.id}, '${esc(u.username)}')"><i class="bi bi-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-danger small p-3">${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function createUser() {
+  const username = document.getElementById('newUserName').value.trim();
+  const password = document.getElementById('newUserPwd').value;
+  const customer = document.getElementById('newUserCustomer').value.trim();
+  const allowed_ips = _taLines('newUserIps');
+  if (!username || !customer) { settingsMsg('userMsg', 'danger', '아이디와 고객사는 필수입니다.'); return; }
+  if (password.length < 8) { settingsMsg('userMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  try {
+    await api('POST', '/users', {username, password, customer, allowed_ips});
+    settingsMsg('userMsg', 'success', `'${username}' 계정이 생성되었습니다.`);
+    document.getElementById('newUserName').value = '';
+    document.getElementById('newUserPwd').value = '';
+    document.getElementById('newUserCustomer').value = '';
+    document.getElementById('newUserIps').value = '';
+    loadUsers();
+  } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+}
+
+async function toggleUser(id, active) {
+  try {
+    await api('PUT', `/users/${id}`, {is_active: active});
+    loadUsers();
+  } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+}
+
+async function resetUserPwd(id, username) {
+  const pw = prompt(`'${username}' 계정의 새 비밀번호 (8자 이상):`);
+  if (pw === null) return;
+  if (pw.length < 8) { settingsMsg('userMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  try {
+    await api('PUT', `/users/${id}`, {password: pw});
+    settingsMsg('userMsg', 'success', `'${username}' 비밀번호가 변경되었습니다.`);
+  } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+}
+
+async function deleteUser(id, username) {
+  if (!confirm(`'${username}' 계정을 삭제하시겠습니까?`)) return;
+  try {
+    await api('DELETE', `/users/${id}`);
+    loadUsers();
+  } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+}
+
+/* === groups.js === */
+let _groupFilter = '__all__';
+const GROUP_COLS = 7;
+
+async function loadGroups() {
+  const groups = await api('GET', '/groups');
+  if (!groups) return;
+  allGroups = groups;
+  const container = document.getElementById('groupCards');
+  if (!groups.length) {
+    container.innerHTML = '<div class="text-center text-muted py-4">그룹이 없습니다. 추가해주세요.</div>';
+    document.getElementById('groupPager').innerHTML = '';
+    return;
+  }
+
+  const byTelco = {};
+  groups.forEach(g => {
+    const key = g.telco || '\x00';
+    if (!byTelco[key]) byTelco[key] = [];
+    byTelco[key].push(g);
+  });
+  const telcoKeys = Object.keys(byTelco).sort((a, b) => {
+    if (a === '\x00') return 1; if (b === '\x00') return -1;
+    return a.localeCompare(b);
+  });
+
+  const filterEl = document.getElementById('groupFilter');
+  const filterKeys = [null, ...telcoKeys.filter(k => k !== '\x00'), '\x00'];
+  filterEl.innerHTML = filterKeys.map(key => {
+    const label = key === null ? '전체' : key === '\x00' ? '미지정' : esc(key);
+    const icon  = key === null ? 'bi-list-ul' : key === '\x00' ? 'bi-dash-circle' : 'bi-broadcast-pin-fill';
+    const active = (_groupFilter === (key ?? '__all__')) ? 'active' : '';
+    return `<button class="btn btn-sm btn-outline-secondary ${active}" data-filter="${key ?? '__all__'}" onclick="filterGroups(this)"><i class="bi ${icon} me-1"></i>${label}</button>`;
+  }).join('');
+
+  window._groupByTelco = byTelco;
+  window._groupTelcoKeys = telcoKeys;
+  renderGroupPage(1);
+}
+
+function _filteredGroups() {
+  const byTelco = window._groupByTelco || {};
+  if (_groupFilter === '__all__') return allGroups;
+  const key = _groupFilter === '' ? '\x00' : _groupFilter;
+  return byTelco[key] || [];
+}
+
+function renderGroupPage(page) {
+  const container = document.getElementById('groupCards');
+  const pager = document.getElementById('groupPager');
+  const psEl = document.getElementById('groupPageSize');
+  const pageSize = psEl ? parseInt(psEl.value) : 20;
+  const byTelco = window._groupByTelco || {};
+  const telcoKeys = window._groupTelcoKeys || [];
+
+  const filtered = _filteredGroups();
+  const total = filtered.length;
+
+  const useAll = pageSize === 0 || total <= pageSize;
+  const totalPages = useAll ? 1 : Math.ceil(total / pageSize);
+  page = Math.max(1, Math.min(page, totalPages));
+  const start = useAll ? 0 : (page - 1) * pageSize;
+  const end   = useAll ? total : Math.min(start + pageSize, total);
+  const pageItems = filtered.slice(start, end);
+  const pageIds = new Set(pageItems.map(g => g.id));
+
+  const groupRowHtml = g => `
+      <td class="fw-semibold" style="word-break:break-word">${esc(g.name)}</td>
+      <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
+      <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer ? esc(g.customer) : '<span class="text-muted">-</span>'}</td>
+      <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains ? esc(g.upload_domains) : '-'}</td>
+      <td class="small" style="word-break:break-word">${g.application ? esc(g.application) : '<span class="text-muted">-</span>'}</td>
+      <td class="small text-muted" style="word-break:break-word">${g.description ? esc(g.description) : '-'}</td>
+      <td><div class="d-flex gap-1 justify-content-end">
+        <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
+        <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
+      </div></td>`;
+
+  let isFirst = true;
+  const sectionRows = telcoKeys.map(key => {
+    const telco = key === '\x00' ? null : key;
+    const list  = (byTelco[key] || []).filter(g => pageIds.has(g.id));
+    if (!list.length) return '';
+    const total = list.reduce((s, g) => s + g.device_count, 0);
+    const headerLabel = telco
+      ? `<i class="bi bi-broadcast-pin-fill me-2 text-brand"></i><span class="fw-semibold">${esc(telco)}</span>`
+      : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-semibold text-muted">통신사 미지정</span>`;
+    const spacer = isFirst ? '' : `<tr><td colspan="${GROUP_COLS}" style="height:10px;padding:0;background:#f5f7fa;border-top:2px solid #dee2e6"></td></tr>`;
+    isFirst = false;
+    return `${spacer}
+      <tr class="table-secondary" data-telco="${telco || ''}">
+        <td colspan="${GROUP_COLS}" class="py-2">
+          ${headerLabel}
+          <span class="ms-2 badge bg-secondary">${list.length}그룹</span>
+          <span class="ms-1 badge bg-light text-dark border">${total}대</span>
+        </td>
+      </tr>
+      ${list.map(g => `<tr data-telco="${telco || ''}">${groupRowHtml(g)}</tr>`).join('')}`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
+          <colgroup>
+            <col style="width:14%"><col style="width:6%"><col style="width:14%">
+            <col style="width:24%"><col style="width:14%"><col style="width:17%"><col style="width:11%">
+          </colgroup>
+          <thead class="table-light">
+            <tr><th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
+            <th>업로드 도메인</th><th>서비스</th><th>비고</th><th></th></tr>
+          </thead>
+          <tbody>${sectionRows || `<tr><td colspan="${GROUP_COLS}" class="text-center text-muted py-3">해당 항목이 없습니다.</td></tr>`}</tbody>
+        </table>
+      </div>
+      ${total > 0 ? `<div class="px-3 py-1 border-top small text-muted">${start+1}–${end} / ${total}그룹</div>` : ''}
+    </div>`;
+
+  if (totalPages <= 1) { pager.innerHTML = ''; return; }
+  const pages = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - page) <= 2)
+      pages.push(i);
+    else if (pages[pages.length-1] !== '…')
+      pages.push('…');
+  }
+  pager.innerHTML = `<ul class="pagination pagination-sm mb-0">
+    <li class="page-item${page===1?' disabled':''}"><a class="page-link" onclick="renderGroupPage(${page-1})">‹</a></li>
+    ${pages.map(p => p === '…'
+      ? `<li class="page-item disabled"><span class="page-link">…</span></li>`
+      : `<li class="page-item${p===page?' active':''}"><a class="page-link" onclick="renderGroupPage(${p})">${p}</a></li>`
+    ).join('')}
+    <li class="page-item${page===totalPages?' disabled':''}"><a class="page-link" onclick="renderGroupPage(${page+1})">›</a></li>
+  </ul>`;
+}
+
+function filterGroups(btn) {
+  document.querySelectorAll('#groupFilter button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _groupFilter = btn.dataset.filter;
+  renderGroupPage(1);
+}
+
+function populateGroupTelco(selected) {
+  const sel = document.getElementById('groupTelco');
+  const opts = ['<option value="">(통신사 미지정)</option>']
+    .concat(allTelcos.map(t => `<option value="${t.name}"${t.name===selected?' selected':''}>${t.name}</option>`));
+  sel.innerHTML = opts.join('');
+}
+
+async function openGroupModal(id) {
+  const g = id ? allGroups.find(x => x.id === id) : null;
+  document.getElementById('groupId').value = id || '';
+  document.getElementById('groupName').value = g?.name || '';
+  document.getElementById('groupDesc').value = g?.description || '';
+  document.getElementById('groupCustomer').value = g?.customer || '';
+  document.getElementById('groupUploadDomains').value = g?.upload_domains || '';
+  document.getElementById('groupApplication').value = g?.application || '';
+  await getTelcos();
+  populateGroupTelco(g?.telco || '');
+  document.getElementById('groupModalTitle').textContent = id ? '그룹 수정' : '그룹 추가';
+  new bootstrap.Modal(document.getElementById('groupModal')).show();
+}
+
+async function saveGroup() {
+  const id = document.getElementById('groupId').value;
+  const body = {
+    name: document.getElementById('groupName').value.trim(),
+    description: document.getElementById('groupDesc').value.trim() || null,
+    telco: document.getElementById('groupTelco').value || null,
+    customer: document.getElementById('groupCustomer').value.trim() || null,
+    upload_domains: document.getElementById('groupUploadDomains').value.trim() || null,
+    application: document.getElementById('groupApplication').value.trim() || null,
+  };
+  if (!body.name) return alert('그룹명을 입력하세요.');
+  try {
+    if (id) {
+      await api('PUT', `/groups/${id}`, body);
+    } else {
+      await api('POST', '/groups', body);
+    }
+    bootstrap.Modal.getInstance(document.getElementById('groupModal')).hide();
+    loadGroups();
+  } catch(e) { alert(e.message); }
+}
+
+async function deleteGroup(id) {
+  if (!confirm('그룹을 삭제하시겠습니까?')) return;
+  await api('DELETE', `/groups/${id}`);
+  loadGroups();
+}
+
+/* === logs.js === */
+const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제', cwd_fail:'디렉토리 이동 실패'};
+
+let _logGroupMap = {};   // id → group object
+let _pendingSearch = false;  // navToLogsFilters가 세팅, initLogsPage 완료 후 자동 검색
+
+// 총건수 캐시: 필터(페이지/크기 제외)가 같으면 페이지 이동 시 재집계하지 않는다.
+// 카운트는 목록과 병렬로 요청해 첫 페이지가 COUNT 를 기다리지 않게 한다.
+let _logCountKey = null;     // 마지막으로 집계한 필터 문자열
+let _logTotal = null;        // 정확한 총건수 (집계 중이면 null)
+
+// Chrome 자동완성 차단: readonly 로 리셋 후 값 초기화 (포커스 시 해제는 index.html onfocus)
+function _resetAutofillInputs() {
+  ['logUserFilter', 'logIpFilter'].forEach(id => {
+    const el = document.getElementById(id);
+    el.setAttribute('readonly', '');
+    el.value = '';
+  });
+}
+
+async function initLogsPage() {
+  _resetAutofillInputs();
+
+  const groups = await api('GET', '/groups');
+  if (groups) {
+    allGroups = groups;
+    _logGroupMap = Object.fromEntries(groups.map(g => [String(g.id), g]));
+
+    // 텔코 목록 (그룹에서 추출, 중복 제거)
+    const telcos = [...new Set(groups.map(g => g.telco).filter(Boolean))].sort();
+    document.getElementById('logTelcoFilter').innerHTML =
+      '<option value="">전체 텔코</option>' + telcos.map(t => `<option value="${t}">${t}</option>`).join('');
+
+    _renderGroupOptions('');
+  }
+  _initGroupTooltip();
+  _initLogColResize();
+
+  if (_pendingSearch) {
+    _pendingSearch = false;
+    searchLogs(1);
+  }
+}
+
+function _renderGroupOptions(telco) {
+  const filtered = telco ? allGroups.filter(g => g.telco === telco) : allGroups;
+  document.getElementById('logGroupFilter').innerHTML =
+    '<option value="">전체 그룹</option>' +
+    filtered.map(g => `<option value="${g.id}">${telco ? '' : (g.telco ? g.telco + ' · ' : '')}${g.name}</option>`).join('');
+}
+
+function onTelcoFilter() {
+  const telco = document.getElementById('logTelcoFilter').value;
+  _renderGroupOptions(telco);
+  searchLogs(1);
+}
+
+function _initGroupTooltip() {
+  const sel = document.getElementById('logGroupFilter');
+  const tip = document.getElementById('logGroupTip');
+
+  sel.addEventListener('mouseenter', () => {
+    const g = _logGroupMap[sel.value];
+    if (!g || (!g.application && !g.description && !g.customer)) { tip.classList.add('d-none'); return; }
+    const rows = [];
+    if (g.application) rows.push(`<span class="text-muted">서비스:</span> <b>${esc(g.application)}</b>`);
+    if (g.customer)    rows.push(`<span class="text-muted">고객사:</span> ${esc(g.customer)}`);
+    if (g.description) rows.push(`<span class="text-muted">설명:</span> ${esc(g.description)}`);
+    tip.innerHTML = rows.join('<br>');
+    tip.classList.remove('d-none');
+  });
+  sel.addEventListener('mouseleave', () => tip.classList.add('d-none'));
+}
+
+function _initLogColResize() {
+  const table = document.querySelector('#page-logs table');
+  if (!table || table.dataset.resizeReady) return;
+  table.dataset.resizeReady = '1';
+
+  const cols = Array.from(table.querySelectorAll('colgroup col'));
+  const ths  = Array.from(table.querySelectorAll('thead th'));
+  const row  = table.querySelector('thead tr');
+
+  // 저장된 폭 복원 (v2: 컬럼 기본값 변경 시 이전 저장값 무효화)
+  const WIDTHS_VER = 'v3';
+  const savedRaw = localStorage.getItem('logColWidths');
+  const savedMeta = localStorage.getItem('logColWidthsVer');
+  const saved = (savedMeta === WIDTHS_VER && savedRaw) ? JSON.parse(savedRaw) : null;
+  if (!saved) localStorage.removeItem('logColWidths');
+  if (saved) cols.forEach((col, i) => { if (saved[i]) col.style.width = saved[i] + 'px'; });
+
+  const ZONE = 6; // 각 th 우측 경계에서 ±px 이내를 드래그 존으로 인식
+
+  function hitCol(clientX) {
+    // 마지막 컬럼 경계는 제외 (last-child는 경계 없음)
+    for (let i = 0; i < ths.length - 1; i++) {
+      if (Math.abs(clientX - ths[i].getBoundingClientRect().right) <= ZONE) return i;
+    }
+    return -1;
+  }
+
+  row.addEventListener('mousemove', e => {
+    row.style.cursor = hitCol(e.clientX) >= 0 ? 'col-resize' : '';
+  });
+  row.addEventListener('mouseleave', () => { row.style.cursor = ''; });
+
+  row.addEventListener('mousedown', e => {
+    const i = hitCol(e.clientX);
+    if (i < 0) return;
+    e.preventDefault();
+    const startX    = e.clientX;
+    const startW    = ths[i].getBoundingClientRect().width;
+    const nextStartW = i + 1 < ths.length ? ths[i + 1].getBoundingClientRect().width : 0;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = e => {
+      const delta  = e.clientX - startX;
+      const w      = Math.max(40, startW + delta);
+      const actual = w - startW; // min 클램핑 후 실제 변화량
+      cols[i].style.width = w + 'px';
+      // 인접 컬럼을 반대 방향으로 조정 → 테이블 전체 폭 유지
+      if (cols[i + 1] && nextStartW > 0) {
+        cols[i + 1].style.width = Math.max(40, nextStartW - actual) + 'px';
+      }
+    };
+    const onUp = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      localStorage.setItem('logColWidths',
+        JSON.stringify(ths.map(t => Math.round(t.getBoundingClientRect().width))));
+      localStorage.setItem('logColWidthsVer', WIDTHS_VER);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function _logParams() {
+  const params = new URLSearchParams();
+  const grp = document.getElementById('logGroupFilter').value;
+  const user = document.getElementById('logUserFilter').value.trim();
+  const ip = document.getElementById('logIpFilter').value.trim();
+  const filePath = (document.getElementById('logFileFilter')?.value || '').trim();
+  const action = document.getElementById('logActionFilter').value;
+  const status = document.getElementById('logStatusFilter').value;
+  const start = document.getElementById('logStartTime').value;
+  const end = document.getElementById('logEndTime').value;
+  if (grp) params.set('group_id', grp);
+  if (user) params.set('username', user);
+  if (ip) params.set('client_ip', ip);
+  if (filePath) params.set('file_path', filePath);
+  if (action === '__exclude_login_logout__') params.set('exclude_actions', 'login,logout');
+  else if (action === '__transfer_only__') params.set('exclude_actions', 'login,logout,cwd_fail,rename,mkdir,rmdir,delete');
+  else if (action) params.set('action', action);
+  if (status) params.set('status', status);
+  if (start) params.set('start_time', new Date(start).toISOString());
+  if (end) params.set('end_time', new Date(end).toISOString());
+  return params;
+}
+
+// 총건수 표시 + 페이저 갱신. total=null 이면 집계 중.
+function _renderLogTotal(itemCount) {
+  const el = document.getElementById('logTotal');
+  const pager = document.getElementById('logPager');
+  if (_logTotal === null) {
+    const from = itemCount ? (logPage - 1) * logPageSize + 1 : 0;
+    const to = itemCount ? from + itemCount - 1 : 0;
+    el.innerHTML = itemCount
+      ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 <span class="text-muted"><span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem"></span> 집계 중</span>`
+      : '결과 없음';
+    // 총건수 미확정: 이전/다음만 제공
+    pager.innerHTML = itemCount ? _simplePager(itemCount < logPageSize) : '';
+    return;
+  }
+  const from = _logTotal ? (logPage - 1) * logPageSize + 1 : 0;
+  const to = Math.min(logPage * logPageSize, _logTotal);
+  el.textContent = _logTotal
+    ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 ${_logTotal.toLocaleString()}건` : '결과 없음';
+  renderPager(Math.ceil(_logTotal / logPageSize), logPage);
+}
+
+function _simplePager(isLast) {
+  const go = n => `searchLogs(${n})`;
+  return `<li class="page-item ${logPage===1?'disabled':''}"><a class="page-link" href="#" onclick="${go(logPage-1)}">‹</a></li>`
+       + `<li class="page-item active"><span class="page-link">${logPage}</span></li>`
+       + `<li class="page-item ${isLast?'disabled':''}"><a class="page-link" href="#" onclick="${go(logPage+1)}">›</a></li>`;
+}
+
+async function _countLogs(params, key, itemCount) {
+  try {
+    const c = await api('GET', `/logs/count?${params}`);
+    if (!c || _logCountKey !== key) return;   // 그 사이 필터가 바뀌었으면 무시
+    _logTotal = c.total;
+    _renderLogTotal(itemCount);
+  } catch (e) {
+    if (_logCountKey !== key) return;
+    document.getElementById('logTotal').textContent = `총건수 집계 실패: ${e.message}`;
+  }
+}
+
+async function searchLogs(page) {
+  const _fail = msg => {
+    document.getElementById('logTable').innerHTML =
+      `<tr><td colspan="9" class="text-center text-danger py-4">${msg}</td></tr>`;
+    document.getElementById('logTotal').textContent = '';
+    document.getElementById('logPager').innerHTML = '';
+  };
+  try {
+  logPage = page || 1;
+  logPageSize = parseInt(document.getElementById('logPageSize').value) || 50;
+  const filterParams = _logParams();
+  const key = filterParams.toString();
+  const params = new URLSearchParams(filterParams);
+  params.set('page', logPage);
+  params.set('size', logPageSize);
+
+  // 필터가 바뀐 경우에만 총건수를 새로 센다 (목록과 병렬 요청)
+  const needCount = key !== _logCountKey;
+  if (needCount) { _logCountKey = key; _logTotal = null; }
+
+  const data = await api('GET', `/logs?${params}`);
+  if (!data) return;
+
+  const tbody = document.getElementById('logTable');
+  if (!data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">결과가 없습니다.</td></tr>';
+    if (needCount && logPage === 1) { _logTotal = 0; }
+    _renderLogTotal(0);
+    if (needCount && logPage > 1) _countLogs(filterParams, key, 0);
+    return;
+  }
+  _renderLogTotal(data.items.length);
+  if (needCount) _countLogs(filterParams, key, data.items.length);
+
+  tbody.innerHTML = data.items.map(l => {
+    const d = new Date(l.log_time);
+    const dt = `${d.getFullYear()}/${pad2(d.getMonth()+1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+    const action = l.action;
+    const icon = {upload:'<i class="bi bi-upload action-upload"></i>', download:'<i class="bi bi-download action-download"></i>', delete:'<i class="bi bi-trash action-delete"></i>', rename:'<i class="bi bi-pencil action-rename"></i>', login:'<i class="bi bi-box-arrow-in-right action-login"></i>', logout:'<i class="bi bi-box-arrow-right action-logout"></i>'}[action] || action;
+    const filePath = l.file_path || '';
+    const fileDisplay = action === 'rename'
+      ? filePath.replace(' -> ', ' → ')
+      : filePath;
+    const hostname = l.device_hostname || '-';
+    const deviceIp = l.device_ip || '-';
+    const isTransfer = action === 'upload' || action === 'download' || action === 'delete';
+    const sizeDisplay = isTransfer && l.file_size ? fmtBytes(l.file_size) : '-';
+    const timeDisplay = l.transfer_time && l.transfer_time > 0 ? l.transfer_time.toFixed(1)+'s' : '-';
+    return `<tr>
+      <td class="small text-center text-nowrap">${dt}</td>
+      <td class="small text-center text-truncate" style="overflow:hidden;font-family:monospace" title="${esc(hostname)}">${esc(deviceIp)}</td>
+      <td class="small text-center text-truncate" style="overflow:hidden">${esc(l.username||'-')}</td>
+      <td class="small text-center text-muted text-nowrap">${esc(l.client_ip||'-')}</td>
+      <td class="text-center text-nowrap">${icon} <span class="action-${action} small">${ACTION_KO[action]||esc(action)}</span></td>
+      <td class="small" style="word-break:break-all;overflow:hidden" title="${esc(filePath)}">${esc(fileDisplay||'-')}</td>
+      <td class="size-val small text-center text-nowrap">${sizeDisplay}</td>
+      <td class="small text-center text-nowrap">${timeDisplay}</td>
+      <td class="text-center"><span class="badge bg-${l.status==='success'?'success':'danger'}">${l.status==='success'?'성공':'실패'}</span></td>
+    </tr>`;
+  }).join('');
+  } catch(e) {
+    _fail(`조회 실패: ${e.message}`);
+  }
+}
+
+function renderPager(total, current) {
+  const ul = document.getElementById('logPager');
+  if (total <= 1) { ul.innerHTML=''; return; }
+  const go = n => `searchLogs(${n})`;
+  let html = '';
+  html += `<li class="page-item ${current===1?'disabled':''}"><a class="page-link" href="#" onclick="${go(1)}">«</a></li>`;
+  html += `<li class="page-item ${current===1?'disabled':''}"><a class="page-link" href="#" onclick="${go(current-1)}">‹</a></li>`;
+  const start = Math.max(1, current-2), end = Math.min(total, current+2);
+  if (start > 1) html += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
+  for (let i=start; i<=end; i++) html += `<li class="page-item ${i===current?'active':''}"><a class="page-link" href="#" onclick="${go(i)}">${i}</a></li>`;
+  if (end < total) html += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
+  html += `<li class="page-item ${current===total?'disabled':''}"><a class="page-link" href="#" onclick="${go(current+1)}">›</a></li>`;
+  html += `<li class="page-item ${current===total?'disabled':''}"><a class="page-link" href="#" onclick="${go(total)}">»</a></li>`;
+  ul.innerHTML = html;
+}
+
+async function _download(endpoint, ext) {
+  const params = _logParams();
+  const r = await fetch(`${API}${endpoint}?${params}`, {
+    headers: {'Authorization': `Bearer ${token}`}
+  });
+  if (!r.ok) return alert('내보내기 실패');
+  const blob = await r.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ftp_logs_${new Date().toISOString().slice(0,10)}.${ext}`;
+  a.click();
+}
+
+async function exportLogs() { await _download('/logs/export', 'csv'); }
+async function exportXlsx() { await _download('/logs/export/xlsx', 'xlsx'); }
+
+function resetLogFilters() {
+  document.getElementById('logTelcoFilter').value = '';
+  _renderGroupOptions('');
+  document.getElementById('logGroupFilter').value = '';
+  _resetAutofillInputs();
+  document.getElementById('logFileFilter').value = '';
+  document.getElementById('logActionFilter').value = '__exclude_login_logout__';
+  document.getElementById('logStatusFilter').value = '';
+  document.getElementById('logStartTime').value = '';
+  document.getElementById('logEndTime').value = '';
+  searchLogs(1);
+}
+
+function logDateQuick(dayOffset) {
+  const now = new Date();
+  let start, end;
+  if (dayOffset === -1) {
+    // 어제 전체
+    start = new Date(now); start.setDate(start.getDate()-1); start.setHours(0,0,0,0);
+    end   = new Date(now); end.setDate(end.getDate()-1);     end.setHours(23,59,59,999);
+  } else if (dayOffset === 0) {
+    // 오늘 00:00 ~ 지금
+    start = new Date(now); start.setHours(0,0,0,0);
+    end   = now;
+  } else {
+    // N일 전 00:00 ~ 지금
+    start = new Date(now); start.setDate(start.getDate()+dayOffset); start.setHours(0,0,0,0);
+    end   = now;
+  }
+  document.getElementById('logStartTime').value = fmtLocalInput(start);
+  document.getElementById('logEndTime').value   = fmtLocalInput(end);
+  searchLogs(1);
+}
+
+/* === app.js === */
+const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {keyboard:false});
+
+let currentSettingsTab = 'telco';
+
+function nav(page) {
+  // 고객 계정은 설정 접근 불가 (서버에서도 차단되지만 UI에서도 막는다)
+  if (page === 'settings' && getRole() !== 'admin') page = 'dashboard';
+  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelectorAll('#topbar .nav-link').forEach(el => el.classList.remove('active'));
+  const link = document.querySelector(`#topbar [onclick="nav('${page}')"]`);
+  if (link) link.classList.add('active');
+  if (page === 'dashboard') {
+    if (_dashExactStart || document.getElementById('dashStart').value) loadAll();
+    else dashLast24();
+  }
+  else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
+  if (page === 'logs') initLogsPage();
+  if (page === 'settings') settingsTab(currentSettingsTab);
+}
+
+function settingsTab(tab) {
+  currentSettingsTab = tab;
+  document.querySelectorAll('#page-settings .settings-pane').forEach(el => el.classList.add('d-none'));
+  document.getElementById('settings-' + tab).classList.remove('d-none');
+  document.querySelectorAll('.settings-vnav .nav-link').forEach(el => el.classList.remove('active'));
+  const link = document.querySelector(`.settings-vnav [onclick="settingsTab('${tab}')"]`);
+  if (link) link.classList.add('active');
+  if (tab === 'telco') loadTelcos();
+  if (tab === 'update') loadVersion();
+  if (tab === 'storage') loadStorage();
+  if (tab === 'devices') loadDevices();
+  if (tab === 'groups') loadGroups();
+  if (tab === 'notify') loadNotify();
+  if (tab === 'users') loadUsers();
+  if (tab === 'security') loadSecurity();
+}
+
+function initApp() {
+  nav('dashboard');
+}
+
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const username = document.getElementById('loginUser').value.trim();
+  const pwd = document.getElementById('loginPwd').value;
+  const errEl = document.getElementById('loginError');
+  const ipBlockedEl = document.getElementById('loginIpBlocked');
+  const btn = document.getElementById('loginBtn');
+  errEl.classList.add('d-none');
+  ipBlockedEl.classList.add('d-none');
+  btn.disabled = true;
+  try {
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({username, password: pwd})
+    });
+    if (res.status === 403) {
+      const data = await res.json().catch(() => ({}));
+      const ip = data?.detail?.client_ip || '';
+      document.getElementById('blockedIpDisplay').textContent = ip;
+      ipBlockedEl.classList.remove('d-none');
+      return;
+    }
+    if (!res.ok) throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.');
+    const data = await res.json();
+    token = data.access_token;
+    localStorage.setItem('soltrace_token', token);
+    startSessionTimers(token);
+    applyRoleUI();
+    loginModal.hide();
+    document.getElementById('appLayout').classList.remove('app-hidden');
+    initApp();
+  } catch(err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('d-none');
+  } finally { btn.disabled = false; }
+});
+
+['logUserFilter', 'logStartTime', 'logEndTime'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') searchLogs(1);
+  });
+});
+
+(function init() {
+  if (token) {
+    startSessionTimers(token);
+    applyRoleUI();
+    document.getElementById('appLayout').classList.remove('app-hidden');
+    initApp();
+  } else {
+    loginModal.show();
+  }
+})();
+
+</script>
+
+
+
+
+
+
+
+</body>
+</html>

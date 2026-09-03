@@ -68,7 +68,8 @@ soltrace/
 │               ├── logs.js       # 로그 조회 (기본 90일, 드릴다운 필터, 총건수 병렬 집계)
 │               ├── devices.js    # 장비 목록 / 상태 배지 (하트비트 120초 임계)
 │               ├── groups.js     # 그룹 관리
-│               └── settings.js   # 알림 설정 (웹훅 / HMS), 고객 계정, DB 저장소
+│               ├── settings.js   # 알림 설정 (웹훅 / HMS), 고객 계정, DB 저장소
+│               └── demo-data.js  # 샘플 페이지용 API 스텁 (운영 화면에서는 미로드)
 ├── ftp-daemon/
 │   ├── soltrace_daemon.py        # 실시간 로그 감시 데몬
 │   ├── soltrace_bulk.py          # 과거 데이터 일괄 전송 (glob 지원)
@@ -81,6 +82,7 @@ soltrace/
     ├── install_was_rocky8.sh         # WAS 최초 설치 (Rocky Linux 8)
     ├── update_rocky8.sh              # WAS pull + 재배포 (+ PG 튜닝 재적용)
     ├── tune_pg_rocky8.sh             # PostgreSQL 메모리/WAL 설정을 서버 RAM 비율로 계산·적용
+    ├── build_demo.py                 # 샘플(데모) 페이지 생성 → samples/soltrace-demo.html
     ├── create_partitions.sh          # ftp_logs 월별 파티션 생성 (cron)
     ├── backup_db.sh                  # DB 증분 백업, 최대 3년 보관 (cron)
     ├── rebalance_default_partition.sql  # ftp_logs_default → 월 파티션 수동 이동
@@ -419,6 +421,20 @@ sudo bash scripts/tune_pg_rocky8.sh --restart   # 적용 + 변경 시 재시작
 cd was
 python -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
 .venv/bin/python -m pytest tests -q
+```
+
+## 샘플(데모) 페이지
+
+WAS·DB 없이 화면만 보여줄 때 쓴다. `samples/soltrace-demo.html` 을 브라우저로 바로 열면 된다
+(Bootstrap/Chart.js 는 CDN 사용 → 인터넷 필요).
+
+- 실제 `was/static` 의 화면·CSS·JS 를 그대로 인라인하고 **API 응답만** `js/demo-data.js` 의
+  예시 데이터로 대체한다. 화면을 고친 뒤 아래 명령을 다시 실행하면 샘플도 같이 갱신된다.
+- 로그인 없이 admin 화면으로 진입하며, 조회·차트·탭 이동은 동작하고 저장/삭제 등 변경 요청은 차단된다.
+
+```bash
+python3 scripts/build_demo.py              # samples/soltrace-demo.html 재생성
+python3 scripts/build_demo.py -o /tmp/x.html
 ```
 
 ## 코드 배포
