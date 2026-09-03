@@ -378,6 +378,8 @@ class AlertSettings(BaseModel):
     login_fail_rate_floor: Optional[float] = Field(default=None, ge=0, le=1)
     throughput_drop: Optional[float] = Field(default=None, ge=0, le=1)
     cwd_fail_floor: Optional[int] = Field(default=None, ge=0)
+    # CWD 실패 집계 제외 경로 (한 줄에 하나, '*' 와일드카드)
+    cwd_ignore_paths: Optional[str] = Field(default=None, max_length=2000)
     min_samples: Optional[int] = Field(default=None, ge=1)
     min_login_samples: Optional[int] = Field(default=None, ge=1)
     min_cwd_samples: Optional[int] = Field(default=None, ge=1)

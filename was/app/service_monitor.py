@@ -23,6 +23,11 @@ log = logging.getLogger("soltrace.monitor")
 
 _EPOCH = "2000-01-01 00:00:00+00"  # date_bin origin (버킷 경계 고정)
 
+# cwd_fail 집계에서 제외 경로를 거르는 조건. 롤업(건수)과 알림 경로 분석이 같은 기준을
+# 봐야 "최다 경로"가 집계에서 빠진 경로로 나오는 어긋남이 생기지 않는다.
+# 빈 목록이면 LIKE ANY(ARRAY[]) 가 false → NOT false = true 로 전부 집계된다.
+_CWD_NOT_IGNORED = "NOT (COALESCE(file_path,'') LIKE ANY(CAST(:cwd_ignore AS text[])))"
+
 
 def _now():
     return datetime.now(timezone.utc)
@@ -40,6 +45,22 @@ def _median(xs):
 def _mad(xs, med):
     # Median Absolute Deviation (이상치에 강건한 산포 척도)
     return _median([abs(x - med) for x in xs]) or 0.0
+
+
+def _like_patterns(raw: str) -> list:
+    """설정에 적힌 경로 패턴(줄 단위)을 SQL LIKE 패턴으로 바꾼다.
+
+    사용자는 '*' 와일드카드만 알면 되도록, LIKE 메타문자(% _ \\)는 백슬래시로
+    이스케이프하고(LIKE 의 기본 이스케이프 문자) '*' 만 '%' 로 바꾼다.
+    """
+    out = []
+    for line in (raw or "").splitlines():
+        pat = line.strip()
+        if not pat:
+            continue
+        pat = pat.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        out.append(pat.replace("*", "%"))
+    return out
 
 
 class ServiceMonitor:
@@ -81,8 +102,9 @@ class ServiceMonitor:
     def run_once(self):
         db = self._sf()
         try:
-            self._rollup(db)
-            n = self._detect(db)
+            cfg = alert_settings.load(db)   # 설정 페이지에서 바꾼 값을 매 주기 반영
+            self._rollup(db, cfg)
+            n = self._detect(db, cfg)
             if n:
                 log.info("Detected %d new service alert(s)", n)
             self._notify(db)
@@ -90,7 +112,7 @@ class ServiceMonitor:
             db.close()
 
     # ── (1) 롤업 ─────────────────────────────────────────────────────────────
-    def _rollup(self, db):
+    def _rollup(self, db, cfg):
         # 늦게 도착한 로그(write_buffer 지연 등)를 흡수하도록 트레일링 윈도우를 재집계.
         win_start = _now() - timedelta(hours=2)
         db.execute(text(f"""
@@ -115,7 +137,8 @@ class ServiceMonitor:
                     WHERE action IN ('upload','download') AND status='success' AND file_size >= :large), 0),
                 COUNT(*) FILTER (WHERE action='login'),
                 COUNT(*) FILTER (WHERE action='login' AND status='fail'),
-                COUNT(*) FILTER (WHERE action='cwd_fail')
+                -- 원인이 밝혀진 경로(설정 오류 등)는 알림 집계에서만 제외한다.
+                COUNT(*) FILTER (WHERE action='cwd_fail' AND {_CWD_NOT_IGNORED})
             FROM ftp_logs
             WHERE log_time >= :win_start
             GROUP BY device_id, bucket
@@ -132,11 +155,12 @@ class ServiceMonitor:
                 cwd_fails      = EXCLUDED.cwd_fails,
                 updated_at     = NOW()
         """), {"iv": self._bucket, "win_start": win_start,
-               "large": settings.alert_large_file_bytes})
+               "large": settings.alert_large_file_bytes,
+               "cwd_ignore": _like_patterns(cfg["cwd_ignore_paths"])})
         db.commit()
 
     # ── (2) 이상 판정 ────────────────────────────────────────────────────────
-    def _detect(self, db) -> int:
+    def _detect(self, db, cfg) -> int:
         now = _now()
         bucket_sec = self._bucket.total_seconds()
         # baseline: 최근 N일 중 "막 끝난" 1시간을 제외한 구간 → 직전 평소 패턴
@@ -145,8 +169,6 @@ class ServiceMonitor:
         # 후보: 최근에 완전히 닫힌 버킷들 (롤업 주기 + 버킷 2개 여유)
         cand_start = now - timedelta(seconds=self._interval + 2 * bucket_sec)
         cand_end = now - self._bucket  # 진행 중 버킷 제외
-
-        cfg = alert_settings.load(db)   # 설정 페이지에서 바꾼 임계값을 매 주기 반영
 
         rows = db.execute(text("""
             SELECT device_id, bucket, transfers, transfer_fails, bytes,
@@ -173,6 +195,8 @@ class ServiceMonitor:
         if not alerts:
             return 0
 
+        self._annotate_cwd_paths(db, alerts, cfg)
+
         inserted = 0
         for a in alerts:
             res = db.execute(text("""
@@ -187,6 +211,42 @@ class ServiceMonitor:
             inserted += res.rowcount or 0
         db.commit()
         return inserted
+
+    # CWD 실패가 이 비율 이상 한 경로에 몰려 있으면 침입 탐색이 아니라 경로 설정 오류로 본다
+    # (홈/업로드 경로 오타, 마운트 누락, 권한 등 — 매 세션 같은 경로에서 550 이 난다).
+    _CWD_PATH_CONCENTRATION = 0.9
+
+    def _annotate_cwd_paths(self, db, alerts: list, cfg) -> None:
+        """CWD 실패 급증 알림에 실패가 몰린 경로를 덧붙인다.
+
+        service_metrics 는 경로를 갖고 있지 않으므로 알림이 실제로 뜬 버킷에 한해
+        ftp_logs 를 되짚는다(알림 건수만큼만 도는 조회).
+        """
+        for a in alerts:
+            if a["metric"] != "cwd_fail_spike":
+                continue
+            row = db.execute(text(f"""
+                SELECT file_path, COUNT(*)::int AS n
+                FROM ftp_logs
+                WHERE device_id = :device_id AND action = 'cwd_fail'
+                  AND log_time >= :bucket AND log_time < :bucket_end
+                  AND {_CWD_NOT_IGNORED}
+                GROUP BY file_path
+                ORDER BY n DESC
+                LIMIT 1
+            """), {"device_id": a["device_id"], "bucket": a["bucket"],
+                   "bucket_end": a["bucket"] + self._bucket,
+                   "cwd_ignore": _like_patterns(cfg["cwd_ignore_paths"])}).fetchone()
+            if not row or not row.file_path:
+                continue
+            total = a["value"] or 0
+            # 롤업 이후 도착한 로그(write_buffer 지연)로 n 이 집계보다 클 수 있어 1.0 로 자른다
+            ratio = min(row.n / total, 1.0) if total else 0
+            if ratio >= self._CWD_PATH_CONCENTRATION:
+                a["message"] += (f" — {row.file_path} 한 경로에 {ratio*100:.0f}% 집중"
+                                 f" (홈/업로드 경로 설정 확인)")
+            else:
+                a["message"] += f" — 최다 경로 {row.file_path} {row.n}건"
 
     # 큰 파일 평균 크기가 평소와 이 배수 이상 차이 나면 전송 속도 판정을 보류한다.
     # (같은 '큰 파일'이라도 5MB 묶음과 2GB 원본은 오버헤드 비중이 달라 비교가 성립하지 않음)

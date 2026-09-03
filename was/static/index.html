@@ -616,6 +616,15 @@
                     <input type="number" min="1" class="form-control form-control-sm" id="alMinLargeSamples">
                     <div class="form-text">아래 기준 크기 이상 전송이 이 건수 미만이면 속도 판정을 건너뜁니다.</div>
                   </div>
+                  <div class="col-12">
+                    <label class="form-label small mb-1">CWD 실패 제외 경로</label>
+                    <textarea class="form-control form-control-sm" id="alCwdIgnorePaths" rows="3"
+                      placeholder="한 줄에 하나씩 입력 (* 와일드카드)&#10;예) /upload/tmp/*&#10;    /backup"></textarea>
+                    <div class="form-text">
+                      원인이 밝혀진 경로(홈·업로드 경로 설정 오류 등)를 <b>CWD 실패 집계에서만</b> 뺍니다.
+                      로그 조회에는 그대로 남습니다. 최근 2시간 버킷은 다음 판정 주기에 다시 집계됩니다.
+                    </div>
+                  </div>
                 </div>
                 <hr class="my-3">
                 <dl class="row small mb-0">

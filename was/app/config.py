@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     alert_fail_rate_floor: float = 0.05    # 전송 실패율 절대 하한 (5%)
     alert_login_fail_rate_floor: float = 0.30   # 로그인 실패율 절대 하한 (30%)
     alert_cwd_fail_floor: int = 20         # CWD fail 절대 하한 (건수 기준, 소량 정상탐색 무시)
+    # CWD 실패 집계에서 뺄 경로 패턴 (줄 단위, '*' 와일드카드). 홈/업로드 경로 설정 오류처럼
+    # 원인이 밝혀진 경로를 알림에서만 제외한다 — 로그 조회에는 그대로 남는다.
+    # .env 는 여러 줄 값을 담지 못하므로 설정 페이지에서만 입력한다(여기는 빈 기본값 용도).
+    alert_cwd_ignore_paths: str = ""
     alert_throughput_drop: float = 0.5     # baseline 대비 throughput 하락 비율 (50%↓)
 
     # 알림 채널 (미설정 시 해당 채널 비활성)

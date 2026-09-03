@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import alert_settings
-from app.service_monitor import ServiceMonitor
+from app.service_monitor import ServiceMonitor, _like_patterns
 
 MB = 1024 * 1024
 
@@ -115,3 +115,25 @@ def test_thresholds_are_honoured(cfg):
     assert "throughput" in metrics(evaluate(slow, base, cfg))         # 기본 50% 임계 → 알림
     lenient = {**cfg, "throughput_drop": 0.9}                          # 90% 이상 떨어져야 알림
     assert "throughput" not in metrics(evaluate(slow, base, lenient))
+
+
+# ── CWD 실패 제외 경로 ───────────────────────────────────────────────────────
+
+def test_cwd_ignore_patterns_empty_means_no_exclusion():
+    """빈 설정은 빈 목록 → LIKE ANY(ARRAY[]) 가 false 라 전부 집계된다."""
+    assert _like_patterns("") == []
+    assert _like_patterns(None) == []
+    assert _like_patterns("\n   \n") == []
+
+
+def test_cwd_ignore_patterns_wildcard_and_escaping():
+    """'*' 만 와일드카드로 쓰고, LIKE 메타문자는 그대로 매칭되도록 이스케이프한다."""
+    assert _like_patterns("/upload/tmp/*") == ["/upload/tmp/%"]
+    assert _like_patterns("  /backup  ") == ["/backup"]
+    # '_' 는 LIKE 에서 '임의의 한 글자'라 그대로 두면 /aXb 까지 걸린다
+    assert _like_patterns("/a_b") == ["/a\\_b"]
+    assert _like_patterns("100%*") == ["100\\%%"]
+
+
+def test_cwd_ignore_patterns_multiline():
+    assert _like_patterns("/a/*\n/b") == ["/a/%", "/b"]
