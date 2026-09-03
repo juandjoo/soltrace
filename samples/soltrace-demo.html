@@ -16,6 +16,8 @@
   --st-brand:    #e85d04;
   --st-brand-bg: #fff5ee;
   --st-text:     #475569;
+  --st-topbar-h: 52px;   /* 왼쪽 탭 sticky 기준 (상단 탭바 높이) */
+  --st-sidenav-w: 92px;
 }
 
 /* ── 레이아웃 ──────────────────────────────────────────────────── */
@@ -72,6 +74,45 @@ body        { background: #f5f7fa; font-size: 14px; }
 .btn-extend:hover  { background: var(--st-brand-bg); border-color: var(--st-brand); color: var(--st-brand); }
 .btn-topbar-icon   { padding: 8px 10px; border-radius: 10px; color: var(--st-text); }
 .btn-topbar-icon:hover { background: var(--st-brand-bg); color: var(--st-brand); }
+
+/* ── 왼쪽 탭 (아이콘 위 · 이름 아래) ───────────────────────────── */
+#shell { display: flex; align-items: stretch; }
+#sidenav {
+  flex: 0 0 var(--st-sidenav-w);
+  width: var(--st-sidenav-w);
+  background: #fff;
+  border-right: 1px solid #d1d5db;
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: var(--st-topbar-h);
+  height: calc(100vh - var(--st-topbar-h));
+  overflow-y: auto;
+}
+#sidenav .nav-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border-radius: 10px;
+  color: var(--st-text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: center;
+}
+#sidenav .nav-link i          { font-size: 1.35rem; }
+#sidenav .nav-link:hover      { color: var(--st-brand); background: var(--st-brand-bg); }
+#sidenav .nav-link.active     { color: var(--st-brand); background: var(--st-brand-bg); font-weight: 600; }
+#main { flex: 1 1 auto; min-width: 0; }
+/* 좁은 화면에서는 아이콘만 남긴다 (이름은 링크의 title 로 확인) */
+@media (max-width: 768px) {
+  #sidenav { flex-basis: 56px; width: 56px; }
+  #sidenav .nav-link span { display: none; }
+}
 
 /* ── 설정 좌측 세로 탭 ─────────────────────────────────────────── */
 .settings-vnav .nav-link        { color: var(--st-text); border-radius: 8px; padding: 8px 14px; margin-bottom: 3px; font-size: 13.5px; }
@@ -173,12 +214,6 @@ body        { background: #f5f7fa; font-size: 14px; }
     <button class="navbar-brand" onclick="nav('dashboard')">
       <i class="bi bi-hdd-network me-2 text-brand"></i><span class="text-brand">Sol</span><span>Trace</span>
     </button>
-    <ul class="nav gap-1 flex-nowrap" style="position:absolute;left:50%;transform:translateX(-50%)">
-      <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i>대시보드</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('apiguide')"><i class="bi bi-code-slash"></i>API 가이드</a></li>
-      <li class="nav-item" data-admin-only><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear-fill"></i>설정</a></li>
-    </ul>
     <div class="ms-auto d-flex align-items-center gap-2">
       <span id="sessionTimerDisplay" class="session-timer d-flex align-items-center gap-1 small">
         <i class="bi bi-clock" style="font-size:.85rem"></i>
@@ -189,6 +224,17 @@ body        { background: #f5f7fa; font-size: 14px; }
         <i class="bi bi-box-arrow-right" style="font-size:1.25rem"></i>
       </button>
     </div>
+  </nav>
+
+  <div id="shell">
+
+  <!-- 왼쪽 탭 (아이콘 위 · 이름 아래) -->
+  <nav id="sidenav">
+    <a class="nav-link active" href="#" onclick="nav('dashboard')" title="대시보드"><i class="bi bi-speedometer2"></i><span>대시보드</span></a>
+    <a class="nav-link" href="#" onclick="nav('logs')" title="로그 조회"><i class="bi bi-list-ul"></i><span>로그 조회</span></a>
+    <a class="nav-link" href="#" onclick="nav('apiguide')" title="API 가이드"><i class="bi bi-code-slash"></i><span>API 가이드</span></a>
+    <a class="nav-link" href="#" onclick="nav('changelog')" title="변경 이력" data-admin-only><i class="bi bi-clock-history"></i><span>변경 이력</span></a>
+    <a class="nav-link" href="#" onclick="nav('settings')" title="설정" data-admin-only><i class="bi bi-gear-fill"></i><span>설정</span></a>
   </nav>
 
   <!-- 콘텐츠 -->
@@ -238,7 +284,34 @@ body        { background: #f5f7fa; font-size: 14px; }
           </div>
         </div>
       </div>
-      <!-- 2행: 영향도 + 실패건수 -->
+      <!-- 2행: 사용자별 업로드양 · 삭제량 (기간별) -->
+      <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+          <div class="card dash-card p-3 h-100">
+            <div class="d-flex align-items-baseline gap-2 mb-2">
+              <span class="fw-semibold small">사용자별 업로드양</span>
+              <span id="userUploadPeriod" class="text-muted" style="font-size:0.75rem"></span>
+            </div>
+            <div style="position:relative;height:240px">
+              <canvas id="chartUserUpload"></canvas>
+              <div id="chartUserUploadEmpty" class="d-none h-100 d-flex align-items-center justify-content-center text-muted small">기간 내 업로드 없음</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card dash-card p-3 h-100">
+            <div class="d-flex align-items-baseline gap-2 mb-2">
+              <span class="fw-semibold small">사용자별 삭제량</span>
+              <span id="userDeletePeriod" class="text-muted" style="font-size:0.75rem"></span>
+            </div>
+            <div style="position:relative;height:240px">
+              <canvas id="chartUserDelete"></canvas>
+              <div id="chartUserDeleteEmpty" class="d-none h-100 d-flex align-items-center justify-content-center text-muted small">기간 내 삭제 없음</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- 3행: 영향도 + 실패건수 -->
       <div class="row g-3 mb-3">
         <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
@@ -263,7 +336,7 @@ body        { background: #f5f7fa; font-size: 14px; }
           </div>
         </div>
       </div>
-      <!-- 3행: 이상 알림 -->
+      <!-- 4행: 이상 알림 -->
       <div class="row g-3">
         <div class="col-12">
           <div class="card dash-card p-3">
@@ -520,6 +593,20 @@ body        { background: #f5f7fa; font-size: 14px; }
     </div>
 
     <!-- 설정 -->
+    <!-- 변경 이력 -->
+    <div id="page-changelog" class="page">
+      <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-clock-history me-2 text-brand"></i>변경 이력</h5>
+        <span class="text-muted small" id="clCurrent"></span>
+        <button class="btn btn-outline-secondary btn-sm ms-auto" onclick="loadChangelog()">
+          <i class="bi bi-arrow-clockwise me-1"></i>새로고침
+        </button>
+      </div>
+      <div class="card p-3">
+        <div id="clBody" class="small text-muted">불러오는 중…</div>
+      </div>
+    </div>
+
     <div id="page-settings" class="page">
       <h5 class="mb-3 fw-bold"><i class="bi bi-gear-fill me-2 text-brand"></i>설정</h5>
       <div class="row g-4 align-items-start">
@@ -921,6 +1008,7 @@ body        { background: #f5f7fa; font-size: 14px; }
     </div><!-- /page-settings -->
 
   </div><!-- /main -->
+  </div><!-- /shell -->
 </div><!-- /appLayout -->
 
 <!-- 그룹 모달 -->
@@ -1174,11 +1262,13 @@ body        { background: #f5f7fa; font-size: 14px; }
       const busy = kst >= 9 && kst <= 21 ? 1 : 0.25;
       const up = Math.round(between(20, 160) * busy * scale);
       const down = Math.round(between(40, 260) * busy * scale);
+      const del = Math.round(between(0, 12) * busy * scale);
       pts.push({
         bucket: b.toISOString().replace(/\.\d+Z$/, 'Z'),
-        uploads: up, downloads: down,
+        uploads: up, downloads: down, deletes: del,
         bytes_in: up * between(30, 90) * 1024 * 1024,
         bytes_out: down * between(20, 70) * 1024 * 1024,
+        bytes_del: del * between(10, 60) * 1024 * 1024,
       });
     }
     return pts;
@@ -1311,6 +1401,16 @@ body        { background: #f5f7fa; font-size: 14px; }
     [/^\/dashboard\/cwd-fails/, cwdFails],
     [/^\/dashboard\/service-health/, serviceHealth],
     [/^\/dashboard/, dashboard],
+    [/^\/settings\/changelog/, () => ([
+      { date: '2026-09-03', items: [
+        { text: '사용자별 업로드양·삭제량 차트 + 왼쪽 탭 정리', commit: 'demo123' },
+        { text: '로그 조회 화면 수정 — 검색 시 깜빡임, 작업 열 침범', commit: 'b820825' },
+        { text: 'CWD 존재 확인은 실패로 세지 않는다', commit: 'f5c3b70' },
+      ]},
+      { date: '2026-06-30', items: [
+        { text: '고객사 계정 + groups.customer 기준 데이터 격리 추가', commit: '7f649da' },
+      ]},
+    ])],
     [/^\/settings\/version$/, () => ({
       branch: 'main', commit: 'demo123', commit_date: '2026-09-03 10:20',
       subject: '대량 데이터 보관 개선 + 죽은 코드/중복 정리',
@@ -1600,6 +1700,34 @@ function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
+// 시간대 라인차트 공통 규칙 — 사용자별 사용량 · 업로드양 · 삭제량 · 장비 그룹별이 모두 같다.
+// (색·굵기·점 크기, x축 눈금 밀도가 차트마다 갈라지면 같은 화면에서 다르게 보인다)
+function _hourlyLineStyle(idx, bucketCount) {
+  const color = HOURLY_PALETTE[idx % HOURLY_PALETTE.length];
+  return {
+    borderColor: color,
+    backgroundColor: color + '22',
+    borderWidth: 1.5,
+    tension: 0,
+    pointRadius: bucketCount > 48 ? 0 : 2,
+    fill: false,
+  };
+}
+
+function _hourlyXScale(bucketCount) {
+  return {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true,
+                  maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(bucketCount / 24)))}};
+}
+
+// 카드 제목 옆 조회기간 표시 — 여러 카드가 같은 문구를 쓴다.
+function _setPeriodLabels(...ids) {
+  const label = _dashPeriodLabel();
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = label;
+  });
+}
+
 let _dashExactStart = null;
 let _dashExactEnd   = null;
 
@@ -1711,15 +1839,34 @@ let _userHourlyFocusIdx = null;
 
 async function loadUserHourly() {
   _userHourlyFocusIdx = null;
+  _setPeriodLabels('userUploadPeriod', 'userDeletePeriod');
   const data = await api('GET', `/dashboard/users-hourly?${_dashDateParams()}`);
   if (!data) return;
 
   const legendEl = document.getElementById('userHourlyLegend');
   if (!data.length) {
     destroyChart('userHourly');
+    _renderUserVolumeChart('userUpload', 'chartUserUpload', [], [], String, () => [0, 0]);
+    _renderUserVolumeChart('userDelete', 'chartUserDelete', [], [], String, () => [0, 0]);
     legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
     return;
   }
+
+  // 버킷은 전체 사용자 기준 — 삭제만 한 사용자도 x축에 들어와야 한다
+  const bucketSet = new Set(data.flatMap(u => u.data.map(h => h.bucket)));
+  const allBuckets = [...bucketSet].sort();
+
+  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
+
+  // 버킷 → 시점 맵. 세 차트(사용량·업로드양·삭제량)가 같은 맵을 쓴다.
+  data.forEach(u => { u._map = Object.fromEntries(u.data.map(h => [h.bucket, h])); });
+
+  // 업로드양 · 삭제량 (기간별) — 같은 응답으로 그린다 (추가 요청 없음).
+  // 사용량 차트가 비어도(전송이 없어도) 삭제는 있을 수 있으므로 먼저 그린다.
+  _renderUserVolumeChart('userUpload', 'chartUserUpload', data, allBuckets, fmtBucket,
+                         h => [h.bytes_in || 0, h.uploads || 0]);
+  _renderUserVolumeChart('userDelete', 'chartUserDelete', data, allBuckets, fmtBucket,
+                         h => [h.bytes_del || 0, h.deletes || 0]);
 
   const active = data.filter(u => u.data.some(h => (h.uploads || 0) + (h.downloads || 0) > 0));
   if (!active.length) {
@@ -1727,24 +1874,12 @@ async function loadUserHourly() {
     legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
     return;
   }
-  const bucketSet = new Set(active.flatMap(u => u.data.map(h => h.bucket)));
-  const allBuckets = [...bucketSet].sort();
 
-  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
-
-  const datasets = active.map((u, i) => {
-    const map = Object.fromEntries(u.data.map(h => [h.bucket, h]));
-    return {
-      label: u.username,
-      data: allBuckets.map(b => (map[b]?.uploads || 0) + (map[b]?.downloads || 0)),
-      borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
-      backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
-      borderWidth: 1.5,
-      tension: 0,
-      pointRadius: allBuckets.length > 48 ? 0 : 2,
-      fill: false,
-    };
-  });
+  const datasets = active.map((u, i) => ({
+    label: u.username,
+    data: allBuckets.map(b => (u._map[b]?.uploads || 0) + (u._map[b]?.downloads || 0)),
+    ..._hourlyLineStyle(i, allBuckets.length),
+  }));
 
   document.getElementById('resetUserZoomBtn')?.classList.add('d-none');
   destroyChart('userHourly');
@@ -1767,7 +1902,7 @@ async function loadUserHourly() {
         },
       },
       scales: {
-        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
+        x: _hourlyXScale(allBuckets.length),
         y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
@@ -1799,6 +1934,56 @@ async function loadUserHourly() {
     </tr></thead>
     <tbody>${userRows}</tbody>
   </table>`;
+}
+
+// 사용자별 '양' 추이 라인차트 — 업로드양·삭제량 카드가 같은 코드를 쓴다.
+// pick(h) → [바이트, 건수]. 값이 모두 0인 사용자는 빼고, 아무도 없으면 안내 문구로 대체한다.
+function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, pick) {
+  destroyChart(chartKey);
+  const canvas = document.getElementById(canvasId);
+  const empty  = document.getElementById(canvasId + 'Empty');
+  if (!canvas || !empty) return;
+
+  const datasets = [];
+  series.forEach((u, i) => {
+    const picked = buckets.map(b => pick(u._map[b] || {}));
+    if (!picked.some(([v]) => v > 0)) return;
+    datasets.push({
+      label: u.username,
+      data: picked.map(([v]) => v),
+      counts: picked.map(([, n]) => n),
+      ..._hourlyLineStyle(datasets.length, buckets.length),
+    });
+  });
+
+  if (!datasets.length) {
+    canvas.classList.add('d-none');
+    empty.classList.remove('d-none');
+    return;
+  }
+  canvas.classList.remove('d-none');
+  empty.classList.add('d-none');
+
+  charts[chartKey] = new Chart(canvas, {
+    type: 'line',
+    data: {labels: buckets.map(fmtBucket), datasets},
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {mode: 'index', intersect: false},
+      plugins: {
+        legend: {position: 'right', labels: {boxWidth: 10, font: {size: 10}}},
+        tooltip: {callbacks: {label: c => {
+          const n = c.dataset.counts?.[c.dataIndex] || 0;
+          return `${c.dataset.label}: ${fmtBytes(c.parsed.y)} (${n.toLocaleString()}건)`;
+        }}},
+      },
+      scales: {
+        x: _hourlyXScale(buckets.length),
+        y: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}},
+      },
+    },
+  });
 }
 
 let _userLegendSort   = {col: null, asc: true};
@@ -1895,12 +2080,7 @@ async function loadHourly() {
     return {
       label: g.name,
       data: allBuckets.map(b => (map[b]?.uploads || 0) + (map[b]?.downloads || 0)),
-      borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
-      backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
-      borderWidth: 1.5,
-      tension: 0,
-      pointRadius: allBuckets.length > 48 ? 0 : 2,
-      fill: false,
+      ..._hourlyLineStyle(i, allBuckets.length),
     };
   });
 
@@ -1925,7 +2105,7 @@ async function loadHourly() {
         },
       },
       scales: {
-        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
+        x: _hourlyXScale(allBuckets.length),
         y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
@@ -1998,11 +2178,7 @@ function _dashPeriodLabel() {
 }
 
 async function loadServiceHealth() {
-  const periodLabel = _dashPeriodLabel();
-  ['healthStatusPeriod', 'healthRatePeriod'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = periodLabel;
-  });
+  _setPeriodLabels('healthStatusPeriod', 'healthRatePeriod');
   const data = await api('GET', `/dashboard/service-health?${_dashDateParams()}`);
   if (!data) return;
 
@@ -3710,18 +3886,69 @@ function initApiGuide() {
     </div>`).join('');
 }
 
+/* === changelog.js === */
+// 변경 이력 — 배포된 저장소의 changelog.md 를 날짜별로 보여준다.
+// 현재 버전(설정>업데이트와 같은 /settings/version)을 함께 표시해, 지금 돌고 있는
+// 코드가 이력 어디쯤인지 바로 알 수 있게 한다.
+// 탭에 들어올 때마다 새로 받는다 — 업데이트 직후에도 최신 이력이 보이도록
+// (응답이 작아 캐시할 이유가 없다).
+function initChangelogPage() {
+  loadChangelog();
+}
+
+async function loadChangelog() {
+  const body = document.getElementById('clBody');
+  const cur = document.getElementById('clCurrent');
+  try {
+    const [entries, ver] = await Promise.all([
+      api('GET', '/settings/changelog'),
+      api('GET', '/settings/version'),
+    ]);
+    cur.textContent = ver
+      ? `현재 ${ver.branch || '-'} · ${ver.commit || '-'} (${ver.commit_date || '-'})`
+      : '';
+
+    if (!entries || !entries.length) {
+      body.innerHTML = '<span class="text-muted">changelog.md 를 찾을 수 없습니다.</span>';
+      return;
+    }
+    const curCommit = (ver?.commit || '').trim();
+    body.innerHTML = entries.map(e => `
+      <div class="mb-3">
+        <div class="fw-semibold mb-1" style="font-size:0.9rem">
+          <i class="bi bi-calendar3 me-1 text-muted"></i>${esc(e.date)}
+          <span class="text-muted fw-normal">· ${e.items.length}건</span>
+        </div>
+        <ul class="list-unstyled mb-0 ps-3">
+          ${e.items.map(it => {
+            const isCur = it.commit && curCommit && it.commit.startsWith(curCommit);
+            return `<li class="d-flex gap-2 py-1" style="border-bottom:1px solid #f1f3f5">
+              <span class="flex-grow-1">${esc(it.text)}</span>
+              ${it.commit ? `<code class="text-muted flex-shrink-0" style="font-size:0.72rem">${esc(it.commit)}</code>` : ''}
+              ${isCur ? '<span class="badge bg-success flex-shrink-0">현재</span>' : ''}
+            </li>`;
+          }).join('')}
+        </ul>
+      </div>`).join('');
+  } catch (e) {
+    body.innerHTML = `<span class="text-danger">불러오지 못했습니다: ${esc(e.message)}</span>`;
+  }
+}
+
 /* === app.js === */
 const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {keyboard:false});
 
 let currentSettingsTab = 'telco';
 
+// 관리자 전용 페이지 — 고객 계정은 서버에서도 막히지만 UI 에서도 진입을 막는다.
+const ADMIN_PAGES = ['settings', 'changelog'];
+
 function nav(page) {
-  // 고객 계정은 설정 접근 불가 (서버에서도 차단되지만 UI에서도 막는다)
-  if (page === 'settings' && getRole() !== 'admin') page = 'dashboard';
+  if (ADMIN_PAGES.includes(page) && getRole() !== 'admin') page = 'dashboard';
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  document.querySelectorAll('#topbar .nav-link').forEach(el => el.classList.remove('active'));
-  const link = document.querySelector(`#topbar [onclick="nav('${page}')"]`);
+  document.querySelectorAll('#sidenav .nav-link').forEach(el => el.classList.remove('active'));
+  const link = document.querySelector(`#sidenav [onclick="nav('${page}')"]`);
   if (link) link.classList.add('active');
   if (page === 'dashboard') {
     if (_dashExactStart || document.getElementById('dashStart').value) loadAll();
@@ -3730,6 +3957,7 @@ function nav(page) {
   else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
   if (page === 'logs') initLogsPage();
   if (page === 'apiguide') initApiGuide();
+  if (page === 'changelog') initChangelogPage();
   if (page === 'settings') settingsTab(currentSettingsTab);
 }
 
@@ -3810,6 +4038,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
 })();
 
 </script>
+
 
 
 

@@ -9,13 +9,14 @@ import subprocess
 from app.config import settings
 
 
-def _repo_dir() -> str:
+def repo_dir() -> str:
+    """배포된 저장소 경로. 버전 조회와 changelog.md 읽기가 같은 경로를 본다."""
     return settings.repo_dir if os.path.isdir(os.path.join(settings.repo_dir, ".git")) else "."
 
 
 def git_run(*args: str, timeout: int = 10):
     """git 실행 결과(CompletedProcess). 실행 자체가 불가능하면 None."""
-    repo = _repo_dir()
+    repo = repo_dir()
     # safe.directory: WAS(soltrace)가 root 소유로 바뀐 .git 에서도 git 실행 가능하게
     try:
         return subprocess.run(

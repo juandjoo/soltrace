@@ -44,6 +44,34 @@ function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
+// 시간대 라인차트 공통 규칙 — 사용자별 사용량 · 업로드양 · 삭제량 · 장비 그룹별이 모두 같다.
+// (색·굵기·점 크기, x축 눈금 밀도가 차트마다 갈라지면 같은 화면에서 다르게 보인다)
+function _hourlyLineStyle(idx, bucketCount) {
+  const color = HOURLY_PALETTE[idx % HOURLY_PALETTE.length];
+  return {
+    borderColor: color,
+    backgroundColor: color + '22',
+    borderWidth: 1.5,
+    tension: 0,
+    pointRadius: bucketCount > 48 ? 0 : 2,
+    fill: false,
+  };
+}
+
+function _hourlyXScale(bucketCount) {
+  return {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true,
+                  maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(bucketCount / 24)))}};
+}
+
+// 카드 제목 옆 조회기간 표시 — 여러 카드가 같은 문구를 쓴다.
+function _setPeriodLabels(...ids) {
+  const label = _dashPeriodLabel();
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = label;
+  });
+}
+
 let _dashExactStart = null;
 let _dashExactEnd   = null;
 
@@ -155,15 +183,34 @@ let _userHourlyFocusIdx = null;
 
 async function loadUserHourly() {
   _userHourlyFocusIdx = null;
+  _setPeriodLabels('userUploadPeriod', 'userDeletePeriod');
   const data = await api('GET', `/dashboard/users-hourly?${_dashDateParams()}`);
   if (!data) return;
 
   const legendEl = document.getElementById('userHourlyLegend');
   if (!data.length) {
     destroyChart('userHourly');
+    _renderUserVolumeChart('userUpload', 'chartUserUpload', [], [], String, () => [0, 0]);
+    _renderUserVolumeChart('userDelete', 'chartUserDelete', [], [], String, () => [0, 0]);
     legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
     return;
   }
+
+  // 버킷은 전체 사용자 기준 — 삭제만 한 사용자도 x축에 들어와야 한다
+  const bucketSet = new Set(data.flatMap(u => u.data.map(h => h.bucket)));
+  const allBuckets = [...bucketSet].sort();
+
+  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
+
+  // 버킷 → 시점 맵. 세 차트(사용량·업로드양·삭제량)가 같은 맵을 쓴다.
+  data.forEach(u => { u._map = Object.fromEntries(u.data.map(h => [h.bucket, h])); });
+
+  // 업로드양 · 삭제량 (기간별) — 같은 응답으로 그린다 (추가 요청 없음).
+  // 사용량 차트가 비어도(전송이 없어도) 삭제는 있을 수 있으므로 먼저 그린다.
+  _renderUserVolumeChart('userUpload', 'chartUserUpload', data, allBuckets, fmtBucket,
+                         h => [h.bytes_in || 0, h.uploads || 0]);
+  _renderUserVolumeChart('userDelete', 'chartUserDelete', data, allBuckets, fmtBucket,
+                         h => [h.bytes_del || 0, h.deletes || 0]);
 
   const active = data.filter(u => u.data.some(h => (h.uploads || 0) + (h.downloads || 0) > 0));
   if (!active.length) {
@@ -171,24 +218,12 @@ async function loadUserHourly() {
     legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
     return;
   }
-  const bucketSet = new Set(active.flatMap(u => u.data.map(h => h.bucket)));
-  const allBuckets = [...bucketSet].sort();
 
-  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
-
-  const datasets = active.map((u, i) => {
-    const map = Object.fromEntries(u.data.map(h => [h.bucket, h]));
-    return {
-      label: u.username,
-      data: allBuckets.map(b => (map[b]?.uploads || 0) + (map[b]?.downloads || 0)),
-      borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
-      backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
-      borderWidth: 1.5,
-      tension: 0,
-      pointRadius: allBuckets.length > 48 ? 0 : 2,
-      fill: false,
-    };
-  });
+  const datasets = active.map((u, i) => ({
+    label: u.username,
+    data: allBuckets.map(b => (u._map[b]?.uploads || 0) + (u._map[b]?.downloads || 0)),
+    ..._hourlyLineStyle(i, allBuckets.length),
+  }));
 
   document.getElementById('resetUserZoomBtn')?.classList.add('d-none');
   destroyChart('userHourly');
@@ -211,7 +246,7 @@ async function loadUserHourly() {
         },
       },
       scales: {
-        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
+        x: _hourlyXScale(allBuckets.length),
         y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
@@ -243,6 +278,56 @@ async function loadUserHourly() {
     </tr></thead>
     <tbody>${userRows}</tbody>
   </table>`;
+}
+
+// 사용자별 '양' 추이 라인차트 — 업로드양·삭제량 카드가 같은 코드를 쓴다.
+// pick(h) → [바이트, 건수]. 값이 모두 0인 사용자는 빼고, 아무도 없으면 안내 문구로 대체한다.
+function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, pick) {
+  destroyChart(chartKey);
+  const canvas = document.getElementById(canvasId);
+  const empty  = document.getElementById(canvasId + 'Empty');
+  if (!canvas || !empty) return;
+
+  const datasets = [];
+  series.forEach((u, i) => {
+    const picked = buckets.map(b => pick(u._map[b] || {}));
+    if (!picked.some(([v]) => v > 0)) return;
+    datasets.push({
+      label: u.username,
+      data: picked.map(([v]) => v),
+      counts: picked.map(([, n]) => n),
+      ..._hourlyLineStyle(datasets.length, buckets.length),
+    });
+  });
+
+  if (!datasets.length) {
+    canvas.classList.add('d-none');
+    empty.classList.remove('d-none');
+    return;
+  }
+  canvas.classList.remove('d-none');
+  empty.classList.add('d-none');
+
+  charts[chartKey] = new Chart(canvas, {
+    type: 'line',
+    data: {labels: buckets.map(fmtBucket), datasets},
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {mode: 'index', intersect: false},
+      plugins: {
+        legend: {position: 'right', labels: {boxWidth: 10, font: {size: 10}}},
+        tooltip: {callbacks: {label: c => {
+          const n = c.dataset.counts?.[c.dataIndex] || 0;
+          return `${c.dataset.label}: ${fmtBytes(c.parsed.y)} (${n.toLocaleString()}건)`;
+        }}},
+      },
+      scales: {
+        x: _hourlyXScale(buckets.length),
+        y: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}},
+      },
+    },
+  });
 }
 
 let _userLegendSort   = {col: null, asc: true};
@@ -339,12 +424,7 @@ async function loadHourly() {
     return {
       label: g.name,
       data: allBuckets.map(b => (map[b]?.uploads || 0) + (map[b]?.downloads || 0)),
-      borderColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length],
-      backgroundColor: HOURLY_PALETTE[i % HOURLY_PALETTE.length] + '22',
-      borderWidth: 1.5,
-      tension: 0,
-      pointRadius: allBuckets.length > 48 ? 0 : 2,
-      fill: false,
+      ..._hourlyLineStyle(i, allBuckets.length),
     };
   });
 
@@ -369,7 +449,7 @@ async function loadHourly() {
         },
       },
       scales: {
-        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: Math.min(14, Math.max(6, Math.ceil(allBuckets.length / 24)))}},
+        x: _hourlyXScale(allBuckets.length),
         y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
@@ -442,11 +522,7 @@ function _dashPeriodLabel() {
 }
 
 async function loadServiceHealth() {
-  const periodLabel = _dashPeriodLabel();
-  ['healthStatusPeriod', 'healthRatePeriod'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = periodLabel;
-  });
+  _setPeriodLabels('healthStatusPeriod', 'healthRatePeriod');
   const data = await api('GET', `/dashboard/service-health?${_dashDateParams()}`);
   if (!data) return;
 

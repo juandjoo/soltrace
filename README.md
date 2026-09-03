@@ -67,6 +67,7 @@ soltrace/
 │               ├── dashboard.js  # 대시보드 차트 + 서비스 건강도 (기본 7일)
 │               ├── logs.js       # 로그 조회 (기본 90일, 드릴다운 필터, 총건수 병렬 집계)
 │               ├── apiguide.js   # API 가이드 (엔드포인트·파라미터·예시 표)
+│               ├── changelog.js  # 변경 이력 (changelog.md + 현재 버전)
 │               ├── devices.js    # 장비 목록 / 상태 배지 (하트비트 120초 임계)
 │               ├── groups.js     # 그룹 관리
 │               ├── settings.js   # 알림 설정 (웹훅 / HMS), 고객 계정, DB 저장소
@@ -282,14 +283,18 @@ WAS 점검·재시작 등 일시적 연결 실패 시 데몬이 종료되지 않
 
 ## 웹 UI 기능
 
+메뉴는 화면 **왼쪽 세로 탭**(아이콘 위 · 이름 아래)에 있다. 좁은 화면(≤768px)에서는 이름이 숨고
+아이콘만 남는다. 관리자 전용 탭(변경 이력·설정)은 고객 계정에서 숨겨지며 서버에서도 차단된다.
+
 | 메뉴 | 기능 |
 |---|---|
-| 대시보드 | 기간별 업로드/다운로드 추이, 작업 유형 분포, 상위 사용자/그룹 (기본 7일) |
+| 대시보드 | 기간별 업로드/다운로드 추이, 작업 유형 분포, 상위 사용자/그룹 (기본 7일), **사용자별 업로드양·삭제량** (기간별, 용량 기준) |
 | 서비스 영향도 | 전송 실패율 / 로그인 실패율 / CWD 실패 도넛 차트, 장비별 상태, 알림 테이블, CWD 실패 원인 분석 |
 | 장비 관리 | 신규 장비 확인(Confirm), 그룹 배정, 비활성화, 삭제, 원격 업데이트 |
 | 그룹 관리 | telco / service / other 유형으로 그룹 생성·수정·삭제 |
 | 로그 조회 | 장비·그룹·사용자·IP·파일명·작업유형·기간 필터, 페이징, CSV / XLSX 내보내기 (기본 90일) |
 | API 가이드 | 조회 전용 API 키 사용법 — 인증, 엔드포인트, 파라미터, 오류 코드, 복사용 curl/Python 예시 |
+| 변경 이력 | 배포된 저장소의 `changelog.md` 를 날짜별로 표시, 현재 버전(브랜치·커밋)과 대조 — 지금 돌고 있는 커밋에 **현재** 배지 |
 | 설정 | 알림 채널 (웹훅 / HMS), 이상 감지 임계값, 알림 음소거, 고객 계정, DB 저장소 현황 |
 
 ### 고객사 계정 (데이터 격리)
@@ -504,11 +509,12 @@ gunicorn은 `127.0.0.1`에만 바인딩된 상태를 유지한다.
 | `GET` | `/api/v1/logs/export` | CSV 내보내기 |
 | `GET` | `/api/v1/logs/export/xlsx` | XLSX 내보내기 |
 | `GET` | `/api/v1/dashboard` | 대시보드 통계 |
-| `GET` | `/api/v1/dashboard/users-hourly` | 사용자별 시간대 추이 |
+| `GET` | `/api/v1/dashboard/users-hourly` | 사용자별 시간대 추이 (업로드/다운로드 건수·용량, 삭제 건수·용량) |
 | `GET` | `/api/v1/dashboard/service-health` | 서비스 영향도 (장비 상태 / 알림 / 추이) |
 | `GET/POST` | `/api/v1/settings/notify` | 알림 채널 설정 |
 | `GET/POST` | `/api/v1/settings/notify/mute` | 알림 음소거 |
 | `GET` | `/api/v1/settings/storage` | DB 저장소 현황 (파티션별 크기·행수, default 잔존) |
+| `GET` | `/api/v1/settings/changelog` | 배포된 `changelog.md` 를 날짜별로 파싱 (변경 이력 화면) |
 | `GET/PUT` | `/api/v1/settings/alerts` | 이상 감지 임계값 조회 / 저장 |
 | `POST` | `/api/v1/settings/alerts/reset` | 임계값 기본값 복원 |
 | `GET/POST` | `/api/v1/users` | 고객 계정 목록 / 생성 (admin) |

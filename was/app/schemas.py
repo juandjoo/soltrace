@@ -99,6 +99,17 @@ class UpdateTriggerResponse(BaseModel):
     started: bool
     message: str
 
+class ChangelogItem(BaseModel):
+    text: str
+    commit: Optional[str] = None
+
+
+class ChangelogEntry(BaseModel):
+    """changelog.md 의 날짜 한 덩어리."""
+    date: str
+    items: List[ChangelogItem] = []
+
+
 class StoragePartition(BaseModel):
     name: str
     rows_est: int                          # pg_class.reltuples (통계 추정치)
@@ -310,6 +321,9 @@ class HourlyPoint(BaseModel):
     downloads: int
     bytes_in: int
     bytes_out: int
+    # 사용자별 차트(업로드/삭제)용 — 그룹별 시리즈에서는 채우지 않는다
+    deletes: int = 0
+    bytes_del: int = 0
 
 class GroupHourlySeries(BaseModel):
     group_id: int

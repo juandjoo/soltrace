@@ -253,8 +253,10 @@ def get_users_hourly(
                DATE_TRUNC('hour', fl.log_time) AS bucket,
                COALESCE(SUM(CASE WHEN fl.action='upload'   THEN 1 ELSE 0 END), 0)::int AS uploads,
                COALESCE(SUM(CASE WHEN fl.action='download' THEN 1 ELSE 0 END), 0)::int AS downloads,
+               COALESCE(SUM(CASE WHEN fl.action='delete'   THEN 1 ELSE 0 END), 0)::int AS deletes,
                COALESCE(SUM(CASE WHEN fl.action='upload'   THEN fl.file_size ELSE 0 END), 0)::bigint AS bytes_in,
-               COALESCE(SUM(CASE WHEN fl.action='download' THEN fl.file_size ELSE 0 END), 0)::bigint AS bytes_out
+               COALESCE(SUM(CASE WHEN fl.action='download' THEN fl.file_size ELSE 0 END), 0)::bigint AS bytes_out,
+               COALESCE(SUM(CASE WHEN fl.action='delete'   THEN fl.file_size ELSE 0 END), 0)::bigint AS bytes_del
         FROM ftp_logs fl
         WHERE fl.log_time >= :since AND fl.log_time <= :until {main_f}
           AND fl.username IN (SELECT username FROM top_users)
@@ -268,8 +270,8 @@ def get_users_hourly(
             users[r.username] = {"username": r.username, "data": []}
         users[r.username]["data"].append(HourlyPoint(
             bucket=r.bucket.strftime("%Y-%m-%dT%H:00:00Z"),
-            uploads=r.uploads, downloads=r.downloads,
-            bytes_in=r.bytes_in, bytes_out=r.bytes_out,
+            uploads=r.uploads, downloads=r.downloads, deletes=r.deletes,
+            bytes_in=r.bytes_in, bytes_out=r.bytes_out, bytes_del=r.bytes_del,
         ))
     return [UserHourlySeries(**v) for v in users.values()]
 

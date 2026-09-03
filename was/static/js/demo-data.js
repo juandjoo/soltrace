@@ -155,11 +155,13 @@
       const busy = kst >= 9 && kst <= 21 ? 1 : 0.25;
       const up = Math.round(between(20, 160) * busy * scale);
       const down = Math.round(between(40, 260) * busy * scale);
+      const del = Math.round(between(0, 12) * busy * scale);
       pts.push({
         bucket: b.toISOString().replace(/\.\d+Z$/, 'Z'),
-        uploads: up, downloads: down,
+        uploads: up, downloads: down, deletes: del,
         bytes_in: up * between(30, 90) * 1024 * 1024,
         bytes_out: down * between(20, 70) * 1024 * 1024,
+        bytes_del: del * between(10, 60) * 1024 * 1024,
       });
     }
     return pts;
@@ -292,6 +294,16 @@
     [/^\/dashboard\/cwd-fails/, cwdFails],
     [/^\/dashboard\/service-health/, serviceHealth],
     [/^\/dashboard/, dashboard],
+    [/^\/settings\/changelog/, () => ([
+      { date: '2026-09-03', items: [
+        { text: '사용자별 업로드양·삭제량 차트 + 왼쪽 탭 정리', commit: 'demo123' },
+        { text: '로그 조회 화면 수정 — 검색 시 깜빡임, 작업 열 침범', commit: 'b820825' },
+        { text: 'CWD 존재 확인은 실패로 세지 않는다', commit: 'f5c3b70' },
+      ]},
+      { date: '2026-06-30', items: [
+        { text: '고객사 계정 + groups.customer 기준 데이터 격리 추가', commit: '7f649da' },
+      ]},
+    ])],
     [/^\/settings\/version$/, () => ({
       branch: 'main', commit: 'demo123', commit_date: '2026-09-03 10:20',
       subject: '대량 데이터 보관 개선 + 죽은 코드/중복 정리',

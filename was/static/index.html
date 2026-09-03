@@ -51,12 +51,6 @@
     <button class="navbar-brand" onclick="nav('dashboard')">
       <i class="bi bi-hdd-network me-2 text-brand"></i><span class="text-brand">Sol</span><span>Trace</span>
     </button>
-    <ul class="nav gap-1 flex-nowrap" style="position:absolute;left:50%;transform:translateX(-50%)">
-      <li class="nav-item"><a class="nav-link active" href="#" onclick="nav('dashboard')"><i class="bi bi-speedometer2"></i>대시보드</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('logs')"><i class="bi bi-list-ul"></i>로그 조회</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" onclick="nav('apiguide')"><i class="bi bi-code-slash"></i>API 가이드</a></li>
-      <li class="nav-item" data-admin-only><a class="nav-link" href="#" onclick="nav('settings')"><i class="bi bi-gear-fill"></i>설정</a></li>
-    </ul>
     <div class="ms-auto d-flex align-items-center gap-2">
       <span id="sessionTimerDisplay" class="session-timer d-flex align-items-center gap-1 small">
         <i class="bi bi-clock" style="font-size:.85rem"></i>
@@ -67,6 +61,17 @@
         <i class="bi bi-box-arrow-right" style="font-size:1.25rem"></i>
       </button>
     </div>
+  </nav>
+
+  <div id="shell">
+
+  <!-- 왼쪽 탭 (아이콘 위 · 이름 아래) -->
+  <nav id="sidenav">
+    <a class="nav-link active" href="#" onclick="nav('dashboard')" title="대시보드"><i class="bi bi-speedometer2"></i><span>대시보드</span></a>
+    <a class="nav-link" href="#" onclick="nav('logs')" title="로그 조회"><i class="bi bi-list-ul"></i><span>로그 조회</span></a>
+    <a class="nav-link" href="#" onclick="nav('apiguide')" title="API 가이드"><i class="bi bi-code-slash"></i><span>API 가이드</span></a>
+    <a class="nav-link" href="#" onclick="nav('changelog')" title="변경 이력" data-admin-only><i class="bi bi-clock-history"></i><span>변경 이력</span></a>
+    <a class="nav-link" href="#" onclick="nav('settings')" title="설정" data-admin-only><i class="bi bi-gear-fill"></i><span>설정</span></a>
   </nav>
 
   <!-- 콘텐츠 -->
@@ -116,7 +121,34 @@
           </div>
         </div>
       </div>
-      <!-- 2행: 영향도 + 실패건수 -->
+      <!-- 2행: 사용자별 업로드양 · 삭제량 (기간별) -->
+      <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+          <div class="card dash-card p-3 h-100">
+            <div class="d-flex align-items-baseline gap-2 mb-2">
+              <span class="fw-semibold small">사용자별 업로드양</span>
+              <span id="userUploadPeriod" class="text-muted" style="font-size:0.75rem"></span>
+            </div>
+            <div style="position:relative;height:240px">
+              <canvas id="chartUserUpload"></canvas>
+              <div id="chartUserUploadEmpty" class="d-none h-100 d-flex align-items-center justify-content-center text-muted small">기간 내 업로드 없음</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card dash-card p-3 h-100">
+            <div class="d-flex align-items-baseline gap-2 mb-2">
+              <span class="fw-semibold small">사용자별 삭제량</span>
+              <span id="userDeletePeriod" class="text-muted" style="font-size:0.75rem"></span>
+            </div>
+            <div style="position:relative;height:240px">
+              <canvas id="chartUserDelete"></canvas>
+              <div id="chartUserDeleteEmpty" class="d-none h-100 d-flex align-items-center justify-content-center text-muted small">기간 내 삭제 없음</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- 3행: 영향도 + 실패건수 -->
       <div class="row g-3 mb-3">
         <div class="col-lg-6">
           <div class="card dash-card p-3 h-100">
@@ -141,7 +173,7 @@
           </div>
         </div>
       </div>
-      <!-- 3행: 이상 알림 -->
+      <!-- 4행: 이상 알림 -->
       <div class="row g-3">
         <div class="col-12">
           <div class="card dash-card p-3">
@@ -398,6 +430,20 @@
     </div>
 
     <!-- 설정 -->
+    <!-- 변경 이력 -->
+    <div id="page-changelog" class="page">
+      <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-clock-history me-2 text-brand"></i>변경 이력</h5>
+        <span class="text-muted small" id="clCurrent"></span>
+        <button class="btn btn-outline-secondary btn-sm ms-auto" onclick="loadChangelog()">
+          <i class="bi bi-arrow-clockwise me-1"></i>새로고침
+        </button>
+      </div>
+      <div class="card p-3">
+        <div id="clBody" class="small text-muted">불러오는 중…</div>
+      </div>
+    </div>
+
     <div id="page-settings" class="page">
       <h5 class="mb-3 fw-bold"><i class="bi bi-gear-fill me-2 text-brand"></i>설정</h5>
       <div class="row g-4 align-items-start">
@@ -799,6 +845,7 @@
     </div><!-- /page-settings -->
 
   </div><!-- /main -->
+  </div><!-- /shell -->
 </div><!-- /appLayout -->
 
 <!-- 그룹 모달 -->
@@ -900,6 +947,7 @@
 <script src="/static/js/groups.js?v=__VER__"></script>
 <script src="/static/js/logs.js?v=__VER__"></script>
 <script src="/static/js/apiguide.js?v=__VER__"></script>
+<script src="/static/js/changelog.js?v=__VER__"></script>
 <script src="/static/js/app.js?v=__VER__"></script>
 
 </body>

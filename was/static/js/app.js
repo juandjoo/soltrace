@@ -2,13 +2,15 @@ const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {k
 
 let currentSettingsTab = 'telco';
 
+// 관리자 전용 페이지 — 고객 계정은 서버에서도 막히지만 UI 에서도 진입을 막는다.
+const ADMIN_PAGES = ['settings', 'changelog'];
+
 function nav(page) {
-  // 고객 계정은 설정 접근 불가 (서버에서도 차단되지만 UI에서도 막는다)
-  if (page === 'settings' && getRole() !== 'admin') page = 'dashboard';
+  if (ADMIN_PAGES.includes(page) && getRole() !== 'admin') page = 'dashboard';
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  document.querySelectorAll('#topbar .nav-link').forEach(el => el.classList.remove('active'));
-  const link = document.querySelector(`#topbar [onclick="nav('${page}')"]`);
+  document.querySelectorAll('#sidenav .nav-link').forEach(el => el.classList.remove('active'));
+  const link = document.querySelector(`#sidenav [onclick="nav('${page}')"]`);
   if (link) link.classList.add('active');
   if (page === 'dashboard') {
     if (_dashExactStart || document.getElementById('dashStart').value) loadAll();
@@ -17,6 +19,7 @@ function nav(page) {
   else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
   if (page === 'logs') initLogsPage();
   if (page === 'apiguide') initApiGuide();
+  if (page === 'changelog') initChangelogPage();
   if (page === 'settings') settingsTab(currentSettingsTab);
 }
 

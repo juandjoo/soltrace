@@ -1,8 +1,10 @@
 import logging
+import os
+import re
 import subprocess
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -10,11 +12,12 @@ from app import alert_settings, notifier
 from app.config import settings as cfg
 from app.database import get_db
 from app.deps import require_admin
-from app.gitinfo import git, git_run
+from app.gitinfo import git, git_run, repo_dir
 from app.schemas import (
     AlertSettings, AlertSettingsInfo,
     PasswordChangeRequest, UpdateTriggerResponse, VersionInfo, NotifySettings,
     StorageInfo, StoragePartition,
+    ChangelogEntry, ChangelogItem,
 )
 from app.security import (
     client_ip_from_request, parse_ip_entries,
@@ -49,6 +52,45 @@ def _version_info(check_remote: bool = False) -> VersionInfo:
             info.update_available = int(behind) > 0
             info.checked = True
     return info
+
+
+# changelog.md 한 줄: "- 제목 (`abc1234`)" — 커밋 해시는 있을 수도 없을 수도 있다.
+_CHANGELOG_ITEM = re.compile(r"^-\s+(?P<text>.*?)(?:\s*\(`(?P<commit>[0-9a-f]{7,40})`\))?\s*$")
+_CHANGELOG_DATE = re.compile(r"^##\s+(?P<date>\d{4}-\d{2}-\d{2})\s*$")
+
+
+@router.get("/changelog", response_model=list[ChangelogEntry])
+def get_changelog(
+    limit: int = Query(default=30, ge=1, le=200),
+    _: str = Depends(require_admin),
+):
+    """배포된 저장소의 changelog.md 를 날짜별로 파싱해 돌려준다.
+
+    버전 정보(git)와 같은 저장소 경로를 본다 — 화면에 보이는 이력이 실제로 배포된
+    코드의 이력이 되도록.
+    """
+    path = os.path.join(repo_dir(), "changelog.md")
+    try:
+        with open(path, encoding="utf-8") as fp:
+            lines = fp.read().splitlines()
+    except OSError as e:
+        log.warning("changelog 읽기 실패: %s", e)
+        return []
+
+    entries: list[ChangelogEntry] = []
+    for line in lines:
+        d = _CHANGELOG_DATE.match(line)
+        if d:
+            if len(entries) >= limit:
+                break
+            entries.append(ChangelogEntry(date=d.group("date")))
+            continue
+        if not entries or not line.startswith("- "):
+            continue
+        m = _CHANGELOG_ITEM.match(line)
+        if m and m.group("text"):
+            entries[-1].items.append(ChangelogItem(text=m.group("text"), commit=m.group("commit")))
+    return entries
 
 
 @router.get("/version", response_model=VersionInfo)

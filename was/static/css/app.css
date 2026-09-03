@@ -3,6 +3,8 @@
   --st-brand:    #e85d04;
   --st-brand-bg: #fff5ee;
   --st-text:     #475569;
+  --st-topbar-h: 52px;   /* 왼쪽 탭 sticky 기준 (상단 탭바 높이) */
+  --st-sidenav-w: 92px;
 }
 
 /* ── 레이아웃 ──────────────────────────────────────────────────── */
@@ -59,6 +61,45 @@ body        { background: #f5f7fa; font-size: 14px; }
 .btn-extend:hover  { background: var(--st-brand-bg); border-color: var(--st-brand); color: var(--st-brand); }
 .btn-topbar-icon   { padding: 8px 10px; border-radius: 10px; color: var(--st-text); }
 .btn-topbar-icon:hover { background: var(--st-brand-bg); color: var(--st-brand); }
+
+/* ── 왼쪽 탭 (아이콘 위 · 이름 아래) ───────────────────────────── */
+#shell { display: flex; align-items: stretch; }
+#sidenav {
+  flex: 0 0 var(--st-sidenav-w);
+  width: var(--st-sidenav-w);
+  background: #fff;
+  border-right: 1px solid #d1d5db;
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: var(--st-topbar-h);
+  height: calc(100vh - var(--st-topbar-h));
+  overflow-y: auto;
+}
+#sidenav .nav-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border-radius: 10px;
+  color: var(--st-text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: center;
+}
+#sidenav .nav-link i          { font-size: 1.35rem; }
+#sidenav .nav-link:hover      { color: var(--st-brand); background: var(--st-brand-bg); }
+#sidenav .nav-link.active     { color: var(--st-brand); background: var(--st-brand-bg); font-weight: 600; }
+#main { flex: 1 1 auto; min-width: 0; }
+/* 좁은 화면에서는 아이콘만 남긴다 (이름은 링크의 title 로 확인) */
+@media (max-width: 768px) {
+  #sidenav { flex-basis: 56px; width: 56px; }
+  #sidenav .nav-link span { display: none; }
+}
 
 /* ── 설정 좌측 세로 탭 ─────────────────────────────────────────── */
 .settings-vnav .nav-link        { color: var(--st-text); border-radius: 8px; padding: 8px 14px; margin-bottom: 3px; font-size: 13.5px; }
