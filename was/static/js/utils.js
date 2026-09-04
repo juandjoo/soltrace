@@ -132,6 +132,9 @@ async function api(method, path, body) {
   const opts = {
     method,
     headers: {'Content-Type':'application/json'},
+    // 브라우저가 GET 집계를 재사용하지 않게 — 서버도 no-store 를 보내지만,
+    // bfcache/메모리 캐시까지 확실히 막으려면 요청 쪽에도 명시해야 한다.
+    cache: 'no-store',
   };
   if (token) opts.headers['Authorization'] = `Bearer ${token}`;
   if (body) opts.body = JSON.stringify(body);

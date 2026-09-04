@@ -130,6 +130,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Content-Security-Policy"] = self._CSP
+        # API 응답은 절대 캐시하지 않는다 — 사용자·장비를 추가해도 화면이 옛 집계를
+        # 그대로 보여주던 문제(브라우저 캐시를 비워야 반영됨)를 막는다.
+        # /static/js 는 ?v=<커밋해시> 로 버스팅하므로 여기서 제외한다.
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
         return response
 
 
