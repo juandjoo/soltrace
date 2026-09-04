@@ -204,6 +204,19 @@ def test_cwd_probe_allows_small_clock_skew():
     assert "(:since) - INTERVAL '5 seconds'" in sql   # 기간 프루닝 경계도 같이 넓힌다
 
 
+def test_cwd_probe_counts_successful_upload_as_evidence():
+    """같은 시각 그 경로로 업로드가 성공했으면 경로는 이미 있었던 것 → 실패가 아니다.
+
+    mkdir 과 별도 EXISTS 로 두어야 각자 인덱스를 탄다(합치면 둘 다 못 탄다).
+    """
+    sql = cwd_probe_sql("fl", ":since", ":until")
+    assert "up.action = 'upload' AND up.status = 'success'" in sql
+    assert "starts_with(up.file_path, fl.file_path || '/')" in sql
+    assert ") OR EXISTS (" in sql
+    # NOT 으로 감싸 쓰이므로 전체가 괄호로 묶여 있어야 한다
+    assert sql.startswith("(EXISTS (") and sql.endswith("))")
+
+
 def test_cwd_ignore_rule_lives_in_one_place():
     """제외 조건은 cwd_not_ignored_sql() 한 곳에만 둔다.
 

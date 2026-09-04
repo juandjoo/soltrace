@@ -42,9 +42,10 @@ def test_cwd_probe_condition_is_parenthesized():
     """
     sql = _sql(LogFilters(username="bob", log_status=None))
     assert "(ftp_logs.action <> 'cwd_fail'" in sql
-    assert "OR NOT EXISTS" in sql
+    # 존재 확인은 mkdir·업로드 두 EXISTS 의 OR 이라 NOT 이 그 전체를 덮어야 한다
+    assert "OR NOT (EXISTS" in sql
     # OR 절이 닫히고 난 뒤에 다른 조건이 AND 로 이어지는지 (괄호가 살아 있는지)
-    or_pos = sql.index("OR NOT EXISTS")
+    or_pos = sql.index("OR NOT (EXISTS")
     assert ")" in sql[or_pos:]
 
 
