@@ -607,7 +607,7 @@ function openUserEdit(id) {
   document.getElementById('editUserPwd').value = '';
   document.getElementById('editUserActive').checked = !!u.is_active;
   document.getElementById('editUserMsg').classList.add('d-none');
-  new bootstrap.Modal(document.getElementById('userEditModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('userEditModal')).show();
 }
 
 async function saveUserEdit() {

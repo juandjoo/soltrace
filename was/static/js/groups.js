@@ -159,7 +159,7 @@ async function openGroupModal(id) {
   await getTelcos();
   populateGroupTelco(g?.telco || '');
   document.getElementById('groupModalTitle').textContent = id ? '그룹 수정' : '그룹 추가';
-  new bootstrap.Modal(document.getElementById('groupModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('groupModal')).show();
 }
 
 async function saveGroup() {
@@ -213,7 +213,7 @@ async function openGroupDevices(groupId) {
   if (!targets.length) {
     list.innerHTML = '<div class="text-center text-muted py-4">등록 가능한 승인된 장비가 없습니다.<br><span class="small">장비 관리에서 먼저 장비를 확인(승인)해주세요.</span></div>';
     document.getElementById('gdCount').textContent = '0';
-    new bootstrap.Modal(document.getElementById('groupDeviceModal')).show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('groupDeviceModal')).show();
     return;
   }
 
@@ -235,7 +235,7 @@ async function openGroupDevices(groupId) {
   }).join('');
 
   updateGroupDeviceCount();
-  new bootstrap.Modal(document.getElementById('groupDeviceModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('groupDeviceModal')).show();
 }
 
 function updateGroupDeviceCount() {

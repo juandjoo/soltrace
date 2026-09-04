@@ -261,6 +261,11 @@ class FileTailer:
     재시작 시 저장된 위치부터 읽어 중복 전송을 방지한다.
     """
 
+    # 한 번의 폴링에서 읽을 최대 줄 수. 데몬이 오래 멈춰 있었거나 로그가 폭증하면
+    # 밀린 분량을 통째로 메모리에 올려 OOM 이 난다. 잘라 읽어도 보낼 게 남아 있으면
+    # _sender_loop 가 쉬지 않고 다시 돌므로 밀린 분량은 금방 따라잡는다.
+    MAX_LINES_PER_POLL = 5000
+
     def __init__(self, path: str, parser, state_dir: str):
         self.path = path
         self.parser = parser
@@ -306,7 +311,16 @@ class FileTailer:
         entries = []
         with open(self.path, "r", encoding="utf-8", errors="replace") as f:
             f.seek(self._pos)
-            for line in f:
+            for _ in range(self.MAX_LINES_PER_POLL):
+                start = f.tell()
+                line = f.readline()
+                if not line:
+                    break
+                if not line.endswith("\n"):
+                    # 아직 기록 중인 마지막 줄 — 되감아 두고 다음 폴링에서 온전히 읽는다.
+                    # (예전에는 반쪽 줄을 파싱해 버리고 위치만 넘겨 그 한 건이 영영 사라졌다)
+                    f.seek(start)
+                    break
                 entry = self.parser(line)
                 if entry:
                     entries.append(entry)

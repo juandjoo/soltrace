@@ -41,6 +41,12 @@ async function loadDevices() {
   _deviceCache = devices;
 
   const tbody = document.getElementById('deviceTable');
+  // 이전 렌더의 툴팁을 먼저 정리한다. Bootstrap 은 인스턴스를 element 키의 Map(강한 참조)에
+  // 담으므로, dispose 없이 innerHTML 을 갈아끼우면 떨어져 나간 DOM 이 계속 붙잡혀 있다
+  // (장비 목록은 탭 이동·승인·삭제 때마다 다시 그려진다).
+  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
+    bootstrap.Tooltip.getInstance(el)?.dispose()
+  );
   if (!devices.length) {
     tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">등록된 장비가 없습니다.</td></tr>';
     return;
@@ -91,7 +97,8 @@ async function loadDevices() {
     </tr>`;
   }).join('');
 
-  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
+  // 방금 만든 행에만 붙인다 (예전엔 document 전체를 훑어 다른 화면 요소까지 다시 초기화했다)
+  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
     new bootstrap.Tooltip(el, {placement:'top'})
   );
 }
@@ -121,7 +128,7 @@ function showDeviceStatus(id) {
     <table class="table table-sm">
       <tbody>${rows.map(([k,v])=>`<tr><th class="text-muted fw-normal" style="width:140px">${k}</th><td>${v}</td></tr>`).join('')}</tbody>
     </table>`;
-  new bootstrap.Modal(document.getElementById('deviceStatusModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('deviceStatusModal')).show();
 }
 
 async function confirmDevice(id) {
@@ -173,7 +180,7 @@ async function openDeviceGroups(deviceId) {
       </label>
     </div>
   `).join('');
-  new bootstrap.Modal(document.getElementById('deviceGroupModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('deviceGroupModal')).show();
 }
 
 async function saveDeviceGroups() {

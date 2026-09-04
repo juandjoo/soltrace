@@ -649,7 +649,7 @@ async function openCwdAnalysis() {
     '<span class="spinner-border spinner-border-sm me-1" style="width:.8rem;height:.8rem"></span>집계 중…';
   document.getElementById('cwdPaths').innerHTML = '<tr><td colspan="7" class="text-muted small">-</td></tr>';
   document.getElementById('cwdUsers').innerHTML = '<tr><td colspan="3" class="text-muted small">-</td></tr>';
-  new bootstrap.Modal(document.getElementById('cwdAnalysisModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('cwdAnalysisModal')).show();
   await loadCwdAnalysis();
 }
 

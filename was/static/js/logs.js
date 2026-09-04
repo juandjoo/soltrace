@@ -110,7 +110,7 @@ async function openUserPicker() {
   const list = document.getElementById('userPickerList');
   list.innerHTML = '<div class="text-muted small py-2">불러오는 중…</div>';
   document.getElementById('userPickerSearch').value = '';
-  new bootstrap.Modal(document.getElementById('userPickerModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('userPickerModal')).show();
   // 계정 목록은 계정 조건을 뺀 나머지 필터(고객사·그룹·기간) 기준으로 뽑는다
   const params = _logParams({skipUsernames: true});
   try {
@@ -198,6 +198,10 @@ function onTelcoFilter() {
 function _initGroupTooltip() {
   const sel = document.getElementById('logGroupFilter');
   const tip = document.getElementById('logGroupTip');
+  // initLogsPage 는 로그 탭에 들어올 때마다 불린다 — 가드가 없으면 같은 select 에
+  // 핸들러가 계속 쌓인다 (_initLogColResize 와 같은 방식).
+  if (!sel || sel.dataset.tipReady) return;
+  sel.dataset.tipReady = '1';
 
   sel.addEventListener('mouseenter', () => {
     const g = _logGroupMap[sel.value];
