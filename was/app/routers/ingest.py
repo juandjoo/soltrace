@@ -108,6 +108,17 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
     if device.status == "disabled":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Device disabled")
 
+    # 쓰기 버퍼가 밀려 있으면 받지 않는다. accepted 를 돌려주면 데몬이 자기 위치를
+    # 넘겨 버리므로, 여기서 받아 놓고 못 쓰면 그 로그는 어디에도 남지 않는다.
+    # 503 을 주면 데몬이 자기 디스크 버퍼에 담아 두었다가 다시 보낸다.
+    buf = wb.get_buffer()
+    if buf is not None and buf.saturated():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="쓰기 버퍼 포화 — 잠시 후 다시 보내주세요",
+            headers={"Retry-After": "60"},
+        )
+
     accepted = 0
     rejected = 0
     entries = []
@@ -139,6 +150,6 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
 
     if entries:
         # 즉시 DB 쓰기 대신 버퍼(lifespan 에서 워커마다 초기화)에 넣어 워커 블로킹 제거
-        wb.get_buffer().add(entries)
+        buf.add(entries)
 
     return IngestResponse(accepted=accepted, rejected=rejected)
