@@ -622,6 +622,10 @@ class SolTraceDaemon:
             "daemon_uptime": 60,     # 60초마다 갱신
             "consecutive_failures": 0,  # 0 = 변화 즉시 전송
         }
+        # "0 이 정상"인 카운터. 임계값보다 작은 변화라도 0 <-> 0 아님 전환은 반드시
+        # 보낸다. 안 그러면 (예: queue_size 2 -> 0) 차이가 임계값 미만이라 영영
+        # 전송되지 않아 WAS/화면에 옛날 값이 굳은 채로 남는다.
+        clear_on_zero = ("buffer_lines", "queue_size")
         for key, val in current.items():
             prev_val = prev.get(key)
             threshold = thresholds.get(key)
@@ -633,6 +637,8 @@ class SolTraceDaemon:
                 if prev_val is not None:
                     dirty[key] = val
             elif prev_val is None or abs(val - prev_val) >= threshold:
+                dirty[key] = val
+            elif key in clear_on_zero and (val == 0) != (prev_val == 0):
                 dirty[key] = val
 
         if dirty:
