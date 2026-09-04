@@ -302,6 +302,7 @@ async function loadNotify() {
 const ALERT_FIELDS = {
   alMadK: 'mad_k',
   alThroughputDrop: 'throughput_drop',
+  alThroughputSlowPct: 'throughput_slow_pct',
   alFailFloor: 'fail_rate_floor',
   alLoginFailFloor: 'login_fail_rate_floor',
   alCwdFloor: 'cwd_fail_floor',

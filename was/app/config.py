@@ -38,7 +38,11 @@ class Settings(BaseSettings):
     # 원인이 밝혀진 경로를 알림에서만 제외한다 — 로그 조회에는 그대로 남는다.
     # .env 는 여러 줄 값을 담지 못하므로 설정 페이지에서만 입력한다(여기는 빈 기본값 용도).
     alert_cwd_ignore_paths: str = ""
-    alert_throughput_drop: float = 0.5     # baseline 대비 throughput 하락 비율 (50%↓)
+    alert_throughput_drop: float = 0.6     # baseline 대비 throughput 하락 비율 (60%↓)
+    # 평소에도 느린 버킷이 얼마나 있는지 — 업로드 사용자마다 회선 대역폭이 달라 장비 합산
+    # 속도는 "그 시간에 누가 올렸는가"로 크게 흔들린다. baseline 의 하위 이 백분위보다도
+    # 느릴 때만 알림 → 임계를 사람이 감으로 정하지 않고 장비의 실제 분포가 정한다.
+    alert_throughput_slow_pct: float = 0.05   # baseline 하위 5%
 
     # 알림 채널 (미설정 시 해당 채널 비활성)
     alert_webhook_url: str = ""            # POST(JSON) 발송 대상

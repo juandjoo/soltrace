@@ -41,6 +41,16 @@ def _fmt_metric(metric: str, value: float) -> str:
 _KST = timezone(timedelta(hours=9))
 
 
+def _is_recovery(alerts: list[dict]) -> bool:
+    """복구 알림 묶음인가. 복구는 이상 알림과 섞지 않고 따로 발송한다."""
+    return bool(alerts) and all(a.get("recovered") for a in alerts)
+
+
+def _fmt_span(alert: dict) -> str:
+    """복구 알림에 붙이는 '이상이 얼마나 이어졌나' — 지속시간·묶인 알림 건수."""
+    return f"{alert.get('duration_min', 0)}분·{alert.get('alert_count', 0)}건"
+
+
 def _alert_label(alert: dict) -> str:
     """[텔코]그룹명 형식. 텔코·그룹 없으면 device_hostname으로 폴백."""
     telco = alert.get("telco") or ""
@@ -53,6 +63,10 @@ def _alert_label(alert: dict) -> str:
 def build_summary(alert: dict) -> str:
     sev = _SEVERITY_LABEL.get(alert["severity"], alert["severity"])
     metric = _METRIC_LABEL.get(alert["metric"], alert["metric"])
+    if alert.get("recovered"):
+        kst = alert["bucket"].astimezone(_KST)
+        return (f"[복구] {_alert_label(alert)} — {metric} 정상 회복 "
+                f"(이상 {_fmt_span(alert)}) @ {kst:%Y-%m-%d %H:%M} KST 마지막")
     base = alert.get("baseline")
     base_str = f" (평소 {_fmt_metric(alert['metric'], base)})" if base is not None else ""
     kst = alert["bucket"].astimezone(_KST)
@@ -127,32 +141,40 @@ def channels_configured(db) -> bool:
 def _slack_payload(alerts: list[dict]) -> dict:
     """Slack Incoming Webhook 포맷."""
     is_test = any(a.get("test") for a in alerts)
+    recovered = _is_recovery(alerts)
     crit = sum(1 for a in alerts if a["severity"] == "critical")
     test_tag = " _[테스트]_" if is_test else ""
-    crit_tag = f"  :rotating_light: 심각 {crit}건" if crit else ""
-    header = f":bell: *SolTrace 서비스 영향 감지 {len(alerts)}건*{crit_tag}{test_tag}"
+    crit_tag = f"  :rotating_light: 심각 {crit}건" if crit and not recovered else ""
+    title = "서비스 복구" if recovered else "서비스 영향 감지"
+    icon_head = ":white_check_mark:" if recovered else ":bell:"
+    header = f"{icon_head} *SolTrace {title} {len(alerts)}건*{crit_tag}{test_tag}"
     lines = []
     for a in alerts:
+        metric = _METRIC_LABEL.get(a["metric"], a["metric"])
+        kst = a["bucket"].astimezone(_KST).strftime("%m/%d %H:%M")
+        if recovered:
+            lines.append(f":white_check_mark: [복구] *{_alert_label(a)}* — {metric} 정상 회복"
+                         f" (이상 {_fmt_span(a)}) · {kst} KST 마지막")
+            continue
         icon = ":rotating_light:" if a["severity"] == "critical" else ":warning:"
         sev = _SEVERITY_LABEL.get(a["severity"], a["severity"])
-        metric = _METRIC_LABEL.get(a["metric"], a["metric"])
         val = _fmt_metric(a["metric"], a["value"])
         base = a.get("baseline")
         base_str = f" (평소 {_fmt_metric(a['metric'], base)})" if base is not None else ""
-        kst = a["bucket"].astimezone(_KST).strftime("%m/%d %H:%M")
         lines.append(f"{icon} [{sev}] *{_alert_label(a)}* — {metric} {val}{base_str} · {kst} KST")
     text = header + "\n" + "\n".join(lines)
     return {
-        "text": f"[SolTrace] 서비스 영향 감지 {len(alerts)}건",
+        "text": f"[SolTrace] {title} {len(alerts)}건",
         "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}}],
     }
 
 
 def _generic_payload(alerts: list[dict]) -> dict:
     is_test = any(a.get("test") for a in alerts)
+    recovered = _is_recovery(alerts)
     return {
         "source": "soltrace",
-        "type": "service_impact",
+        "type": "service_recovery" if recovered else "service_impact",
         "test": is_test,
         "count": len(alerts),
         "alerts": [
@@ -164,6 +186,10 @@ def _generic_payload(alerts: list[dict]) -> dict:
                 "value": a["value"],
                 "baseline": a.get("baseline"),
                 "bucket": a["bucket"].isoformat(),
+                "recovered": bool(a.get("recovered")),
+                # 복구 알림에서만 채워진다 — 이상이 이어진 시간과 묶인 알림 건수
+                "duration_min": a.get("duration_min"),
+                "alert_count": a.get("alert_count"),
                 "summary": build_summary(a),
             }
             for a in alerts
@@ -182,17 +208,22 @@ def _send_webhook(alerts: list[dict], cfg: dict, db=None) -> bool:
 
 
 def _build_hms_body(alerts: list[dict]) -> str:
+    recovered = _is_recovery(alerts)
     rows = "".join(
         f"<tr><td style='padding:4px 8px'>{_esc(a['device_hostname'])}</td>"
         f"<td style='padding:4px 8px'>{_esc(_METRIC_LABEL.get(a['metric'], a['metric']))}</td>"
         f"<td style='padding:4px 8px'>{_esc(_SEVERITY_LABEL.get(a['severity'], a['severity']))}</td>"
-        f"<td style='padding:4px 8px'>{_esc(_fmt_metric(a['metric'], a['value']))}</td>"
+        f"<td style='padding:4px 8px'>"
+        f"{_esc('정상 회복 (이상 ' + _fmt_span(a) + ')' if recovered else _fmt_metric(a['metric'], a['value']))}"
+        f"</td>"
         f"<td style='padding:4px 8px'>{a['bucket'].astimezone(_KST):%Y-%m-%d %H:%M} KST</td></tr>"
         for a in alerts
     )
     return (
         "<html><body style='font-family:sans-serif;font-size:13px'>"
-        "<p>FTP 서버 서비스 이상이 감지되었습니다.</p>"
+        + ("<p>앞서 알린 FTP 서버 서비스 이상이 정상으로 회복되었습니다."
+           " (등급은 이상 기간 중 최고 등급, 시각은 마지막 이상 시각)</p>" if recovered
+           else "<p>FTP 서버 서비스 이상이 감지되었습니다.</p>") +
         "<table border='1' cellspacing='0' cellpadding='0' style='border-collapse:collapse'>"
         "<thead><tr style='background:#f0f0f0'>"
         "<th style='padding:4px 8px'>장비</th><th style='padding:4px 8px'>지표</th>"
@@ -206,9 +237,14 @@ def _build_hms_body(alerts: list[dict]) -> str:
 
 def _hms_post(url: str, telco: str, alerts: list[dict]) -> None:
     is_test = any(a.get("test") for a in alerts)
+    recovered = _is_recovery(alerts)
     prefix = "[테스트] " if is_test else ""
     crit = sum(1 for a in alerts if a["severity"] == "critical")
-    subject = f"{prefix}[SolTrace] 서비스 영향 감지 {len(alerts)}건" + (f" (심각 {crit})" if crit else "")
+    if recovered:
+        subject = f"{prefix}[SolTrace] 서비스 복구 {len(alerts)}건"
+    else:
+        subject = (f"{prefix}[SolTrace] 서비스 영향 감지 {len(alerts)}건"
+                   + (f" (심각 {crit})" if crit else ""))
     _post_json(url, _hms_envelope(telco, subject, _build_hms_body(alerts)), _HMS_HEADERS)
 
 

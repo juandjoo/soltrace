@@ -8,7 +8,7 @@ import pytest
 
 from app import alert_settings
 from app.service_monitor import (ServiceMonitor, _like_patterns, cwd_not_ignored_sql,
-                                 cwd_real_fail_sql)
+                                 cwd_probe_sql, cwd_real_fail_sql)
 
 MB = 1024 * 1024
 
@@ -94,6 +94,60 @@ def test_throughput_skipped_when_file_size_mix_differs(cfg):
     assert "throughput" not in metrics(evaluate(small_big, base, cfg))
 
 
+# ── 사용자별 대역폭 차이 (장비 합산 속도의 정상 변동) ───────────────────────
+
+def slow_user_bucket():
+    """느린 사용자 혼자 올리는 구간: 100MB 파일 10개를 각 25초 → 4MB/s"""
+    return bucket(transfers=10, fails=0, nbytes=1000 * MB, secs=250.0,
+                  xfers_big=10, bytes_big=1000 * MB, secs_big=250.0)
+
+
+def test_slow_user_is_normal_when_baseline_has_slow_buckets(cfg):
+    """평소에도 느린 구간이 있으면(사용자별 회선 차이) 그 수준의 속도는 알리지 않는다.
+
+    baseline 하위 5%가 4MB/s 인 장비에서 4MB/s 는 median 대비 92% 하락이지만
+    '느린 사용자가 올리는 평소 모습'이므로 알림 대상이 아니다.
+    """
+    base = [normal_bucket() for _ in range(80)] + [slow_user_bucket() for _ in range(20)]
+    assert "throughput" not in metrics(evaluate(slow_user_bucket(), base, cfg))
+
+
+def test_slow_user_still_alerts_when_baseline_is_uniform(cfg):
+    """평소 느린 구간이 없던 장비는 종전대로 민감하게 잡는다."""
+    base = [normal_bucket() for _ in range(100)]     # 전 구간 50MB/s
+    assert "throughput" in metrics(evaluate(slow_user_bucket(), base, cfg))
+
+
+def test_below_the_slow_end_still_alerts(cfg):
+    """평소 느린 구간이 있어도 그보다 훨씬 더 느리면 알린다(진짜 저하)."""
+    base = [normal_bucket() for _ in range(80)] + [slow_user_bucket() for _ in range(20)]
+    dead = bucket(transfers=10, fails=0, nbytes=1000 * MB, secs=2000.0,
+                  xfers_big=10, bytes_big=1000 * MB, secs_big=2000.0)   # 0.5MB/s
+    alerts = evaluate(dead, base, cfg)
+    assert "throughput" in metrics(alerts)
+    assert next(a for a in alerts if a["metric"] == "throughput")["severity"] == "critical"
+
+
+def test_slow_percentile_needs_enough_baseline_buckets(cfg):
+    """표본이 적으면 하위 분위는 그냥 최솟값이라 쓰지 않는다(비율 임계로만 판정)."""
+    base = ([normal_bucket() for _ in range(8)] + [slow_user_bucket()])   # 9개 < 20
+    assert "throughput" in metrics(evaluate(slow_user_bucket(), base, cfg))
+
+
+def test_slow_percentile_is_configurable(cfg):
+    """분위를 내릴수록 둔감해진다 — 임계가 더 느린 버킷으로 내려가기 때문(설정 반영 경로).
+
+    느린 버킷이 10%인 baseline 에서 하위 15%는 평소(50MB/s) 구간을 가리키므로 임계가 높고,
+    하위 5%는 느린 구간(4MB/s)을 가리켜 같은 속도가 '평소'로 인정된다.
+    """
+    base = [normal_bucket() for _ in range(90)] + [slow_user_bucket() for _ in range(10)]
+    cand = slow_user_bucket()
+    strict = {**cfg, "throughput_slow_pct": 0.15}
+    assert "throughput" in metrics(evaluate(cand, base, strict))
+    lenient = {**cfg, "throughput_slow_pct": 0.05}
+    assert "throughput" not in metrics(evaluate(cand, base, lenient))
+
+
 # ── 다른 지표는 그대로 동작 ─────────────────────────────────────────────────
 
 def test_fail_rate_still_alerts_on_burst(cfg):
@@ -112,8 +166,8 @@ def test_thresholds_are_honoured(cfg):
     """임계값을 둔감하게 바꾸면 같은 버킷에서 알림이 사라진다(설정 페이지 반영 경로)."""
     base = [normal_bucket() for _ in range(30)]
     slow = bucket(transfers=30, fails=0, nbytes=1000 * MB, secs=300.0,
-                  xfers_big=10, bytes_big=1000 * MB, secs_big=50.0)   # 20MB/s (60% 하락)
-    assert "throughput" in metrics(evaluate(slow, base, cfg))         # 기본 50% 임계 → 알림
+                  xfers_big=10, bytes_big=1000 * MB, secs_big=100.0)  # 10MB/s (80% 하락)
+    assert "throughput" in metrics(evaluate(slow, base, cfg))         # 기본 60% 임계 → 알림
     lenient = {**cfg, "throughput_drop": 0.9}                          # 90% 이상 떨어져야 알림
     assert "throughput" not in metrics(evaluate(slow, base, lenient))
 
@@ -138,6 +192,16 @@ def test_cwd_ignore_patterns_wildcard_and_escaping():
 
 def test_cwd_ignore_patterns_multiline():
     assert _like_patterns("/a/*\n/b") == ["/a/%", "/b"]
+
+
+def test_cwd_probe_allows_small_clock_skew():
+    """같은 흐름의 MKD 가 1~2초 앞선 시각으로 기록돼도 '존재 확인'으로 본다.
+
+    엄격히 '이후'만 보면 CWD 550 → MKD 흐름이 초 단위 역전만으로 진짜 실패로 남는다.
+    """
+    sql = cwd_probe_sql("fl", ":since", ":until")
+    assert "fl.log_time - INTERVAL '5 seconds'" in sql
+    assert "(:since) - INTERVAL '5 seconds'" in sql   # 기간 프루닝 경계도 같이 넓힌다
 
 
 def test_cwd_ignore_rule_lives_in_one_place():

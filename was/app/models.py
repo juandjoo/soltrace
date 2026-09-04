@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, DateTime, Float, ForeignKey,
-    Identity, Index, Integer, String, Text, UniqueConstraint,
+    Identity, Index, Integer, String, Text, UniqueConstraint, text,
 )
 from sqlalchemy.orm import relationship
 
@@ -221,14 +221,17 @@ class ServiceAlert(Base):
     device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
     bucket = Column(DateTime(timezone=True), nullable=False)
     metric = Column(String(30), nullable=False)        # fail_rate | throughput | login_fail_rate
-    severity = Column(String(10), nullable=False, default="warning")
+    # server_default 는 init.sql 과 맞춘 값 — 컬럼을 생략한 INSERT 가 도는 코드가 있어
+    # (service_monitor 의 알림 적재) DDL 쪽 기본값이 없으면 NOT NULL 위반이 난다.
+    severity = Column(String(10), nullable=False, default="warning",
+                      server_default=text("'warning'"))
     value = Column(Float, nullable=False)
     baseline = Column(Float)
     threshold = Column(Float)
     sample_count = Column(Integer)
     message = Column(Text)
-    notified = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime(timezone=True), default=_now)
+    notified = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    created_at = Column(DateTime(timezone=True), default=_now, server_default=text("NOW()"))
 
     device = relationship("Device")
 
@@ -238,4 +241,44 @@ class ServiceAlert(Base):
         Index("idx_service_alerts_device_created", "device_id", "created_at"),
         Index("idx_service_alerts_notified", "notified",
               postgresql_where="notified = FALSE"),
+    )
+
+
+class ServiceAlertEpisode(Base):
+    """장비 × 지표별 '진행 중인 이상' 상태.
+
+    같은 장애가 10분 버킷마다 새 알림으로 쏟아지지 않도록, 이상이 처음 감지될 때 한 번만
+    발송하고 이후 버킷은 이 에피소드에 묶어 UI 에만 남긴다(등급이 주의→심각으로 올라가면
+    한 번 더 보낸다). 조용해지면 에피소드를 닫고 복구 알림을 보낸다.
+
+    상태를 메모리에 두면 배포로 워커가 재기동될 때 사라져 복구 알림이 영영 안 나가므로
+    테이블로 영속화한다. 장비×지표당 한 행을 재사용하고, 복구 후 다시 나빠지면 같은 행을
+    새 에피소드로 되살린다.
+    """
+    __tablename__ = "service_alert_episodes"
+
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True)
+    metric = Column(String(30), primary_key=True)
+    # server_default 를 붙이는 이유: 기존 설치는 이 테이블이 create_all 로 만들어지는데,
+    # SQLAlchemy 의 default= 는 파이썬 쪽 기본값이라 DDL 에 남지 않는다. 그러면 컬럼을
+    # 생략한 INSERT 가 NOT NULL 위반으로 죽어 신규 설치(init.sql)와 동작이 갈라진다.
+    started_at = Column(DateTime(timezone=True), nullable=False,
+                        default=_now, server_default=text("NOW()"))      # 감지 시각
+    first_bucket = Column(DateTime(timezone=True), nullable=False)  # 첫 이상 버킷
+    last_bucket = Column(DateTime(timezone=True), nullable=False)   # 마지막 이상 버킷
+    severity = Column(String(10), nullable=False, default="warning",
+                      server_default=text("'warning'"))                 # 에피소드 최고 등급
+    alert_count = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    # 이상 알림을 실제로 보냈는가 — 보낸 적 없으면 복구 알림도 보내지 않는다
+    notified = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    resolved_at = Column(DateTime(timezone=True))                   # 닫힌 시각 (NULL = 진행 중)
+    recovery_notified = Column(Boolean, nullable=False, default=False,
+                               server_default=text("false"))
+
+    device = relationship("Device")
+
+    __table_args__ = (
+        # 복구 알림 대기열 — 닫혔지만 아직 못 보낸 에피소드
+        Index("idx_alert_episodes_recovery", "recovery_notified",
+              postgresql_where="resolved_at IS NOT NULL AND recovery_notified = FALSE"),
     )

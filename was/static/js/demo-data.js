@@ -312,7 +312,8 @@
     [/^\/settings\/storage$/, storage],
     [/^\/settings\/security$/, () => ({ username: 'admin', allowed_ips: ['10.0.0.0/8', '203.0.113.0/24'], my_ip: '203.0.113.42' })],
     [/^\/settings\/alerts$/, () => ({
-      mad_k: 4.0, fail_rate_floor: 0.05, login_fail_rate_floor: 0.3, throughput_drop: 0.5,
+      mad_k: 4.0, fail_rate_floor: 0.05, login_fail_rate_floor: 0.3, throughput_drop: 0.6,
+      throughput_slow_pct: 0.05,
       cwd_fail_floor: 20, min_samples: 20, min_login_samples: 10, min_cwd_samples: 5,
       min_large_samples: 5, cwd_ignore_paths: '/data/incoming/tmp\n/backup/daily',
       large_file_bytes: 4 * 1024 * 1024, bucket_minutes: 10, baseline_days: 7,

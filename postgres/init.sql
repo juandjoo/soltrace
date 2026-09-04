@@ -271,6 +271,25 @@ CREATE TABLE IF NOT EXISTS service_alerts (
 CREATE INDEX IF NOT EXISTS idx_service_alerts_created ON service_alerts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_service_alerts_unnotified ON service_alerts(notified) WHERE notified = FALSE;
 
+-- 진행 중인 이상(에피소드) 상태 — 같은 장애가 버킷마다 반복 발송되지 않게 한다.
+-- 장비×지표당 한 행을 재사용하고, 복구 후 다시 나빠지면 같은 행을 새 에피소드로 되살린다.
+-- (메모리에 두면 배포 재기동 때 사라져 복구 알림이 영영 안 나간다)
+CREATE TABLE IF NOT EXISTS service_alert_episodes (
+    device_id         INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    metric            VARCHAR(30) NOT NULL,
+    started_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- 감지 시각
+    first_bucket      TIMESTAMPTZ NOT NULL,          -- 첫 이상 버킷
+    last_bucket       TIMESTAMPTZ NOT NULL,          -- 마지막 이상 버킷
+    severity          VARCHAR(10) NOT NULL DEFAULT 'warning',  -- 에피소드 최고 등급
+    alert_count       INT NOT NULL DEFAULT 1,
+    notified          BOOLEAN NOT NULL DEFAULT FALSE, -- 이상 알림을 실제로 보냈는가
+    resolved_at       TIMESTAMPTZ,                    -- NULL = 진행 중
+    recovery_notified BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (device_id, metric)
+);
+CREATE INDEX IF NOT EXISTS idx_alert_episodes_recovery ON service_alert_episodes(recovery_notified)
+    WHERE resolved_at IS NOT NULL AND recovery_notified = FALSE;
+
 -- ftp_logs action CHECK constraint 마이그레이션 (cwd_fail 추가)
 -- pg_constraint 사용 (파티션 테이블 포함 신뢰성 높음)
 DO $$ BEGIN

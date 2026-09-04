@@ -358,7 +358,7 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 - **지표**: 전송 실패율(upload/download), 실효 전송속도(Σsize/Σtime), 로그인 실패율(식별된 계정 한정), CWD 실패 급증
 - **집계**: WAS가 5분 주기로 `ftp_logs`를 10분 버킷(`service_metrics`)으로 롤업
 - **판정**: 장비별 최근 7일 **median+MAD** baseline 대비 이탈을 `service_alerts`에 적재
-- **알림**: 웹 UI 노출 + (설정 시) 웹훅 / HMS 발송
+- **알림**: 웹 UI 노출 + (설정 시) 웹훅 / HMS 발송 — 같은 장애는 **한 번만** 보내고 복구 시 한 번 더
 - **데몬 상태 반영**: `degraded` / `disabled` / `error` 상태 장비는 서비스 알림 없어도 건강도 `warning`으로 표시
 
 #### 전송 속도 판정 — 작은 파일 대량 전송 오탐 방지
@@ -380,6 +380,68 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 `ALERT_LARGE_FILE_BYTES`는 롤업에 반영되는 값이라 `.env`에서만 바꾸며(재배포 필요),
 변경하면 baseline(기본 7일)이 새 기준으로 다시 쌓일 때까지 판정이 보수적으로 동작한다.
 
+#### 전송 속도 판정 — 사용자별 대역폭 차이 반영
+
+장비 속도는 `Σsize / Σtime` 합산값이라 **그 시간에 누가 올렸는지**에 따라 크게 흔들린다.
+회선이 느린 사용자 혼자 올리는 구간은 평소의 일부인데도 평소 median 대비로는 급락으로 보인다.
+그래서 임계를 median 비율로만 잡지 않고, **그 장비 baseline 의 하위 분위**
+(`ALERT_THROUGHPUT_SLOW_PCT`, 기본 5%)까지 함께 본다.
+
+```
+임계 = min( median − k·MAD,  median × (1 − 하락비율),  baseline 하위 5% )
+```
+
+셋 중 가장 낮은 값이 임계이므로, **평소에도 느린 구간이 있는 장비는 임계가 자동으로 내려간다**
+(느린 사용자 업로드가 일상이면 알림이 나가지 않고, 그런 구간이 없던 장비는 종전대로 민감하다).
+장비마다 임계를 손으로 정할 필요가 없다는 뜻이다. 하위 분위는 baseline 버킷이 20개 이상일 때만
+적용한다(표본이 적으면 하위 5%는 그냥 최솟값이라 의미가 없다).
+
+심각/주의 구분도 고정 속도가 아니라 임계 기준이다 — 임계의 절반보다 낮으면 `critical`.
+
+지금 우리 장비들이 실제로 얼마나 흔들리는지는 다음 조회로 확인한다(임계를 정하기 전에 먼저 본다).
+
+```sql
+-- 장비별 큰 파일 전송속도 분포 (MB/s) — 최근 7일, 큰 파일 5건 이상인 버킷만
+SELECT d.hostname,
+       COUNT(*)                                                          AS buckets,
+       ROUND((PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY m.bytes_big::float8 / m.secs_big) / 1048576)::numeric, 2) AS p50,
+       ROUND((PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY m.bytes_big::float8 / m.secs_big) / 1048576)::numeric, 2) AS p25,
+       ROUND((PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY m.bytes_big::float8 / m.secs_big) / 1048576)::numeric, 2) AS p05,
+       ROUND((MIN(m.bytes_big::float8 / m.secs_big) / 1048576)::numeric, 2)                                          AS min
+FROM service_metrics m JOIN devices d ON d.id = m.device_id
+WHERE m.bucket >= NOW() - INTERVAL '7 days' AND m.xfers_big >= 5 AND m.secs_big > 0
+GROUP BY d.hostname ORDER BY buckets DESC;
+```
+
+`p05` 가 `p50` 대비 크게 낮은 장비가 사용자별 대역폭 편차가 큰 장비다.
+알림이 잦은 장비의 **알림에 찍힌 속도가 그 장비 `p05` 부근**이면 장애가 아니라 정상 변동을
+보고 있는 것이다 — 이 값(분위)을 **낮추면 둔감**해지고(임계가 더 느린 버킷으로 내려간다),
+올리면 민감해진다. 0.05 는 "평소 버킷의 5%까지는 알리지 않는다"는 뜻이므로, 그래도 잦으면
+0.02 → 0.01 순으로 내린다.
+
+#### 같은 장애의 반복 발송 방지 (에피소드)
+
+이상은 10분 버킷마다 판정되므로, 40분 이어진 장애 하나가 예전에는 알림 5건으로 쏟아졌다.
+지금은 **장비 × 지표**를 하나의 *에피소드*로 묶는다(`service_alert_episodes`).
+
+| 시점 | 발송 |
+|---|---|
+| 이상 시작 (직전 버킷이 정상) | **보냄** |
+| 같은 이상이 이어지는 버킷들 | 보내지 않음 — 화면(`service_alerts`)에는 그대로 쌓임 |
+| 등급 상승 (주의 → 심각) | **보냄** (한 번) |
+| 마지막 이상 버킷 이후 30분(3버킷) 조용 | 에피소드 종료 → **복구 알림** |
+| 복구 뒤 다시 나빠짐 | 새 에피소드로 **다시 보냄** |
+
+복구 알림은 이상 알림이 실제로 나간 에피소드에 대해서만 보낸다(채널 미설정·음소거 중에
+발생한 이상은 복구만 따로 날아가지 않는다). 종료 처리와 발송을 나눠 두어 발송이 실패해도
+다음 판정 주기에 다시 시도하며, 상태는 테이블에 두므로 배포로 워커가 재기동돼도
+복구 알림이 유실되지 않는다.
+
+```
+:white_check_mark: SolTrace 서비스 복구 1건
+:white_check_mark: [복구] [SK]ACL 업로드 서버 — 전송 속도 정상 회복 (이상 40분·5건) · 09/04 17:10 KST 마지막
+```
+
 #### 임계값 조정
 
 판정 임계값은 **설정 > 알림 설정 > 이상 감지 임계값**에서 바꾸며, 저장하면 다음 판정 주기
@@ -389,7 +451,8 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 | 항목 | 기본값 | 설명 |
 |---|---|---|
 | 이탈 배수 (`ALERT_MAD_K`) | 4.0 | 클수록 둔감 |
-| 전송 속도 하락 비율 (`ALERT_THROUGHPUT_DROP`) | 0.5 | 평소 대비 50%↓ |
+| 전송 속도 하락 비율 (`ALERT_THROUGHPUT_DROP`) | 0.6 | 평소 대비 60%↓ |
+| 전송 속도 평소 하위 분위 (`ALERT_THROUGHPUT_SLOW_PCT`) | 0.05 | 평소의 하위 5%보다 느릴 때만 알림 · **낮출수록 둔감** |
 | 전송 실패율 하한 (`ALERT_FAIL_RATE_FLOOR`) | 0.05 | |
 | 로그인 실패율 하한 (`ALERT_LOGIN_FAIL_RATE_FLOOR`) | 0.30 | |
 | CWD 실패 하한 (`ALERT_CWD_FAIL_FLOOR`) | 20건 | |
@@ -407,6 +470,8 @@ FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직
 업로드 순으로 도는 경우가 많다. 이건 "폴더로 이동하다 실패"한 게 아니라 있는지 떠본 것이므로,
 **CWD 실패 뒤 10분 안에 같은 경로가 생성(`mkdir`)됐으면 집계·추이·알림·분석 목록은 물론
 로그 조회 목록에서도 뺀다** — 실패가 아닌 것을 실패로 보여줄 이유가 없다.
+'직후'는 **5초 앞까지 인정**한다(`_CWD_CLOCK_SKEW`) — 같은 흐름인데도 MKD 가 CWD 550 보다
+1~2초 이른 시각으로 기록되는 일이 있어, 엄격히 '이후'만 보면 정상 흐름이 실패로 남는다.
 판정은 `service_monitor.cwd_probe_sql()` 한 곳에 있고, 집계 쪽은 제외 경로까지 묶은
 `cwd_real_fail_sql()` 을, 로그 조회는 `LogFilters._hide_cwd_probes()` 가 같은 조건을 쓴다
 (부분 인덱스 `idx_ftp_logs_mkdir_path`). 목록·총건수·CSV·XLSX 가 같은 `LogFilters.apply()` 를

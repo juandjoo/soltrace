@@ -21,6 +21,7 @@ FIELDS: dict[str, tuple] = {
     "fail_rate_floor":       (float, "alert_fail_rate_floor"),
     "login_fail_rate_floor": (float, "alert_login_fail_rate_floor"),
     "throughput_drop":       (float, "alert_throughput_drop"),
+    "throughput_slow_pct":   (float, "alert_throughput_slow_pct"),
     "cwd_fail_floor":        (int,   "alert_cwd_fail_floor"),
     "cwd_ignore_paths":      (str,   "alert_cwd_ignore_paths"),
     "min_samples":           (int,   "alert_min_samples"),

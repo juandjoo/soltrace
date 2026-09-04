@@ -441,6 +441,8 @@ class AlertSettings(BaseModel):
     fail_rate_floor: Optional[float] = Field(default=None, ge=0, le=1)
     login_fail_rate_floor: Optional[float] = Field(default=None, ge=0, le=1)
     throughput_drop: Optional[float] = Field(default=None, ge=0, le=1)
+    # baseline 하위 백분위 — 평소에도 이만큼 느린 구간이 있으면 알리지 않는다
+    throughput_slow_pct: Optional[float] = Field(default=None, ge=0, le=0.5)
     cwd_fail_floor: Optional[int] = Field(default=None, ge=0)
     # CWD 실패 집계 제외 경로 (한 줄에 하나, '*' 와일드카드)
     cwd_ignore_paths: Optional[str] = Field(default=None, max_length=2000)
