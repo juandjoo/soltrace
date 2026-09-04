@@ -54,12 +54,9 @@ function destroyChart(id) {
 
 // 시계열 차트 공통 규칙 — 업로드/삭제 카운트 · 업로드양 · 삭제량이 모두 같다.
 // (색·굵기·점 크기, x축 눈금 밀도가 차트마다 갈라지면 같은 화면에서 다르게 보인다)
-// unit='day' 는 일 단위 합산 막대라 선 스타일 대신 채움색을 쓴다.
-function _hourlyLineStyle(idx, bucketCount, unit) {
+// 주/월(일 단위 합산)도 같은 선 차트로 그린다 — 버킷만 하루 단위로 묶인다.
+function _hourlyLineStyle(idx, bucketCount) {
   const color = HOURLY_PALETTE[idx % HOURLY_PALETTE.length];
-  if (unit === 'day') {
-    return {backgroundColor: color, borderColor: color, borderWidth: 0};
-  }
   return {
     borderColor: color,
     backgroundColor: color + '22',
@@ -288,9 +285,9 @@ async function loadUserHourly() {
   if (!data) return;
 
   if (!data.length) {
-    Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, [], [], String, unit));
-    _renderUserVolumeChart('userUpload', 'chartUserUpload', [], [], String, () => [0, 0], unit);
-    _renderUserVolumeChart('userDelete', 'chartUserDelete', [], [], String, () => [0, 0], unit);
+    Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, [], [], String));
+    _renderUserVolumeChart('userUpload', 'chartUserUpload', [], [], String, () => [0, 0]);
+    _renderUserVolumeChart('userDelete', 'chartUserDelete', [], [], String, () => [0, 0]);
     return;
   }
 
@@ -302,17 +299,17 @@ async function loadUserHourly() {
   // 버킷 → 시점 맵. 네 차트(업로드·삭제 카운트, 업로드양·삭제량)가 같은 맵을 쓴다.
   data.forEach(u => { u._map = Object.fromEntries(u.data.map(h => [h.bucket, h])); });
 
-  Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, data, allBuckets, fmtBucket, unit));
+  Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, data, allBuckets, fmtBucket));
 
   // 업로드양 · 삭제량 (기간별) — 같은 응답으로 그린다 (추가 요청 없음).
   _renderUserVolumeChart('userUpload', 'chartUserUpload', data, allBuckets, fmtBucket,
-                         h => [h.bytes_in || 0, h.uploads || 0], unit);
+                         h => [h.bytes_in || 0, h.uploads || 0]);
   _renderUserVolumeChart('userDelete', 'chartUserDelete', data, allBuckets, fmtBucket,
-                         h => [h.bytes_del || 0, h.deletes || 0], unit);
+                         h => [h.bytes_del || 0, h.deletes || 0]);
 }
 
 // 사용자별 건수 라인차트 + 범례표(사용자·최대·현재, 클릭 시 해당 계정만 표시).
-function _renderUserCountChart(key, series, buckets, fmtBucket, unit) {
+function _renderUserCountChart(key, series, buckets, fmtBucket) {
   const cfg = USER_COUNT_CHARTS[key];
   const legendEl = document.getElementById(cfg.legend);
   const st = _chartState(key);
@@ -329,11 +326,11 @@ function _renderUserCountChart(key, series, buckets, fmtBucket, unit) {
   const datasets = active.map((u, i) => ({
     label: u.username,
     data: buckets.map(b => cfg.pick(u._map[b] || {})),
-    ..._hourlyLineStyle(i, buckets.length, unit),
+    ..._hourlyLineStyle(i, buckets.length),
   }));
 
   charts[key] = new Chart(document.getElementById(cfg.canvas), {
-    type: unit === 'day' ? 'bar' : 'line',
+    type: 'line',
     data: {labels: buckets.map(fmtBucket), datasets},
     options: {
       responsive: true,
@@ -351,10 +348,8 @@ function _renderUserCountChart(key, series, buckets, fmtBucket, unit) {
         },
       },
       scales: {
-        // 일 단위 막대는 사용자별로 쌓아 그날의 합이 한눈에 보이게 한다
-        x: {..._hourlyXScale(buckets.length), stacked: unit === 'day'},
-        y: {beginAtZero: true, stacked: unit === 'day',
-            ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
+        x: _hourlyXScale(buckets.length),
+        y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
   });
@@ -389,7 +384,7 @@ function _renderUserCountChart(key, series, buckets, fmtBucket, unit) {
 
 // 사용자별 '양' 추이 라인차트 — 업로드양·삭제량 카드가 같은 코드를 쓴다.
 // pick(h) → [바이트, 건수]. 값이 모두 0인 사용자는 빼고, 아무도 없으면 안내 문구로 대체한다.
-function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, pick, unit) {
+function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, pick) {
   destroyChart(chartKey);
   _chartState(chartKey).focus = null;
   const canvas = document.getElementById(canvasId);
@@ -404,7 +399,7 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
       label: u.username,
       data: picked.map(([v]) => v),
       counts: picked.map(([, n]) => n),
-      ..._hourlyLineStyle(datasets.length, buckets.length, unit),
+      ..._hourlyLineStyle(datasets.length, buckets.length),
     });
   });
 
@@ -417,7 +412,7 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
   empty.classList.add('d-none');
 
   charts[chartKey] = new Chart(canvas, {
-    type: unit === 'day' ? 'bar' : 'line',
+    type: 'line',
     data: {labels: buckets.map(fmtBucket), datasets},
     options: {
       responsive: true,
@@ -437,9 +432,8 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
         }}},
       },
       scales: {
-        x: {..._hourlyXScale(buckets.length), stacked: unit === 'day'},
-        y: {beginAtZero: true, stacked: unit === 'day',
-            ticks: {callback: v => fmtBytes(v), font: {size: 10}}},
+        x: _hourlyXScale(buckets.length),
+        y: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}},
       },
     },
   });
