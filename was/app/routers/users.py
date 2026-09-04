@@ -13,26 +13,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import Principal, require_admin
+from app.deps import Principal, require_admin, validate_ip_entries
 from app.models import User
 from app.schemas import UserCreate, UserResponse, UserUpdate
 from app.security import (
-    get_admin_username, hash_password, lock_seconds_left, parse_ip_entries,
-    split_ips, strip_input as _clean, unlock_user,
+    get_admin_username, hash_password, lock_seconds_left, split_ips,
+    strip_input as _clean, unlock_user,
 )
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 
 def _parse_ip_list(entries: List[str]) -> str:
-    """IP/CIDR 목록 검증 후 저장 포맷(줄바꿈 구분)으로 직렬화. 유효하지 않으면 422."""
-    valid, invalid = parse_ip_entries(entries)
-    if invalid:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"유효하지 않은 IP/CIDR: {', '.join(invalid)}",
-        )
-    return "\n".join(valid)
+    """IP/CIDR 목록 검증(deps.validate_ip_entries) 후 저장 포맷(줄바꿈 구분)으로 직렬화."""
+    return "\n".join(validate_ip_entries(entries))
 
 
 def _to_response(u: User) -> UserResponse:

@@ -50,10 +50,6 @@ class WriteBuffer:
         if flush_now:
             self._write(flush_now)
 
-    def pending(self) -> int:
-        with self._lock:
-            return len(self._queue)
-
     def _flush_loop(self):
         while self._running:
             time.sleep(self._flush_interval)

@@ -48,15 +48,25 @@ def save_settings(db: Session, enabled: bool, threshold: int) -> None:
     set_config(db, THRESHOLD_KEY, str(threshold))
 
 
-def disk_percent(path: str = DISK_PATH) -> float:
+def usage(path: str = DISK_PATH) -> tuple[int, int, float]:
+    """(총량, 사용량, 사용률%). 조회 실패 시 (0, 0, 0.0).
+
+    자동 정리 판정과 설정 화면 표시가 같은 값을 봐야 하므로 한 번의 조회로 셋을 다 낸다
+    (예전에는 화면이 total/used 를, 판정이 percent 를 따로 재 syscall 이 두 번 났다).
+    """
     try:
         du = shutil.disk_usage(path)
     except OSError as e:
         log.warning("디스크 사용량 조회 실패(%s): %s", path, e)
-        return 0.0
+        return 0, 0, 0.0
     if not du.total:
-        return 0.0
-    return round((du.total - du.free) / du.total * 100, 1)
+        return 0, 0, 0.0
+    used = du.total - du.free
+    return du.total, used, round(used / du.total * 100, 1)
+
+
+def disk_percent(path: str = DISK_PATH) -> float:
+    return usage(path)[2]
 
 
 def _purgeable_partitions(db: Session) -> list[str]:

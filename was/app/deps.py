@@ -12,7 +12,7 @@ from app import api_keys
 from app.config import settings
 from app.database import get_db
 from app.models import User
-from app.security import get_admin_username
+from app.security import get_admin_username, parse_ip_entries
 
 # auto_error=False: Authorization 헤더가 없어도 여기서 바로 401 을 내지 않는다
 # (X-API-Key 헤더로 인증하는 경로가 있으므로 판단을 get_current_user 로 미룬다).
@@ -105,6 +105,21 @@ def get_current_user(
             raise _unauthorized("비활성화된 계정입니다")
         role, customer = row.role, row.customer
     return Principal(username=sub, role=role, customer=customer)
+
+
+def validate_ip_entries(entries: list) -> list[str]:
+    """IP/CIDR 목록을 검증해 유효 항목만 돌려준다. 하나라도 틀리면 422.
+
+    전역 허용 IP(설정 > 계정 보안)와 계정별 허용 IP(고객 계정 관리)가 같은 규칙·같은
+    오류 문구를 쓰도록 한 곳에 둔다 (검증 규칙 자체는 security.parse_ip_entries).
+    """
+    valid, invalid = parse_ip_entries(entries)
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"유효하지 않은 IP/CIDR: {', '.join(invalid)}",
+        )
+    return valid
 
 
 def require_admin(user: Principal = Depends(get_current_user)) -> Principal:

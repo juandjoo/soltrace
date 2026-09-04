@@ -173,7 +173,9 @@ class DeviceResponse(BaseModel):
     id: int
     hostname: str
     ip_address: Optional[str]
-    device_key: str
+    # device_key 는 담지 않는다 — 데몬의 인제스트 자격증명이라
+    # 알면 누구든 위조 로그를 넣을 수 있다. 목록은 고객 계정·조회용 API 키도 부르므로
+    # 화면이 쓰지도 않는 값을 응답에 실으면 그대로 유출된다.
     status: str
     os_info: Optional[str]
     kernel_version: Optional[str] = None
@@ -302,7 +304,6 @@ class FtpLogResponse(BaseModel):
 
 class LogListResponse(BaseModel):
     # 총건수는 별도 엔드포인트(/logs/count)에서 정확히 센다 — 목록 응답을 COUNT 가 막지 않게
-    total: Optional[int] = None
     page: int
     size: int
     items: List[FtpLogResponse]

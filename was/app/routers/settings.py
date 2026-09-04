@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-import shutil
 import subprocess
 from datetime import datetime, timezone
 
@@ -12,7 +11,7 @@ from sqlalchemy.orm import Session
 from app import alert_settings, disk_guard, notifier, retention
 from app.config import settings as cfg
 from app.database import get_db
-from app.deps import Principal, require_admin
+from app.deps import Principal, require_admin, validate_ip_entries
 from app.gitinfo import git, git_run, repo_dir
 from app.schemas import (
     AlertSettings, AlertSettingsInfo,
@@ -21,9 +20,8 @@ from app.schemas import (
     ChangelogEntry, ChangelogItem,
 )
 from app.security import (
-    client_ip_from_request, get_user, hash_password, parse_ip_entries, verify_password,
+    client_ip_from_request, get_user, hash_password, verify_password,
     verify_admin_password, set_admin_password,
-    get_admin_username, set_admin_username,
     get_office_ips, set_office_ips,
     get_config, set_config,
 )
@@ -135,9 +133,6 @@ def check_update(_: str = Depends(require_admin)):
 # 월별 파티션 이름 — 삭제 API 가 임의 테이블을 지우지 못하게 형식부터 고정한다.
 _PARTITION_NAME = re.compile(r"^ftp_logs_\d{4}_\d{2}$")
 
-# 디스크 사용률 기준 경로 — 자동 정리와 같은 경로를 본다.
-DISK_PATH = disk_guard.DISK_PATH
-
 
 def _partition_ranges(db: Session, names: list[str]) -> dict[str, tuple]:
     """파티션별 실제 데이터 기간(min/max log_time).
@@ -155,16 +150,6 @@ def _partition_ranges(db: Session, names: list[str]) -> dict[str, tuple]:
         for n in safe
     )
     return {r.part: (r.first_log, r.last_log) for r in db.execute(text(union)).fetchall()}
-
-
-def _disk_usage(path: str = DISK_PATH) -> tuple[int, int, float]:
-    """총량·사용량·사용률. 사용률은 자동 정리(disk_guard)와 같은 계산을 쓴다."""
-    try:
-        du = shutil.disk_usage(path)
-    except OSError as e:
-        log.warning("디스크 사용량 조회 실패(%s): %s", path, e)
-        return 0, 0, 0.0
-    return du.total, du.total - du.free, disk_guard.disk_percent(path)
 
 
 @router.get("/storage", response_model=StorageInfo)
@@ -203,7 +188,7 @@ def get_storage(db: Session = Depends(get_db), _: str = Depends(require_admin)):
             "SELECT DISTINCT to_char(log_time AT TIME ZONE 'UTC', 'YYYY-MM') "
             "FROM ftp_logs_default ORDER BY 1"
         )).fetchall()]
-    disk_total, disk_used, disk_pct = _disk_usage()
+    disk_total, disk_used, disk_pct = disk_guard.usage()
     return StorageInfo(
         db_bytes=db_bytes,
         ftp_logs_bytes=sum(p.total_bytes for p in parts),
@@ -312,13 +297,7 @@ def update_allowed_ips(
     ips = body.get("allowed_ips", [])
     if not isinstance(ips, list):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="allowed_ips must be a list")
-    valid, invalid = parse_ip_entries(ips)
-    if invalid:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"유효하지 않은 IP/CIDR: {', '.join(invalid)}",
-        )
-    set_office_ips(db, valid)
+    set_office_ips(db, validate_ip_entries(ips))
 
 
 @router.get("/notify", response_model=NotifySettings)

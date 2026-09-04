@@ -606,12 +606,12 @@ async function loadServiceHealth() {
         : '<span class="badge bg-warning text-dark">주의</span>';
       return `<tr>
         <td class="small">${fmtTime(a.bucket)}</td>
-        <td class="small">${a.hostname}</td>
-        <td class="small">${METRIC_LABEL[a.metric] || a.metric}</td>
+        <td class="small">${esc(a.hostname)}</td>
+        <td class="small">${esc(METRIC_LABEL[a.metric] || a.metric)}</td>
         <td>${sev}</td>
         <td class="small fw-semibold">${fmtMetricVal(a.metric, a.value)}</td>
         <td class="small text-muted">${a.baseline==null?'-':fmtMetricVal(a.metric, a.baseline)}</td>
-        <td class="small text-muted">${a.message || ''}</td>
+        <td class="small text-muted">${esc(a.message || '')}</td>
       </tr>`;
     }).join('');
   }

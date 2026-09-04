@@ -184,7 +184,8 @@ function _renderGroupOptions(telco) {
     '<option value="">전체 그룹</option>' +
     filtered.map(g => {
       const tip = _groupOptionTitle(g);
-      return `<option value="${g.id}"${tip ? ` title="${esc(tip)}"` : ''}>${telco ? '' : (g.telco ? g.telco + ' · ' : '')}${g.name}</option>`;
+      const prefix = telco ? '' : (g.telco ? esc(g.telco) + ' · ' : '');
+      return `<option value="${g.id}"${tip ? ` title="${esc(tip)}"` : ''}>${prefix}${esc(g.name)}</option>`;
     }).join('');
 }
 

@@ -12,7 +12,7 @@ function renderVersion(v) {
   document.getElementById('verSubject').textContent = v.subject || '-';
   const st = document.getElementById('verStatus');
   if (v.error) {
-    st.innerHTML = `<span class="text-danger">원격 확인 실패: ${v.error}</span>`;
+    st.innerHTML = `<span class="text-danger">원격 확인 실패: ${esc(v.error)}</span>`;
   } else if (!v.checked) {
     st.innerHTML = '<span class="text-muted">미확인 — "업데이트 확인"을 눌러주세요</span>';
   } else if (v.update_available) {
@@ -185,7 +185,7 @@ async function loadTelcos() {
     list.innerHTML = telcos.length
       ? telcos.map(t => `
           <li class="list-group-item d-flex align-items-center px-0">
-            <span>${t.name}</span>
+            <span>${esc(t.name)}</span>
             <button class="btn btn-xs btn-outline-danger ms-auto" onclick="deleteTelco(${t.id})"><i class="bi bi-trash"></i></button>
           </li>`).join('')
       : '<li class="list-group-item text-muted small px-0">등록된 통신사가 없습니다.</li>';
@@ -362,7 +362,7 @@ async function toggleMute(muted) {
     msg.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>알림 ${muted ? '중지' : '재개'}됨</span>`;
   } catch(e) {
     document.getElementById('notifyMuteToggle').checked = !muted;
-    msg.innerHTML = `<span class="text-danger">변경 실패: ${e.message}</span>`;
+    msg.innerHTML = `<span class="text-danger">변경 실패: ${esc(e.message)}</span>`;
   }
   setTimeout(() => { msg.innerHTML = ''; }, 3000);
 }
@@ -377,7 +377,7 @@ async function saveNotify() {
     await api('PUT', '/settings/notify', body);
     msg.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>저장되었습니다.</span>';
   } catch(e) {
-    msg.innerHTML = `<span class="text-danger">저장 실패: ${e.message}</span>`;
+    msg.innerHTML = `<span class="text-danger">저장 실패: ${esc(e.message)}</span>`;
   }
   setTimeout(() => { msg.innerHTML = ''; }, 3000);
 }
@@ -390,7 +390,7 @@ async function testNotify(channel = 'all') {
     await api('POST', `/settings/notify/test?channel=${channel}`);
     msg.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${label} 테스트 발송 성공</span>`;
   } catch(e) {
-    msg.innerHTML = `<span class="text-danger">발송 실패: ${e.message}</span>`;
+    msg.innerHTML = `<span class="text-danger">발송 실패: ${esc(e.message)}</span>`;
   }
   setTimeout(() => { msg.innerHTML = ''; }, 4000);
 }

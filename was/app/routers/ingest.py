@@ -17,7 +17,7 @@ VALID_ACTIONS = {"upload", "download", "delete", "rename", "login", "logout", "m
 
 
 def _row_hash(entry: FtpLog) -> str:
-    """row_hash — SQL backfill 수식 (main.py _run_migrations)과 동일한 필드·순서."""
+    """row_hash — SQL backfill 수식 (app/migrations.py run_migrations)과 동일한 필드·순서."""
     lt = entry.log_time
     if lt and lt.tzinfo is None:
         lt = lt.replace(tzinfo=timezone.utc)

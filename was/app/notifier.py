@@ -79,6 +79,35 @@ def _load_cfg(db) -> dict:
     }
 
 
+_HMS_HEADERS = {
+    "Content-Type": "application/json; charset=utf-8",
+    "Accept": "application/json",
+    "X-reqsite": "hermesweb",
+}
+
+
+def _post_json(url: str, payload: dict, headers: dict | None = None) -> None:
+    """알림 채널 공통 POST. 헤더·타임아웃·인코딩이 채널마다 갈라지지 않게 여기 한 곳에 둔다."""
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers or {"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+        resp.read()
+
+
+def _hms_envelope(telco: str, subject: str, body_html: str) -> dict:
+    """HMS 메일 게이트웨이 요청 본문. 이상 알림과 운영 공지가 같은 형식을 쓴다."""
+    return {
+        "telco_name": telco,
+        "svc_list": [{"svc_name": "soltrace", "vol_list": None}],
+        "alert_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "prop": {"subject": subject, "body": body_html},
+    }
+
+
 def validate_webhook_url(url: str) -> None:
     """http(s):// 외 스킴 차단."""
     if url and not _HTTP_RE.match(url):
@@ -147,14 +176,7 @@ def _send_webhook(alerts: list[dict], cfg: dict, db=None) -> bool:
         return False
     url = cfg["webhook_url"]
     is_slack = "hooks.slack.com" in url
-    payload = _slack_payload(alerts) if is_slack else _generic_payload(alerts)
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data,
-        headers={"Content-Type": "application/json"}, method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-        resp.read()
+    _post_json(url, _slack_payload(alerts) if is_slack else _generic_payload(alerts))
     log.info("Alert webhook sent: %d alert(s) (slack=%s)", len(alerts), is_slack)
     return True
 
@@ -187,24 +209,7 @@ def _hms_post(url: str, telco: str, alerts: list[dict]) -> None:
     prefix = "[테스트] " if is_test else ""
     crit = sum(1 for a in alerts if a["severity"] == "critical")
     subject = f"{prefix}[SolTrace] 서비스 영향 감지 {len(alerts)}건" + (f" (심각 {crit})" if crit else "")
-    payload = {
-        "telco_name": telco,
-        "svc_list": [{"svc_name": "soltrace", "vol_list": None}],
-        "alert_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-        "prop": {"subject": subject, "body": _build_hms_body(alerts)},
-    }
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data,
-        headers={
-            "Content-Type": "application/json; charset=utf-8",
-            "Accept": "application/json",
-            "X-reqsite": "hermesweb",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-        resp.read()
+    _post_json(url, _hms_envelope(telco, subject, _build_hms_body(alerts)), _HMS_HEADERS)
 
 
 def _send_hms(alerts: list[dict], cfg: dict, db=None) -> bool:
@@ -246,33 +251,15 @@ def send_text(db, subject: str, body: str) -> bool:
                    else {"source": "soltrace", "type": "notice",
                          "subject": subject, "message": body})
         try:
-            req = urllib.request.Request(
-                url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json"}, method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-                resp.read()
+            _post_json(url, payload)
             sent = True
         except Exception as e:
             log.error("Notice webhook failed: %s", e)
     if cfg["hms_url"]:
-        payload = {
-            "telco_name": "SolTrace",
-            "svc_list": [{"svc_name": "soltrace", "vol_list": None}],
-            "alert_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-            "prop": {"subject": subject,
-                     "body": f"<html><body style='font-family:sans-serif;font-size:13px'>"
-                             f"<p>{_esc(body)}</p></body></html>"},
-        }
+        html = ("<html><body style='font-family:sans-serif;font-size:13px'>"
+                f"<p>{_esc(body)}</p></body></html>")
         try:
-            req = urllib.request.Request(
-                cfg["hms_url"], data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json; charset=utf-8",
-                         "Accept": "application/json", "X-reqsite": "hermesweb"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-                resp.read()
+            _post_json(cfg["hms_url"], _hms_envelope("SolTrace", subject, html), _HMS_HEADERS)
             sent = True
         except Exception as e:
             log.error("Notice HMS failed: %s", e)

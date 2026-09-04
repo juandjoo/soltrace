@@ -33,11 +33,8 @@ proftpd 로그 파일의 과거 데이터를 WAS에 일괄 전송한다.
       --extended-log "/usr/service/logs/proftpd/ExtendedAllLog.*.gz"
 """
 import argparse
-import configparser
 import glob as _glob
 import gzip
-import hashlib
-import json
 import logging
 import socket
 import sys
@@ -129,6 +126,10 @@ def send_batch(was_url: str, device_key: str, batch: list, session: requests.Ses
         return False
 
 
+# WAS 가 한 요청에 받는 최대 건수 (was/app/schemas.py LogBatch.logs max_length)
+MAX_BATCH = 500
+
+
 def run_bulk(args):
     cfg = load_config()
     dcfg = cfg["daemon"]
@@ -138,7 +139,8 @@ def run_bulk(args):
     device_key = get_device_key()
     transfer_log = args.transfer_log or dcfg["transfer_log"]
     extended_log = args.extended_log or dcfg["extended_log"]
-    batch_size = args.batch_size
+    # WAS(schemas.LogBatch)가 한 요청에 받는 상한. 넘기면 422 로 전량이 버려지므로 여기서 자른다.
+    batch_size = max(1, min(args.batch_size, MAX_BATCH))
     date_from = parse_date(args.date_from)
     date_to = parse_date(args.date_to)
 

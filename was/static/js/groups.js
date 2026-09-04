@@ -144,7 +144,7 @@ function filterGroups(btn) {
 function populateGroupTelco(selected) {
   const sel = document.getElementById('groupTelco');
   const opts = ['<option value="">(통신사 미지정)</option>']
-    .concat(allTelcos.map(t => `<option value="${t.name}"${t.name===selected?' selected':''}>${t.name}</option>`));
+    .concat(allTelcos.map(t => `<option value="${esc(t.name)}"${t.name===selected?' selected':''}>${esc(t.name)}</option>`));
   sel.innerHTML = opts.join('');
 }
 

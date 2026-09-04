@@ -8,8 +8,6 @@ service_monitor 가 판정 주기마다 load(db) 로 읽으므로 저장하면 �
     바꾸면 과거 버킷과 기준이 어긋난다. .env 전용으로 두고 변경 시 배포로만 적용한다.
   - alert_bucket_minutes / alert_rollup_interval_sec : 스레드 기동 시 1회 읽는 값.
 """
-from typing import Optional
-
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -57,9 +55,7 @@ def save(db: Session, values: dict) -> None:
             set_config(db, _PREFIX + name, str(cast(v)))
 
 
-def reset(db: Session, name: Optional[str] = None) -> None:
-    """DB 값을 지워 기본값으로 되돌린다. name 미지정이면 전체."""
-    targets = [name] if name else list(FIELDS)
-    for n in targets:
-        if n in FIELDS:
-            set_config(db, _PREFIX + n, "")
+def reset(db: Session) -> None:
+    """DB 값을 지워 전체를 기본값으로 되돌린다."""
+    for name in FIELDS:
+        set_config(db, _PREFIX + name, "")

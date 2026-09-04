@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import platform
-import queue
 import re
 import signal
 import socket
@@ -91,7 +90,11 @@ def get_device_key() -> str:
         return key_file.read_text().strip()
     import secrets
     key = secrets.token_hex(16)
-    key_file.write_text(key)
+    # 0600 — 이 키가 곧 인제스트 자격증명이다. 기본 umask(0644)로 두면
+    # 서버의 다른 로컬 계정이 읽어 위조 로그를 넣을 수 있다.
+    fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(key)
     return key
 
 
@@ -350,20 +353,31 @@ class DeviceRemovedError(Exception):
 class WasClient:
     RETRY_MAX = 3
     RETRY_DELAY = 10  # 고정 10초 대기
+    # WAS(schemas.LogBatch)가 한 요청에 받는 최대 건수. 넘기면 422 가 나고,
+    # 422 는 401/403 과 달리 그냥 '전송 실패'로 취급돼 같은 묶음을 영원히 재시도한다.
+    MAX_BATCH = 500
 
-    def __init__(self, base_url: str, device_key: str, http_timeout: int = 15, ssl_verify: bool = True):
+    def __init__(self, base_url: str, device_key: str, http_timeout: int = 15,
+                 ssl_verify: bool = True, retry_max: int = RETRY_MAX,
+                 retry_delay: int = RETRY_DELAY):
         self.base_url = base_url.rstrip("/")
         self.device_key = device_key
+        # config.ini 의 retry_max / retry_delay 를 실제로 쓴다
+        # (예전에는 클래스 상수만 보고 설정값이 조용히 무시됐다)
+        self.retry_max = max(1, retry_max)
+        self.retry_delay = max(0, retry_delay)
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
-        self.session.timeout = http_timeout
+        # requests 는 Session.timeout 속성을 보지 않는다 — 요청마다 넘겨야 실제로 걸린다.
+        # (없으면 응답 없는 WAS 에 스레드가 무한정 붙잡힌다)
+        self.http_timeout = http_timeout
         self.session.verify = ssl_verify
 
     def _post(self, path: str, payload: dict) -> Optional[dict]:
         url = f"{self.base_url}/api/v1{path}"
-        for attempt in range(1, self.RETRY_MAX + 1):
+        for attempt in range(1, self.retry_max + 1):
             try:
-                r = self.session.post(url, json=payload)
+                r = self.session.post(url, json=payload, timeout=self.http_timeout)
                 if r.status_code == 403:
                     raise DeviceDisabledError()
                 if r.status_code in (401, 404):
@@ -373,13 +387,25 @@ class WasClient:
             except (DeviceDisabledError, DeviceRemovedError):
                 raise  # 재시도 없이 즉시 전파
             except requests.exceptions.RequestException as e:
-                log.warning("POST %s attempt %d/%d failed: %s", path, attempt, self.RETRY_MAX, e)
-                if attempt < self.RETRY_MAX:
-                    time.sleep(self.RETRY_DELAY)
+                log.warning("POST %s attempt %d/%d failed: %s", path, attempt, self.retry_max, e)
+                if attempt < self.retry_max:
+                    time.sleep(self.retry_delay)
         return None  # 3회 모두 실패
 
-    def send_logs(self, entries: list) -> Optional[dict]:
-        return self._post("/ingest/logs", {"device_key": self.device_key, "logs": entries})
+    def send_logs(self, entries: list, batch_size: Optional[int] = None) -> Optional[dict]:
+        """MAX_BATCH 이하로 쪼개 보낸다. 한 묶음이라도 실패하면 None (호출자가 전부 버퍼)."""
+        size = min(batch_size or self.MAX_BATCH, self.MAX_BATCH)
+        totals = {"accepted": 0, "rejected": 0}
+        for i in range(0, len(entries), size):
+            result = self._post(
+                "/ingest/logs",
+                {"device_key": self.device_key, "logs": entries[i:i + size]},
+            )
+            if result is None:
+                return None
+            totals["accepted"] += result.get("accepted", 0)
+            totals["rejected"] += result.get("rejected", 0)
+        return totals
 
     def register(self, hostname: str, ip: str, os_info: str, kernel_version: str, proftpd_ver: str) -> Optional[dict]:
         return self._post("/ingest/register", {
@@ -476,6 +502,8 @@ class SolTraceDaemon:
             device_key=self.device_key,
             http_timeout=int(self.cfg["http_timeout"]),
             ssl_verify=self.cfg["ssl_verify"].lower() not in ("false", "0", "no"),
+            retry_max=int(self.cfg["retry_max"]),
+            retry_delay=int(self.cfg["retry_delay"]),
         )
         self.buffer = DiskBuffer(self.cfg["buffer_file"], max_lines=int(self.cfg["max_buffer_lines"]))
         self.batch_size = int(self.cfg["batch_size"])
@@ -675,7 +703,7 @@ class SolTraceDaemon:
         buffered = self.buffer.read_and_clear()
         log.info("Sending %d buffered entries from previous run", len(buffered))
         try:
-            result = self.client.send_logs(buffered)
+            result = self.client.send_logs(buffered, self.batch_size)
         except DeviceRemovedError:
             log.critical("Device removed (401/404) — discarding startup buffer and exiting")
             sys.exit(1)
@@ -731,7 +759,7 @@ class SolTraceDaemon:
                 buffered = self.buffer.read_and_clear()
                 if buffered:
                     try:
-                        result = self.client.send_logs(buffered)
+                        result = self.client.send_logs(buffered, self.batch_size)
                     except DeviceRemovedError:
                         log.critical("Device removed (401/404) — discarding buffer and shutting down")
                         self._safe_shutdown([])
@@ -776,7 +804,7 @@ class SolTraceDaemon:
 
             # 전송 시도 (최대 3회, WasClient 내부에서 처리)
             try:
-                result = self.client.send_logs(all_entries)
+                result = self.client.send_logs(all_entries, self.batch_size)
             except DeviceRemovedError:
                 log.critical("Device removed (401/404) — shutting down daemon")
                 self._safe_shutdown([])
@@ -809,7 +837,7 @@ class SolTraceDaemon:
                 self._error_message = f"전송 실패 ({len(all_entries)}건 버퍼됨, {backoff}초 후 재시도)"
                 self._daemon_status = "degraded"
                 log.warning("Send failed after %d retries (%d entries), buffering, retry in %ds (consecutive=%d)",
-                            WasClient.RETRY_MAX, len(all_entries), backoff, self._consecutive_failures)
+                            self.client.retry_max, len(all_entries), backoff, self._consecutive_failures)
                 # 버퍼에 저장하고 tailer 위치 확정 (재시작 시 중복 방지)
                 self.buffer.write(all_entries)
                 for tailer in self.tailers:
@@ -832,7 +860,8 @@ class SolTraceDaemon:
         sender_thread.start()
 
         log.info("Daemon running (poll=%ss, batch=%d, retry=%d×%ds)",
-                 self.poll_interval, self.batch_size, WasClient.RETRY_MAX, WasClient.RETRY_DELAY)
+                 self.poll_interval, self.batch_size,
+                 self.client.retry_max, self.client.retry_delay)
 
         def _stop(sig, _frame):
             log.info("Signal %s received, shutting down...", sig)

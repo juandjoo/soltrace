@@ -174,15 +174,6 @@ def get_user(db: Session, username: str) -> User | None:
     return db.query(User).filter(User.username == username).first()
 
 
-def get_active_user(db: Session, username: str) -> User | None:
-    """username 으로 활성 사용자(User) 조회. 없거나 비활성이면 None."""
-    return (
-        db.query(User)
-        .filter(User.username == username, User.is_active.is_(True))
-        .first()
-    )
-
-
 def lock_seconds_left(user: User) -> int:
     """잠금이 풀리기까지 남은 초. 잠겨 있지 않으면 0."""
     until = getattr(user, "locked_until", None)
