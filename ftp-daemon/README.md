@@ -201,6 +201,9 @@ grep -i "TransferLog\|ExtendedLog" /etc/proftpd.conf /etc/proftpd/*.conf 2>/dev/
 | `update_url` | GitHub raw URL | 자가 업데이트 시 파일 다운로드 기준 경로 |
 | `ssl_verify` | `true` | `false` = 자체 서명 인증서 허용 |
 | `log_level` | `INFO` | `DEBUG` / `INFO` / `WARNING` |
+| `log_file` | `/var/log/soltrace-daemon/daemon.log` | 데몬 로그 파일 경로 |
+| `log_max_mb` | `10` | 로그 파일 1개 최대 크기(MB), `0` = 회전 안 함 |
+| `log_backup_count` | `5` | 보관할 회전 파일 개수 (최대 사용량 = `log_max_mb` × 6) |
 | `skip_login_logout` | `false` | `true` = login/logout 이벤트 전송 제외 |
 
 ---
@@ -221,8 +224,16 @@ sudo systemctl status soltrace-daemon
 sudo journalctl -u soltrace-daemon -f
 
 # 파일 로그
-tail -f /var/log/soltrace-daemon.log
+tail -f /var/log/soltrace-daemon/daemon.log
 ```
+
+파일 로그는 데몬이 직접 회전한다(`RotatingFileHandler`) — 10MB 를 넘으면 `daemon.log.1` ~ `.5` 로
+밀려나고 오래된 것부터 삭제되므로 **logrotate 설정이 필요 없다**. 최대 사용량은 기본 60MB.
+크기·개수는 `config.ini` 의 `log_max_mb` / `log_backup_count` 로 조정한다.
+회전은 파일이 아니라 디렉터리에 쓰기 권한이 필요하므로 로그는 데몬 계정 소유의
+`/var/log/soltrace-daemon/` 에 둔다(`install.sh` 및 서비스의 `LogsDirectory=` 가 생성).
+구버전 경로(`/var/log/soltrace-daemon.log`)를 쓰는 설치는 `install.sh` 재실행 시 자동 이전되며,
+자가 업데이트만 한 경우에는 회전 가능한 `state_dir` 로 자동 대체하고 경고를 남긴다.
 
 WAS 웹 UI → **장비 관리** → 해당 장비 **확인** 처리 후 로그 전송이 활성화된다.
 

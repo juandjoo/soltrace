@@ -9,7 +9,9 @@ REPO_RAW="https://raw.githubusercontent.com/juandjoo/soltrace/main/ftp-daemon"
 SERVICE_NAME=soltrace-daemon
 DAEMON_USER=soltrace
 STATE_DIR=/var/lib/soltrace
-LOG_FILE=/var/log/soltrace-daemon.log
+LOG_DIR=/var/log/soltrace-daemon
+LOG_FILE=$LOG_DIR/daemon.log
+OLD_LOG_FILE=/var/log/soltrace-daemon.log
 
 # ── Python 3.8 경로 탐색 ──────────────────────────────────────────
 find_python() {
@@ -136,10 +138,30 @@ mkdir -p "$STATE_DIR"
 chown "$DAEMON_USER:$DAEMON_USER" "$STATE_DIR"
 chmod 700 "$STATE_DIR"
 
+# 로그 디렉터리 — 회전(rename)에 디렉터리 쓰기 권한이 필요하므로 데몬 계정 소유로 둔다
+mkdir -p "$LOG_DIR"
+chown "$DAEMON_USER:$DAEMON_USER" "$LOG_DIR"
+chmod 750 "$LOG_DIR"
+
+# 구버전(/var/log/soltrace-daemon.log) 로그 이전 — 회전 불가 경로에서 벗어난다
+if [ -f "$OLD_LOG_FILE" ] && [ ! -f "$LOG_FILE" ]; then
+    mv "$OLD_LOG_FILE" "$LOG_FILE"
+    echo "[INFO] 기존 로그 이전: $OLD_LOG_FILE -> $LOG_FILE"
+fi
+
 # 로그 파일
 touch "$LOG_FILE"
 chown "$DAEMON_USER:$DAEMON_USER" "$LOG_FILE"
 chmod 640 "$LOG_FILE"
+
+# config.ini 가 구버전 경로를 가리키면 새 경로로 교체
+if grep -q "^[[:space:]]*log_file[[:space:]]*=[[:space:]]*${OLD_LOG_FILE}[[:space:]]*$" "$INSTALL_DIR/config.ini"; then
+    sed -i "s|^[[:space:]]*log_file[[:space:]]*=.*|log_file  = ${LOG_FILE}|" "$INSTALL_DIR/config.ini"
+    # sed -i 는 파일을 새로 만들어 바꿔치기하므로 소유권/권한을 다시 맞춘다
+    chown "$DAEMON_USER:$DAEMON_USER" "$INSTALL_DIR/config.ini"
+    chmod 640 "$INSTALL_DIR/config.ini"
+    echo "[INFO] config.ini 로그 경로 갱신: $LOG_FILE"
+fi
 
 # ── FTP 로그 읽기 권한 ───────────────────────────────────────────
 # config.ini의 transfer_log/extended_log 경로에 soltrace 계정 읽기 권한 부여
@@ -199,7 +221,7 @@ echo " WAS 주소:   $WAS_URL"
 echo " 실행 계정:  $DAEMON_USER (비root)"
 echo " 설정 파일:  $INSTALL_DIR/config.ini"
 echo " 상태 저장:  $STATE_DIR"
-echo " 로그 파일:  $LOG_FILE"
+echo " 로그 파일:  $LOG_FILE (10MB x 6개 자동 회전)"
 echo ""
 echo " 1. config.ini 편집 후 서비스 재시작:"
 echo "    vi $INSTALL_DIR/config.ini"

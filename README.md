@@ -708,7 +708,7 @@ journalctl -u soltrace-was -f
 systemctl status soltrace-daemon
 systemctl restart soltrace-daemon
 journalctl -u soltrace-daemon -f
-tail -f /var/log/soltrace-daemon.log
+tail -f /var/log/soltrace-daemon/daemon.log   # 10MB x 6개 자동 회전 (logrotate 불필요)
 ```
 
 ---
@@ -724,7 +724,7 @@ rm -f /etc/systemd/system/soltrace-daemon.service
 systemctl daemon-reload
 rm -rf /opt/soltrace-daemon
 rm -rf /var/lib/soltrace
-rm -f /var/log/soltrace-daemon.log
+rm -rf /var/log/soltrace-daemon /var/log/soltrace-daemon.log
 userdel soltrace
 setfacl -x u:soltrace /usr/service /usr/service/logs /usr/service/logs/proftpd 2>/dev/null || true
 setfacl -R -x u:soltrace /usr/service/logs/proftpd 2>/dev/null || true

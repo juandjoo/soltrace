@@ -72,10 +72,17 @@ state_dir = /var/lib/soltrace
 # 로그
 # ────────────────────────────────────────────────────────────────
 
-log_file  = /var/log/soltrace-daemon.log
+log_file  = /var/log/soltrace-daemon/daemon.log
 
 # DEBUG: 전송 건수 등 상세 출력 / INFO: 기본 / WARNING: 이상 시만
 log_level = INFO
+
+# 로그 파일 자동 회전 (logrotate 불필요 — 데몬이 직접 처리)
+# - log_max_mb 를 넘으면 .1, .2 ... 로 밀어내며 오래된 것부터 삭제
+# - 최대 디스크 사용량 = log_max_mb x (log_backup_count + 1)  = 기본 60MB
+# - log_max_mb = 0 이면 회전하지 않음(무제한 증가 — 권장하지 않음)
+log_max_mb = 10
+log_backup_count = 5
 
 # ────────────────────────────────────────────────────────────────
 # 필터

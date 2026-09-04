@@ -11,6 +11,7 @@ import configparser
 import hashlib
 import json
 import logging
+import logging.handlers
 import os
 import platform
 import re
@@ -47,8 +48,10 @@ defaults = {
     "max_buffer_lines": "50000",
     "state_dir": "/var/lib/soltrace",
     "buffer_file": "/var/lib/soltrace/buffer.jsonl",
-    "log_file": "/var/log/soltrace-daemon.log",
+    "log_file": "/var/log/soltrace-daemon/daemon.log",
     "log_level": "INFO",
+    "log_max_mb": "10",        # 로그 파일 1개 최대 크기(MB), 0 = 회전 안 함
+    "log_backup_count": "5",   # 보관할 회전 파일 개수
     "skip_login_logout": "false",
 }
 
@@ -62,13 +65,48 @@ def load_config() -> configparser.ConfigParser:
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────
+def _resolve_log_path(log_file: str, state_dir: str, rotating: bool) -> Tuple[str, Optional[str]]:
+    """로그 경로를 확정한다. (경로, 이전경로) — 이전경로가 있으면 대체된 것."""
+    path = Path(log_file)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    # 회전(rename/create)은 파일이 아니라 상위 디렉터리 쓰기 권한을 요구한다.
+    # 구버전 설치는 /var/log/soltrace-daemon.log 를 쓰는데 /var/log 는 root 소유라
+    # 회전이 불가능하므로, 쓰기 가능한 state_dir 로 옮겨 무한 증가를 막는다.
+    if rotating and not os.access(path.parent, os.W_OK):
+        fallback = Path(state_dir) / "daemon.log"
+        if fallback.parent != path.parent:
+            try:
+                fallback.parent.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+            if os.access(fallback.parent, os.W_OK):
+                return str(fallback), log_file
+    return log_file, None
+
+
 def setup_logging(cfg: configparser.ConfigParser):
-    level = getattr(logging, cfg["daemon"]["log_level"].upper(), logging.INFO)
-    log_file = cfg["daemon"]["log_file"]
-    Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+    dcfg = cfg["daemon"]
+    level = getattr(logging, dcfg["log_level"].upper(), logging.INFO)
+    max_mb = dcfg.getint("log_max_mb", fallback=10)
+    backup_count = dcfg.getint("log_backup_count", fallback=5)
+    rotating = max_mb > 0
+    log_file, relocated_from = _resolve_log_path(dcfg["log_file"], dcfg["state_dir"], rotating)
+
     handlers = [logging.StreamHandler(sys.stdout)]
     try:
-        handlers.append(logging.FileHandler(log_file))
+        if rotating:
+            handlers.append(logging.handlers.RotatingFileHandler(
+                log_file,
+                maxBytes=max_mb * 1024 * 1024,
+                backupCount=max(backup_count, 0),
+                encoding="utf-8",
+            ))
+        else:
+            # log_max_mb = 0 : 회전 없음(무한 증가 — 외부 logrotate 를 쓸 때만)
+            handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
     except Exception:
         pass
     logging.basicConfig(
@@ -77,6 +115,12 @@ def setup_logging(cfg: configparser.ConfigParser):
         datefmt="%Y-%m-%d %H:%M:%S",
         handlers=handlers,
     )
+    if relocated_from:
+        logging.getLogger("soltrace").warning(
+            "Log dir not writable (%s) — writing to %s instead. "
+            "Re-run install.sh or set log_file = /var/log/soltrace-daemon/daemon.log in config.ini",
+            str(Path(relocated_from).parent), log_file,
+        )
 
 
 log = logging.getLogger("soltrace")

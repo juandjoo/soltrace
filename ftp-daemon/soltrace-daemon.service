@@ -30,6 +30,10 @@ ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictRealtime=yes
 
+# /var/log/soltrace-daemon 을 데몬 계정 소유로 자동 생성 (로그 파일 회전에 디렉터리 쓰기 권한 필요)
+LogsDirectory=soltrace-daemon
+LogsDirectoryMode=0750
+
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=soltrace-daemon
