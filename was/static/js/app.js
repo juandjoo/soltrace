@@ -3,7 +3,7 @@ const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {k
 let currentSettingsTab = 'telco';
 
 // 관리자 전용 페이지 — 고객 계정은 서버에서도 막히지만 UI 에서도 진입을 막는다.
-const ADMIN_PAGES = ['settings', 'changelog'];
+const ADMIN_PAGES = ['settings', 'changelog', 'devices', 'groups'];
 
 function nav(page) {
   if (ADMIN_PAGES.includes(page) && getRole() !== 'admin') page = 'dashboard';
@@ -13,11 +13,14 @@ function nav(page) {
   const link = document.querySelector(`#sidenav [onclick="nav('${page}')"]`);
   if (link) link.classList.add('active');
   if (page === 'dashboard') {
+    initDashLayout();
     if (_dashExactStart || document.getElementById('dashStart').value) loadAll();
     else dashLast24();
   }
   else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
   if (page === 'logs') initLogsPage();
+  if (page === 'devices') loadDevices();
+  if (page === 'groups') loadGroups();
   if (page === 'apiguide') initApiGuide();
   if (page === 'changelog') initChangelogPage();
   if (page === 'settings') settingsTab(currentSettingsTab);
@@ -33,11 +36,10 @@ function settingsTab(tab) {
   if (tab === 'telco') loadTelcos();
   if (tab === 'update') loadVersion();
   if (tab === 'storage') loadStorage();
-  if (tab === 'devices') loadDevices();
-  if (tab === 'groups') loadGroups();
   if (tab === 'notify') loadNotify();
   if (tab === 'users') loadUsers();
   if (tab === 'security') loadSecurity();
+  if (tab === 'admins') loadAdmins();
 }
 
 function initApp() {
@@ -62,12 +64,23 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     });
     if (res.status === 403) {
       const data = await res.json().catch(() => ({}));
-      const ip = data?.detail?.client_ip || '';
-      document.getElementById('blockedIpDisplay').textContent = ip;
+      const code = data?.detail?.code;
+      // 잠금·비활성은 IP 차단과 원인이 다르므로 안내도 달라야 한다
+      if (code === 'ACCOUNT_LOCKED' || code === 'ACCOUNT_DISABLED') {
+        errEl.textContent = data.detail.message || '로그인할 수 없는 계정입니다.';
+        errEl.classList.remove('d-none');
+        return;
+      }
+      document.getElementById('blockedIpDisplay').textContent = data?.detail?.client_ip || '';
       ipBlockedEl.classList.remove('d-none');
       return;
     }
-    if (!res.ok) throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.');
+    if (!res.ok) {
+      // 남은 시도 횟수 등 서버가 준 문구를 그대로 보여준다
+      const data = await res.json().catch(() => ({}));
+      throw new Error(typeof data.detail === 'string' && data.detail !== 'Incorrect credentials'
+        ? data.detail : '아이디 또는 비밀번호가 올바르지 않습니다.');
+    }
     const data = await res.json();
     token = data.access_token;
     localStorage.setItem('soltrace_token', token);

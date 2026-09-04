@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 
 from app.config import settings
-from app import alert_settings, notifier
+from app import alert_settings, disk_guard, notifier
 
 log = logging.getLogger("soltrace.monitor")
 
@@ -161,8 +161,21 @@ class ServiceMonitor:
             if n:
                 log.info("Detected %d new service alert(s)", n)
             self._notify(db)
+            self._guard_disk(db)
         finally:
             db.close()
+
+    def _guard_disk(self, db):
+        """디스크가 임계치를 넘으면 오래된 월 파티션을 정리한다 (설정에서 끌 수 있음).
+
+        롤업 주기(기본 5분)마다 확인하고, 한 번에 한 파티션만 지운다.
+        정리 실패가 알림·롤업을 멈추지 않도록 여기서 예외를 삼킨다.
+        """
+        try:
+            disk_guard.enforce(db)
+        except Exception as e:
+            db.rollback()
+            log.error("디스크 자동 정리 실패: %s", e)
 
     # ── (1) 롤업 ─────────────────────────────────────────────────────────────
     def _rollup(self, db, cfg):

@@ -20,7 +20,18 @@ set -euo pipefail
 DB_NAME="soltrace"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/soltrace}"
 PART_DIR="$BACKUP_DIR/partitions"
-RETENTION_MONTHS="${RETENTION_MONTHS:-36}"      # 3년
+# 보존 기간은 웹(설정 > DB 저장소)에서 바꾸며 app_config 에 저장된다 — 여기서 그 값을 읽는다.
+# 환경변수로 넘기면 그것이 우선하고, DB 를 못 읽으면 36개월로 떨어진다.
+_retention_from_db() {
+    local v
+    v=$(sudo -u postgres psql -d "$DB_NAME" -tAc \
+        "SELECT value FROM app_config WHERE key='retention_months'" 2>/dev/null | tr -d '[:space:]')
+    case "$v" in
+        ''|*[!0-9]*) return 1 ;;
+        *) [ "$v" -ge 1 ] && [ "$v" -le 120 ] && echo "$v" ;;
+    esac
+}
+RETENTION_MONTHS="${RETENTION_MONTHS:-$(_retention_from_db || echo 36)}"
 PG_DUMP="/usr/pgsql-16/bin/pg_dump"
 [ -x "$PG_DUMP" ] || PG_DUMP="pg_dump"          # 경로에 없으면 PATH 사용
 

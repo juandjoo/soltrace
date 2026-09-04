@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app import api_keys
 from app.config import settings
 from app.database import get_db
+from app.models import User
 from app.security import get_admin_username
 
 # auto_error=False: Authorization 헤더가 없어도 여기서 바로 401 을 내지 않는다
@@ -95,7 +96,15 @@ def get_current_user(
         raise _unauthorized("Invalid token")
     # role 누락 토큰(구버전 admin 토큰 sub='admin')은 admin 으로 취급
     role = payload.get("role") or ("admin" if sub == "admin" else "customer")
-    return Principal(username=sub, role=role, customer=payload.get("customer"))
+    customer = payload.get("customer")
+    # 계정 상태를 매 요청 확인한다 — 비활성화가 이미 발급된 토큰에도 바로 먹어야 한다.
+    # (users 에 행이 없는 부트스트랩 관리자는 토큰 값을 그대로 쓴다)
+    row = db.query(User).filter(User.username == sub).first()
+    if row is not None:
+        if not row.is_active:
+            raise _unauthorized("비활성화된 계정입니다")
+        role, customer = row.role, row.customer
+    return Principal(username=sub, role=role, customer=customer)
 
 
 def require_admin(user: Principal = Depends(get_current_user)) -> Principal:

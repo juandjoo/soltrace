@@ -10,6 +10,7 @@ const API_SAMPLE_KEY = 'slt_여기에_발급받은_키';
 const API_ENDPOINTS = [
   ['/api/v1/logs', '로그 목록. 페이징(<code>page</code>, <code>size</code>)과 아래 필터를 조합한다. 총건수는 포함되지 않는다.'],
   ['/api/v1/logs/count', '위와 같은 필터의 <b>정확한 총건수</b>. 목록과 따로 호출한다.'],
+  ['/api/v1/logs/usernames', '같은 필터에서 실제로 접근한 FTP 계정 목록(중복 제거).'],
   ['/api/v1/logs/export', '필터에 걸린 전체 로그를 CSV 로 내려받는다(스트리밍).'],
   ['/api/v1/logs/export/xlsx', '같은 조건을 XLSX 로 내려받는다.'],
   ['/api/v1/dashboard', '기간 합계와 일별 추이, 상위 사용자/장비/그룹, 작업유형 분포.'],
@@ -26,7 +27,9 @@ const API_PARAMS = [
   ['end_time', '2026-09-03T23:59:59Z', '조회 종료.'],
   ['device_id', '3', '특정 장비만.'],
   ['group_id', '2', '특정 그룹에 속한 장비만.'],
+  ['customer', 'ACME', '고객사 단위(그룹의 customer 정확 일치)로 제한.'],
   ['username', 'vod_', 'FTP 계정 부분 일치.'],
+  ['usernames', 'vod_a,vod_b', 'FTP 계정 여러 개를 <b>정확히</b> 지정(쉼표 구분). <code>username</code> 과 함께 쓰면 둘 다 적용된다.'],
   ['client_ip', '192.168.', '클라이언트 IP 부분 일치.'],
   ['file_path', '.mp4', '파일 경로/이름 부분 일치.'],
   ['action', 'upload', 'upload, download, delete, rename, login, logout, mkdir, rmdir, cwd_fail'],

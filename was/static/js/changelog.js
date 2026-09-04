@@ -33,7 +33,7 @@ async function loadChangelog() {
         <ul class="list-unstyled mb-0 ps-3">
           ${e.items.map(it => {
             const isCur = it.commit && curCommit && it.commit.startsWith(curCommit);
-            return `<li class="d-flex gap-2 py-1" style="border-bottom:1px solid #f1f3f5">
+            return `<li class="d-flex gap-2 py-1" style="border-bottom:1px solid var(--st-border)">
               <span class="flex-grow-1">${esc(it.text)}</span>
               ${it.commit ? `<code class="text-muted flex-shrink-0" style="font-size:0.72rem">${esc(it.commit)}</code>` : ''}
               ${isCur ? '<span class="badge bg-success flex-shrink-0">현재</span>' : ''}

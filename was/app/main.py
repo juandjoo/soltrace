@@ -12,23 +12,25 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.database import SessionLocal, engine
 from app.gitinfo import git
 from app.models import Base
+from app.security import ensure_admin_user
 from app.routers import (
     api_keys, auth, dashboard, devices, groups, ingest, logs, settings, telcos, users,
 )
+from app import retention
 from app import write_buffer as wb
 from app import service_monitor as sm
 
 log = logging.getLogger("soltrace.main")
 
-# ftp_logs 월별 파티션 자동 생성 범위. 과거 범위는 backup_db.sh 의 RETENTION_MONTHS(36)와
-# 맞춘다 — 보존 기간 안의 과거 로그(bulk import)가 default 파티션으로 빠지지 않게.
-# init.sql / create_partitions.sh 의 범위와 함께 바꿀 것.
-PARTITION_PAST_MONTHS = 36
+# ftp_logs 월별 파티션 자동 생성 범위. 과거 범위는 보존 기간(app/retention.py)을 따른다
+# — 보존 기간 안의 과거 로그(bulk import)가 default 파티션으로 빠지지 않게.
+# init.sql / create_partitions.sh 의 초기 범위와 함께 볼 것.
 PARTITION_FUTURE_MONTHS = 2
 
 
 def _ensure_partitions(db):
-    """과거 PARTITION_PAST_MONTHS + 당월 + 향후 PARTITION_FUTURE_MONTHS 파티션이 없으면 생성."""
+    """과거 보존기간 + 당월 + 향후 PARTITION_FUTURE_MONTHS 파티션이 없으면 생성."""
+    past_months = retention.get_retention_months(db)
     is_partitioned = db.execute(text(
         "SELECT COUNT(*) FROM pg_class c "
         "JOIN pg_namespace n ON n.oid = c.relnamespace "
@@ -38,7 +40,7 @@ def _ensure_partitions(db):
         return
 
     now = datetime.now(timezone.utc)
-    for offset in range(-PARTITION_PAST_MONTHS, PARTITION_FUTURE_MONTHS + 1):
+    for offset in range(-past_months, PARTITION_FUTURE_MONTHS + 1):
         total = now.month - 1 + offset
         year, month = now.year + total // 12, total % 12 + 1
         next_total = total + 1
@@ -129,6 +131,13 @@ def _run_migrations(conn):
           THEN CREATE INDEX idx_service_alerts_notified ON service_alerts (notified) WHERE notified = FALSE; END IF;
         END $$
     """))
+    # users 로그인 잠금 컬럼 — 연속 실패 횟수/잠금 해제 시각/마지막 로그인
+    conn.execute(text("""
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS locked_until    TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS last_login_at   TIMESTAMPTZ
+    """))
     # ftp_logs.row_hash 컬럼 — 재전송 중복 방지용 MD5 식별키
     conn.execute(text("""
         DO $$ BEGIN
@@ -187,6 +196,8 @@ async def lifespan(app: FastAPI):
         _run_migrations(conn)
     with SessionLocal() as db:
         db.execute(text("SELECT 1"))
+        # app_config 로만 있던 부트스트랩 관리자를 users 로 이관 (최초 1회)
+        ensure_admin_user(db)
         _ensure_partitions(db)
     wb.init_buffer(SessionLocal, flush_interval=3, max_size=2000)
     sm.init_monitor(SessionLocal)

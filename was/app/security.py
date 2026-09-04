@@ -7,13 +7,17 @@
 import hashlib
 import hmac
 import ipaddress
+import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings as app_settings
 from app.models import User
+
+log = logging.getLogger("soltrace.security")
 
 _ALGO = "pbkdf2_sha256"
 _ITERATIONS = 240_000
@@ -155,10 +159,19 @@ def check_ip_allowed(db: Session, client_ip: str) -> bool:
     return any(_ip_matches(client_ip, entry) for entry in allowed)
 
 
-# ── 고객 계정(users) ─────────────────────────────────────────────────────────
+# ── 로그인 계정(users) ───────────────────────────────────────────────────────
 # 더미 해시: 존재하지 않는 사용자에 대해서도 항상 검증을 수행해 타이밍 차이로
 # 계정 존재 여부가 새지 않게 한다.
 _DUMMY_HASH = hash_password("soltrace-nonexistent-account")
+
+# 비밀번호 연속 실패 잠금 정책
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_LOCK_MINUTES = 15
+
+
+def get_user(db: Session, username: str) -> User | None:
+    """username 으로 계정 조회 (비활성·잠금 여부와 무관). 로그인 판정용."""
+    return db.query(User).filter(User.username == username).first()
 
 
 def get_active_user(db: Session, username: str) -> User | None:
@@ -168,6 +181,64 @@ def get_active_user(db: Session, username: str) -> User | None:
         .filter(User.username == username, User.is_active.is_(True))
         .first()
     )
+
+
+def lock_seconds_left(user: User) -> int:
+    """잠금이 풀리기까지 남은 초. 잠겨 있지 않으면 0."""
+    until = getattr(user, "locked_until", None)
+    if not until:
+        return 0
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    left = (until - datetime.now(timezone.utc)).total_seconds()
+    return int(left) if left > 0 else 0
+
+
+def register_failed_login(db: Session, user: User) -> int:
+    """비밀번호 실패 1회 기록. 한도에 닿으면 잠근다. 남은 시도 횟수를 돌려준다."""
+    user.failed_attempts = (user.failed_attempts or 0) + 1
+    remaining = LOGIN_MAX_ATTEMPTS - user.failed_attempts
+    if remaining <= 0:
+        user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOGIN_LOCK_MINUTES)
+        user.failed_attempts = 0          # 잠금 해제 후 다시 0부터 센다
+        remaining = 0
+    db.commit()
+    return remaining
+
+
+def clear_failed_login(db: Session, user: User) -> None:
+    """로그인 성공 — 실패 카운터와 잠금을 지운다."""
+    user.failed_attempts = 0
+    user.locked_until = None
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+
+
+def unlock_user(db: Session, user: User) -> None:
+    user.failed_attempts = 0
+    user.locked_until = None
+    db.commit()
+
+
+def ensure_admin_user(db: Session) -> None:
+    """app_config 로만 존재하던 부트스트랩 관리자를 users 테이블로 옮긴다 (최초 1회).
+
+    관리자 계정을 여러 개 두려면 한 테이블에서 다뤄야 한다. 이미 admin 이 하나라도
+    있으면 아무것도 하지 않는다. 같은 아이디가 고객 계정으로 있으면 건드리지 않고
+    경고만 남긴다(덮어쓰면 로그인이 깨진다).
+    """
+    if db.query(User).filter(User.role == "admin").first():
+        return
+    username = get_admin_username(db)
+    clash = db.query(User).filter(User.username == username).first()
+    if clash:
+        log.warning("관리자 이관 건너뜀 — 같은 아이디의 계정이 이미 있습니다: %s", username)
+        return
+    stored = get_config(db, ADMIN_PW_KEY) or hash_password(app_settings.admin_password)
+    db.add(User(username=username, password_hash=stored, role="admin",
+                customer=None, allowed_ips=None, is_active=True))
+    db.commit()
+    log.info("부트스트랩 관리자를 users 테이블로 이관했습니다: %s", username)
 
 
 def check_user_ip_allowed(allowed_ips_raw: str | None, client_ip: str) -> bool:

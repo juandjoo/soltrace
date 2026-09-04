@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import device_scope
-from app.models import Device, DeviceGroup, FtpLog
+from app.models import Device, DeviceGroup, FtpLog, Group
 from app.service_monitor import cwd_probe_sql
 from app.schemas import FtpLogResponse, LogCountResponse, LogListResponse
 
@@ -33,7 +33,9 @@ class LogFilters:
         self,
         device_id: Optional[int] = None,
         group_id: Optional[int] = None,
+        customer: Optional[str] = None,
         username: Optional[str] = None,
+        usernames: Optional[str] = None,
         client_ip: Optional[str] = None,
         file_path: Optional[str] = None,
         action: Optional[str] = None,
@@ -46,7 +48,10 @@ class LogFilters:
             start_time = datetime.now(timezone.utc) - timedelta(days=DEFAULT_RANGE_DAYS)
         self.device_id = device_id
         self.group_id = group_id
+        self.customer = customer
         self.username = username
+        # 계정 다중 선택 — 쉼표로 구분된 정확한 아이디 목록 (부분일치 username 과 별개)
+        self.usernames = [u for u in (usernames or "").split(",") if u.strip()]
         self.client_ip = client_ip
         self.file_path = file_path
         self.action = action
@@ -64,6 +69,16 @@ class LogFilters:
         if self.group_id:
             members = db.query(DeviceGroup.device_id).filter(DeviceGroup.group_id == self.group_id)
             q = q.filter(FtpLog.device_id.in_(members))
+        if self.customer:
+            # 고객사 단위 조회 — deps.device_scope 와 같은 매칭 규칙(groups.customer 정확 일치)
+            members = (
+                db.query(DeviceGroup.device_id)
+                .join(Group, Group.id == DeviceGroup.group_id)
+                .filter(Group.customer == self.customer)
+            )
+            q = q.filter(FtpLog.device_id.in_(members))
+        if self.usernames:
+            q = q.filter(FtpLog.username.in_([u.strip() for u in self.usernames]))
         if self.username:
             q = q.filter(FtpLog.username.ilike(f"%{self.username}%"))
         if self.client_ip:
@@ -144,6 +159,30 @@ def query_logs(
         results.append(r)
 
     return LogListResponse(page=page, size=size, items=results)
+
+
+@router.get("/usernames", response_model=list[str])
+def list_usernames(
+    limit: int = Query(default=300, ge=1, le=1000),
+    f: LogFilters = Depends(),
+    db: Session = Depends(get_db),
+    scope: Optional[list[int]] = Depends(device_scope),
+):
+    """지금 필터(고객사·그룹·기간)에서 실제로 접근한 계정 목록.
+
+    '고객사 → 접근 계정 다중 선택 → 그 계정만 조회' 흐름에서 선택지를 채운다.
+    목록·총건수와 같은 LogFilters 를 쓰므로 조건이 갈라지지 않는다.
+    """
+    rows = (
+        f.apply(db.query(FtpLog), db, scope)
+        .with_entities(FtpLog.username)
+        .filter(FtpLog.username.isnot(None))
+        .distinct()
+        .order_by(FtpLog.username)
+        .limit(limit)
+        .all()
+    )
+    return [r.username for r in rows]
 
 
 @router.get("/count", response_model=LogCountResponse)

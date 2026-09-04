@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS users (
     customer      TEXT,              -- role=customer일 때 groups.customer 와 매칭
     allowed_ips   TEXT,              -- 계정별 허용 IP/CIDR (비어있으면 제한 없음)
     is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+    -- 비밀번호 연속 실패 잠금 (메모리가 아닌 DB — 재시작/다중 워커에서도 같은 상태)
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until  TIMESTAMPTZ,
+    last_login_at TIMESTAMPTZ,
     created_at    TIMESTAMPTZ DEFAULT now()
 );
 

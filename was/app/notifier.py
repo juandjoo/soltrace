@@ -229,6 +229,56 @@ _CHANNEL_MAP = {
 }
 
 
+def send_text(db, subject: str, body: str) -> bool:
+    """운영 공지 한 줄을 설정된 채널로 보낸다 (이상 감지 알림과 다른 경로).
+
+    디스크 자동 정리처럼 '장비 × 지표' 형태가 아닌 알림에 쓴다. 음소거 설정은
+    이상 알림과 같이 존중한다.
+    """
+    if is_muted(db):
+        log.info("Notifications are muted — skipping text notice")
+        return False
+    cfg = _load_cfg(db)
+    sent = False
+    if cfg["webhook_url"]:
+        url = cfg["webhook_url"]
+        payload = ({"text": f"{subject}\n{body}"} if "hooks.slack.com" in url
+                   else {"source": "soltrace", "type": "notice",
+                         "subject": subject, "message": body})
+        try:
+            req = urllib.request.Request(
+                url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                resp.read()
+            sent = True
+        except Exception as e:
+            log.error("Notice webhook failed: %s", e)
+    if cfg["hms_url"]:
+        payload = {
+            "telco_name": "SolTrace",
+            "svc_list": [{"svc_name": "soltrace", "vol_list": None}],
+            "alert_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            "prop": {"subject": subject,
+                     "body": f"<html><body style='font-family:sans-serif;font-size:13px'>"
+                             f"<p>{_esc(body)}</p></body></html>"},
+        }
+        try:
+            req = urllib.request.Request(
+                cfg["hms_url"], data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                headers={"Content-Type": "application/json; charset=utf-8",
+                         "Accept": "application/json", "X-reqsite": "hermesweb"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                resp.read()
+            sent = True
+        except Exception as e:
+            log.error("Notice HMS failed: %s", e)
+    return sent
+
+
 def _enrich_alerts(alerts: list[dict], db) -> list[dict]:
     """device_id → (group_name, telco) 일괄 조회 후 alert에 주입. 이미 있으면 스킵."""
     ids = list({a["device_id"] for a in alerts if a.get("device_id") is not None})

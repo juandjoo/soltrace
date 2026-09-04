@@ -14,6 +14,8 @@ const ACTION_ICON = {
 
 let _logGroupMap = {};   // id → group object
 let _pendingSearch = false;  // navToLogsFilters가 세팅, initLogsPage 완료 후 자동 검색
+let _pendingCustomer = null; // 설정 > 고객 계정에서 '사용 내역'으로 넘어온 고객사
+let _selectedUsernames = []; // 계정 다중 선택 (정확 일치). 비어 있으면 전체
 
 // 총건수 캐시: 필터(페이지/크기 제외)가 같으면 페이지 이동 시 재집계하지 않는다.
 // 카운트는 목록과 병렬로 요청해 첫 페이지가 COUNT 를 기다리지 않게 한다.
@@ -46,14 +48,124 @@ async function initLogsPage() {
       '<option value="">전체 텔코</option>' + telcos.map(t => `<option value="${t}">${t}</option>`).join('');
 
     _renderGroupOptions('');
+    _renderCustomerOptions();
   }
   _initGroupTooltip();
   _initLogColResize();
 
+  if (_pendingCustomer !== null) {
+    document.getElementById('logCustomerFilter').value = _pendingCustomer;
+    _pendingCustomer = null;
+    searchLogs(1);
+    openUserPicker();       // 바로 '접근한 계정' 중에서 고르게 한다
+    return;
+  }
   if (_pendingSearch) {
     _pendingSearch = false;
     searchLogs(1);
   }
+}
+
+// 고객사 목록은 그룹의 customer 값에서 뽑는다 (그룹마다 여러 줄일 수 있어 줄 단위로 분해)
+function _renderCustomerOptions() {
+  const set = new Set();
+  allGroups.forEach(g => (g.customer || '').split('\n').forEach(c => {
+    const v = c.trim();
+    if (v) set.add(v);
+  }));
+  const cur = document.getElementById('logCustomerFilter').value;
+  document.getElementById('logCustomerFilter').innerHTML =
+    '<option value="">전체 고객사</option>' +
+    [...set].sort().map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  document.getElementById('logCustomerFilter').value = cur;
+}
+
+function onCustomerFilter() {
+  // 고객사를 바꾸면 이전 계정 선택은 의미가 없다
+  _setSelectedUsernames([]);
+  searchLogs(1);
+}
+
+// ── 접근 계정 다중 선택 ─────────────────────────────────────────────────────
+function _setSelectedUsernames(list) {
+  _selectedUsernames = list;
+  const btn = document.getElementById('logUserPickBtn');
+  const input = document.getElementById('logUserFilter');
+  if (!btn || !input) return;
+  btn.classList.toggle('btn-primary', list.length > 0);
+  btn.classList.toggle('text-white', list.length > 0);
+  btn.classList.toggle('btn-outline-secondary', list.length === 0);
+  btn.title = list.length ? `선택된 계정 ${list.length}개 — ${list.join(', ')}` : '접근한 계정 중에서 여러 개 선택';
+  if (list.length) {
+    input.value = `${list.length}개 계정 선택`;
+    input.setAttribute('readonly', '');
+    input.classList.add('bg-body-secondary');
+  } else if (input.value.endsWith('개 계정 선택')) {
+    input.value = '';
+    input.classList.remove('bg-body-secondary');
+  }
+}
+
+async function openUserPicker() {
+  const list = document.getElementById('userPickerList');
+  list.innerHTML = '<div class="text-muted small py-2">불러오는 중…</div>';
+  document.getElementById('userPickerSearch').value = '';
+  new bootstrap.Modal(document.getElementById('userPickerModal')).show();
+  // 계정 목록은 계정 조건을 뺀 나머지 필터(고객사·그룹·기간) 기준으로 뽑는다
+  const params = _logParams({skipUsernames: true});
+  try {
+    const names = await api('GET', `/logs/usernames?${params}`);
+    if (!names || !names.length) {
+      list.innerHTML = '<div class="text-muted small py-2">이 조건에서 접근한 계정이 없습니다.</div>';
+      _updateUserPickerCount();
+      return;
+    }
+    list.innerHTML = names.map((n, i) => `
+      <div class="form-check user-pick-row" data-name="${esc(n.toLowerCase())}">
+        <input class="form-check-input" type="checkbox" id="upick${i}" value="${esc(n)}"
+               ${_selectedUsernames.includes(n) ? 'checked' : ''} onchange="_updateUserPickerCount()">
+        <label class="form-check-label small" for="upick${i}">${esc(n)}</label>
+      </div>`).join('');
+    _updateUserPickerCount();
+  } catch (e) {
+    list.innerHTML = `<div class="text-danger small py-2">${esc(e.message)}</div>`;
+  }
+}
+
+function _pickerBoxes() {
+  return Array.from(document.querySelectorAll('#userPickerList input[type=checkbox]'));
+}
+
+function _updateUserPickerCount() {
+  const n = _pickerBoxes().filter(b => b.checked).length;
+  document.getElementById('userPickerCount').textContent = n ? `${n}개 선택됨` : '선택 없음 = 전체';
+}
+
+function filterUserPicker() {
+  const q = document.getElementById('userPickerSearch').value.trim().toLowerCase();
+  document.querySelectorAll('#userPickerList .user-pick-row').forEach(row => {
+    row.classList.toggle('d-none', q && !row.dataset.name.includes(q));
+  });
+}
+
+function toggleAllUserPicker(on) {
+  // 검색으로 걸러진 항목만 대상으로 한다 (보이는 것과 다르게 동작하면 헷갈린다)
+  _pickerBoxes().forEach(b => {
+    if (!b.closest('.user-pick-row').classList.contains('d-none')) b.checked = on;
+  });
+  _updateUserPickerCount();
+}
+
+function applyUserPicker() {
+  _setSelectedUsernames(_pickerBoxes().filter(b => b.checked).map(b => b.value));
+  bootstrap.Modal.getInstance(document.getElementById('userPickerModal'))?.hide();
+  searchLogs(1);
+}
+
+// 설정 > 고객 계정에서 호출 — 그 고객사의 로그 조회로 이동해 계정 선택을 띄운다
+function viewCustomerLogs(customer) {
+  _pendingCustomer = customer || '';
+  nav('logs');
 }
 
 // 옵션 title — 목록을 펼친 상태에서 항목에 마우스를 올리면 고객사/서비스가 보인다.
@@ -165,10 +277,13 @@ function _initLogColResize() {
   });
 }
 
-function _logParams() {
+// skipUsernames: 계정 선택 목록을 뽑을 때는 계정 조건을 빼고 나머지 필터만 쓴다.
+function _logParams({skipUsernames = false} = {}) {
   const params = new URLSearchParams();
   const grp = document.getElementById('logGroupFilter').value;
-  const user = document.getElementById('logUserFilter').value.trim();
+  const customer = document.getElementById('logCustomerFilter').value;
+  // 다중 선택 중이면 입력칸은 '3개 계정 선택' 같은 안내문이라 부분일치 조건으로 보내지 않는다
+  const user = _selectedUsernames.length ? '' : document.getElementById('logUserFilter').value.trim();
   const ip = document.getElementById('logIpFilter').value.trim();
   const filePath = (document.getElementById('logFileFilter')?.value || '').trim();
   const action = document.getElementById('logActionFilter').value;
@@ -176,7 +291,9 @@ function _logParams() {
   const start = document.getElementById('logStartTime').value;
   const end = document.getElementById('logEndTime').value;
   if (grp) params.set('group_id', grp);
+  if (customer) params.set('customer', customer);
   if (user) params.set('username', user);
+  if (!skipUsernames && _selectedUsernames.length) params.set('usernames', _selectedUsernames.join(','));
   if (ip) params.set('client_ip', ip);
   if (filePath) params.set('file_path', filePath);
   if (action === '__exclude_login_logout__') params.set('exclude_actions', 'login,logout');
@@ -383,6 +500,8 @@ function _clearLogFilters() {
   document.getElementById('logTelcoFilter').value = '';
   _renderGroupOptions('');
   document.getElementById('logGroupFilter').value = '';
+  document.getElementById('logCustomerFilter').value = '';
+  _setSelectedUsernames([]);
   _resetAutofillInputs();
   document.getElementById('logFileFilter').value = '';
   document.getElementById('logActionFilter').value = '__exclude_login_logout__';

@@ -57,3 +57,15 @@ def test_cwd_probe_condition_applies_to_every_entry_point():
     src = inspect.getsource(logs_router)
     assert src.count("_hide_cwd_probes") == 2          # 정의 1 + apply 안 호출 1
     assert "cwd_probe_sql" in src
+
+
+def test_customer_and_usernames_filters():
+    """고객사 + 계정 다중 선택이 SQL 로 붙는지 (조건이 조용히 빠지면 남의 데이터가 보인다)."""
+    sql = _sql(LogFilters(customer="ACME", usernames="alice, bob", log_status=None))
+    assert "groups.customer" in sql
+    assert "ftp_logs.username IN" in sql
+
+
+def test_blank_usernames_ignored():
+    f = LogFilters(usernames=" , ,", log_status=None)
+    assert f.usernames == []

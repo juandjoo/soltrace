@@ -65,11 +65,32 @@ class _NoHeaderRequest:
     method = "GET"
 
 
-def _principal_from(token: str) -> deps.Principal:
+class _UserDB:
+    """users 조회만 흉내낸다. row=None 이면 '계정 행이 없는' 상태(부트스트랩 관리자)."""
+
+    def __init__(self, row=None):
+        self.row = row
+
+    def query(self, *_args):
+        return self
+
+    def filter(self, *_args, **_kwargs):
+        return self
+
+    def first(self):
+        return self.row
+
+
+class _Row:
+    def __init__(self, role="customer", customer=None, is_active=True):
+        self.role, self.customer, self.is_active = role, customer, is_active
+
+
+def _principal_from(token: str, db=None) -> deps.Principal:
     return deps.get_current_user(
         _NoHeaderRequest(),
         HTTPAuthorizationCredentials(scheme="Bearer", credentials=token),
-        db=None,
+        db=_UserDB() if db is None else db,
     )
 
 
@@ -165,3 +186,18 @@ def test_parse_ip_entries_splits_valid_invalid():
 def test_split_ips_accepts_comma_and_newline():
     assert security.split_ips("a, b\n\nc ,") == ["a", "b", "c"]
     assert security.split_ips(None) == []
+
+
+def test_inactive_account_token_rejected():
+    """비활성화한 계정은 이미 발급된 토큰으로도 들어오지 못한다."""
+    tok = deps.create_access_token("acme_user", "customer", "ACME")
+    with pytest.raises(HTTPException) as e:
+        _principal_from(tok, db=_UserDB(_Row(role="customer", customer="ACME", is_active=False)))
+    assert e.value.status_code == 401
+
+
+def test_role_follows_db_not_token():
+    """토큰 발급 후 권한이 바뀌면 DB 쪽 role 을 따른다 (강등이 바로 먹어야 한다)."""
+    tok = deps.create_access_token("someone", "admin")
+    p = _principal_from(tok, db=_UserDB(_Row(role="customer", customer="ACME")))
+    assert not p.is_admin and p.customer == "ACME"

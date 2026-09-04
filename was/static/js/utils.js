@@ -10,6 +10,41 @@ let allTelcos = [];
 let logPage = 1;
 let logPageSize = 50;
 
+// ── 테마 (라이트/다크) ───────────────────────────────────────────────────────
+// 첫 적용은 index.html <head> 인라인 스크립트가 한다(흰 화면 번쩍임 방지).
+// 여기서는 토글과 차트 색 반영만 맡는다.
+const THEME_KEY = 'soltrace_theme';
+
+function currentTheme() {
+  return document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'light';
+}
+
+function applyTheme(mode) {
+  document.documentElement.setAttribute('data-bs-theme', mode);
+  try { localStorage.setItem(THEME_KEY, mode); } catch { /* 저장소 차단 — 이번 세션만 적용 */ }
+  const icon = document.getElementById('themeToggleIcon');
+  const btn  = document.getElementById('themeToggleBtn');
+  if (icon) icon.className = mode === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-stars';
+  if (btn)  btn.title = mode === 'dark' ? '라이트 모드로' : '다크 모드로';
+  _applyChartTheme(mode);
+}
+
+// Chart.js 기본 눈금·격자 색. 이미 그려진 차트에는 적용되지 않으므로 토글 후 다시 그린다.
+function _applyChartTheme(mode) {
+  if (typeof Chart === 'undefined') return;
+  Chart.defaults.color       = mode === 'dark' ? '#adb5bd' : '#666';
+  Chart.defaults.borderColor = mode === 'dark' ? '#343a40' : 'rgba(0,0,0,.1)';
+}
+
+function toggleTheme() {
+  applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  // 차트는 생성 시점의 색을 들고 있어 다시 그려야 바뀐다
+  if (typeof loadAll === 'function' &&
+      document.getElementById('page-dashboard')?.classList.contains('active')) {
+    loadAll();
+  }
+}
+
 // ── 세션 타이머 ──────────────────────────────────────────────────────────────
 let _expireTimer = null;
 let _countdownInterval = null;
@@ -178,3 +213,6 @@ function timeAgo(dt) {
   if (diff < 86400) return Math.floor(diff/3600) + '시간 전';
   return new Date(dt).toLocaleDateString('ko-KR');
 }
+
+// 페이지 로드 시 현재 테마에 맞춰 버튼 아이콘·차트 기본색을 맞춘다
+applyTheme(currentTheme());

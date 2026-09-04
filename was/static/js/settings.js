@@ -33,40 +33,142 @@ async function loadVersion() {
   } catch (e) { settingsMsg('updMsg', 'danger', e.message); }
 }
 
-async function loadStorage() {
-  const msg = document.getElementById('storageMsg');
-  msg.className = 'alert d-none py-2 small';
+let _storage = null;   // 마지막 조회 결과 — '빈 파티션 숨기기' 토글이 다시 그릴 때 쓴다
+
+// 파티션의 데이터 기간 표시. 미리 만들어 둔 빈 파티션과 실제 데이터를 구분한다.
+function _partRange(p) {
+  if (!p.has_rows) return '<span class="text-muted">비어 있음</span>';
+  const f = new Date(p.first_log), t = new Date(p.last_log);
+  const d = x => `${x.getFullYear()}/${pad2(x.getMonth()+1)}/${pad2(x.getDate())}`;
+  return `${d(f)} ~ ${d(t)}`;
+}
+
+function renderStorageTable() {
   const tbody = document.getElementById('storageTable');
-  try {
-    const s = await api('GET', '/settings/storage');
-    if (!s) return;
-    document.getElementById('stDbSize').textContent = fmtBytes(s.db_bytes);
-    document.getElementById('stLogsSize').textContent = fmtBytes(s.ftp_logs_bytes);
-    document.getElementById('stRetention').textContent = `${s.retention_months}개월 (초과 파티션은 백업 후 자동 삭제)`;
-    const def = document.getElementById('stDefault');
-    if (s.default_rows > 0) {
-      def.innerHTML = `<span class="text-danger fw-semibold">${s.default_rows.toLocaleString()}행 잔존</span>`
-        + ` <span class="text-muted">(${s.default_months.map(esc).join(', ')})</span>`;
-      settingsMsg('storageMsg', 'warning', 'default 파티션에 데이터가 남아 있습니다. 재배치가 필요합니다.');
-    } else {
-      def.innerHTML = '<span class="text-success">비어 있음</span>';
-    }
-    if (!s.partitions.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">파티션이 없습니다.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = s.partitions.map(p => `
+  const s = _storage;
+  if (!s) return;
+  const hideEmpty = document.getElementById('stHideEmpty').checked;
+  const rows = s.partitions.filter(p => !hideEmpty || p.has_rows || p.name === 'ftp_logs_default');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">${
+      s.partitions.length ? '데이터가 있는 파티션이 없습니다.' : '파티션이 없습니다.'}</td></tr>`;
+    return;
+  }
+  // 당월 이후 파티션은 수집 중이므로 삭제 버튼을 주지 않는다 (서버도 같은 기준으로 막는다)
+  const now = new Date();
+  const curName = `ftp_logs_${now.getFullYear()}_${pad2(now.getMonth() + 1)}`;
+  tbody.innerHTML = rows.map(p => {
+    const monthly = /^ftp_logs_\d{4}_\d{2}$/.test(p.name);
+    const deletable = monthly && p.name < curName;
+    return `
       <tr class="${p.name === 'ftp_logs_default' && s.default_rows > 0 ? 'table-warning' : ''}">
         <td class="font-monospace">${esc(p.name)}</td>
+        <td>${_partRange(p)}</td>
         <td class="text-end">${p.rows_est.toLocaleString()}</td>
         <td class="text-end">${fmtBytes(p.table_bytes)}</td>
         <td class="text-end">${fmtBytes(p.index_bytes)}</td>
         <td class="text-end fw-semibold">${fmtBytes(p.total_bytes)}</td>
-      </tr>`).join('');
+        <td class="text-end">${deletable
+          ? `<button class="btn btn-xs btn-outline-danger" onclick="dropPartition('${esc(p.name)}')" title="이 달 데이터를 완전히 삭제"><i class="bi bi-trash"></i></button>`
+          : '<span class="text-muted">-</span>'}</td>
+      </tr>`;
+  }).join('');
+}
+
+function _renderStorage(s) {
+  _storage = s;
+  document.getElementById('stDbSize').textContent = fmtBytes(s.db_bytes);
+  document.getElementById('stLogsSize').textContent = fmtBytes(s.ftp_logs_bytes);
+  document.getElementById('stRetentionInput').value = s.retention_months;
+
+  // 실제 데이터가 있는 파티션만 모아 보유 기간을 계산 (미리 만든 빈 파티션은 제외)
+  const filled = s.partitions.filter(p => p.has_rows);
+  const rangeEl = document.getElementById('stDataRange');
+  if (filled.length) {
+    const first = filled.map(p => p.first_log).sort()[0];
+    const last  = filled.map(p => p.last_log).sort().slice(-1)[0];
+    const d = x => { const v = new Date(x); return `${v.getFullYear()}/${pad2(v.getMonth()+1)}/${pad2(v.getDate())}`; };
+    rangeEl.textContent = `${d(first)} ~ ${d(last)} (${filled.length}개 파티션)`;
+  } else {
+    rangeEl.innerHTML = '<span class="text-muted">데이터 없음</span>';
+  }
+
+  document.getElementById('stAutoPurge').checked = !!s.autopurge_enabled;
+  document.getElementById('stAutoPurgePct').value = s.autopurge_percent;
+
+  const disk = document.getElementById('stDisk');
+  if (s.disk_total_bytes) {
+    const cls = s.disk_percent >= 90 ? 'text-danger fw-semibold'
+              : s.disk_percent >= 80 ? 'text-warning-emphasis fw-semibold' : '';
+    disk.innerHTML = `<span class="${cls}">${s.disk_percent}%</span>`
+      + ` <span class="text-muted">(${fmtBytes(s.disk_used_bytes)} / ${fmtBytes(s.disk_total_bytes)})</span>`;
+  } else {
+    disk.innerHTML = '<span class="text-muted">확인 불가</span>';
+  }
+
+  const def = document.getElementById('stDefault');
+  if (s.default_rows > 0) {
+    def.innerHTML = `<span class="text-danger fw-semibold">${s.default_rows.toLocaleString()}행 잔존</span>`
+      + ` <span class="text-muted">(${s.default_months.map(esc).join(', ')})</span>`;
+    settingsMsg('storageMsg', 'warning', 'default 파티션에 데이터가 남아 있습니다. 재배치가 필요합니다.');
+  } else {
+    def.innerHTML = '<span class="text-success">비어 있음</span>';
+  }
+  renderStorageTable();
+}
+
+async function loadStorage() {
+  const msg = document.getElementById('storageMsg');
+  msg.className = 'alert d-none py-2 small';
+  try {
+    const s = await api('GET', '/settings/storage');
+    if (s) _renderStorage(s);
   } catch (e) {
     settingsMsg('storageMsg', 'danger', e.message);
-    tbody.innerHTML = '';
+    document.getElementById('storageTable').innerHTML = '';
   }
+}
+
+async function saveRetention() {
+  const months = parseInt(document.getElementById('stRetentionInput').value, 10);
+  if (!Number.isFinite(months) || months < 1 || months > 120) {
+    settingsMsg('storageMsg', 'danger', '보존 기간은 1~120개월 사이여야 합니다.');
+    return;
+  }
+  try {
+    const s = await api('PUT', '/settings/storage/retention', {months});
+    if (s) _renderStorage(s);
+    settingsMsg('storageMsg', 'success', `보존 기간을 ${months}개월로 저장했습니다.`);
+  } catch (e) { settingsMsg('storageMsg', 'danger', e.message); }
+}
+
+async function saveAutoPurge() {
+  const enabled = document.getElementById('stAutoPurge').checked;
+  const percent = parseInt(document.getElementById('stAutoPurgePct').value, 10);
+  if (!Number.isFinite(percent) || percent < 50 || percent > 99) {
+    settingsMsg('storageMsg', 'danger', '임계치는 50~99% 사이여야 합니다.');
+    return;
+  }
+  if (enabled && !confirm(
+      `디스크 ${percent}% 초과 시 가장 오래된 월 파티션부터 자동 삭제합니다.\n\n` +
+      '백업 파일이 없어도 삭제되며 되돌릴 수 없습니다. 계속할까요?')) return;
+  try {
+    const s = await api('PUT', '/settings/storage/autopurge', {enabled, percent});
+    if (s) _renderStorage(s);
+    settingsMsg('storageMsg', 'success',
+      enabled ? `자동 정리를 켰습니다 (임계치 ${percent}%).` : '자동 정리를 껐습니다.');
+  } catch (e) { settingsMsg('storageMsg', 'danger', e.message); }
+}
+
+async function dropPartition(name) {
+  const p = _storage?.partitions.find(x => x.name === name);
+  const size = p ? ` (${fmtBytes(p.total_bytes)}, 약 ${p.rows_est.toLocaleString()}행)` : '';
+  if (!confirm(`${name}${size} 을(를) 삭제합니다.\n\n되돌릴 수 없습니다. 백업 파일이 있는지 확인하셨습니까?`)) return;
+  try {
+    const s = await api('DELETE', `/settings/storage/partitions/${encodeURIComponent(name)}`);
+    if (s) _renderStorage(s);
+    settingsMsg('storageMsg', 'success', `${name} 파티션을 삭제했습니다.`);
+  } catch (e) { settingsMsg('storageMsg', 'danger', e.message); }
 }
 
 async function getTelcos() {
@@ -439,12 +541,12 @@ async function loadUsers() {
     document.getElementById('customerOptions').innerHTML =
       customers.map(c => `<option value="${esc(c)}">`).join('');
 
-    if (!users || users.length === 0) {
+    _users = users.filter(u => u.role === 'customer');
+    if (!_users.length) {
       tbody.innerHTML = '<tr><td colspan="5" class="text-muted small p-3">등록된 고객 계정이 없습니다.</td></tr>';
       return;
     }
-    _users = users;
-    tbody.innerHTML = users.map(u => {
+    tbody.innerHTML = _users.map(u => {
       const ips = u.allowed_ips && u.allowed_ips.length ? u.allowed_ips.join(', ') : '<span class="text-muted">제한 없음</span>';
       const badge = u.is_active
         ? '<span class="badge bg-success-subtle text-success">활성</span>'
@@ -455,6 +557,7 @@ async function loadUsers() {
         <td class="small">${ips}</td>
         <td>${badge}</td>
         <td class="text-end pe-3">
+          <button class="btn btn-xs btn-outline-secondary" onclick="viewCustomerLogs('${esc(u.customer || '')}')" title="이 고객사의 접근 계정별 사용 내역 보기">사용 내역</button>
           <button class="btn btn-xs btn-outline-primary" onclick="openUserEdit(${u.id})" title="고객사·허용 IP·비밀번호 수정">수정</button>
           <button class="btn btn-xs btn-outline-secondary" onclick="toggleUser(${u.id}, ${u.is_active ? 'false' : 'true'})">${u.is_active ? '비활성화' : '활성화'}</button>
           <button class="btn btn-xs btn-outline-danger" onclick="deleteUser(${u.id}, '${esc(u.username)}')"><i class="bi bi-trash"></i></button>
@@ -531,4 +634,93 @@ async function deleteUser(id, username) {
     await api('DELETE', `/users/${id}`);
     loadUsers();
   } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+}
+
+
+// ── 관리자 계정 ─────────────────────────────────────────────────────────────
+// 고객 계정과 같은 /users API 를 쓰고 role 로만 나눈다 (규칙이 두 벌이 되지 않게).
+let _admins = [];
+
+function _lockBadge(u) {
+  if (!u.is_active) return '<span class="badge bg-secondary-subtle text-secondary">비활성</span>';
+  if (u.locked_seconds > 0) {
+    const min = Math.ceil(u.locked_seconds / 60);
+    return `<span class="badge bg-danger-subtle text-danger">잠김 (${min}분 남음)</span>`;
+  }
+  return '<span class="badge bg-success-subtle text-success">활성</span>';
+}
+
+async function loadAdmins() {
+  const tbody = document.getElementById('adminList');
+  try {
+    const users = await api('GET', '/users');
+    if (!users) return;
+    _admins = users.filter(u => u.role === 'admin');
+    if (!_admins.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">관리자 계정이 없습니다.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = _admins.map(u => `
+      <tr>
+        <td class="ps-3 fw-semibold">${esc(u.username)}</td>
+        <td>${_lockBadge(u)}</td>
+        <td class="small text-muted">${u.last_login_at ? fmtLocalDateTime(new Date(u.last_login_at)) : '-'}</td>
+        <td class="text-end pe-3">
+          ${u.locked_seconds > 0 ? `<button class="btn btn-xs btn-outline-warning" onclick="unlockAdmin(${u.id})" title="잠금 해제">해제</button>` : ''}
+          <button class="btn btn-xs btn-outline-secondary" onclick="resetAdminPwd(${u.id}, '${esc(u.username)}')" title="비밀번호 재설정"><i class="bi bi-key"></i></button>
+          <button class="btn btn-xs btn-outline-secondary" onclick="toggleAdmin(${u.id}, ${u.is_active ? 'false' : 'true'})">${u.is_active ? '비활성화' : '활성화'}</button>
+          <button class="btn btn-xs btn-outline-danger" onclick="deleteAdmin(${u.id}, '${esc(u.username)}')"><i class="bi bi-trash"></i></button>
+        </td>
+      </tr>`).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-danger small p-3">${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function createAdmin() {
+  const username = document.getElementById('newAdminName').value.trim();
+  const password = document.getElementById('newAdminPwd').value;
+  if (!username) { settingsMsg('adminMsg', 'danger', '아이디는 필수입니다.'); return; }
+  if (password.length < 8) { settingsMsg('adminMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  try {
+    await api('POST', '/users', {username, password, role: 'admin'});
+    settingsMsg('adminMsg', 'success', `'${username}' 관리자 계정이 생성되었습니다.`);
+    document.getElementById('newAdminName').value = '';
+    document.getElementById('newAdminPwd').value = '';
+    loadAdmins();
+  } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
+}
+
+async function toggleAdmin(id, active) {
+  try {
+    await api('PUT', `/users/${id}`, {is_active: active});
+    loadAdmins();
+  } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
+}
+
+async function unlockAdmin(id) {
+  try {
+    await api('POST', `/users/${id}/unlock`);
+    settingsMsg('adminMsg', 'success', '잠금을 해제했습니다.');
+    loadAdmins();
+  } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
+}
+
+async function resetAdminPwd(id, username) {
+  const pw = prompt(`'${username}' 계정의 새 비밀번호 (8자 이상):`);
+  if (pw === null) return;
+  if (pw.length < 8) { settingsMsg('adminMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  try {
+    await api('PUT', `/users/${id}`, {password: pw});
+    settingsMsg('adminMsg', 'success', `'${username}' 비밀번호를 변경했습니다 (잠금도 해제됨).`);
+    loadAdmins();
+  } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
+}
+
+async function deleteAdmin(id, username) {
+  if (!confirm(`'${username}' 관리자 계정을 삭제하시겠습니까?`)) return;
+  try {
+    await api('DELETE', `/users/${id}`);
+    loadAdmins();
+  } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
 }

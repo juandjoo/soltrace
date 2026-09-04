@@ -21,7 +21,9 @@ class TokenResponse(BaseModel):
 class UserCreate(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=8, max_length=128)
-    customer: str = Field(min_length=1)
+    # 관리자 계정은 customer 가 없다 — 고객 계정일 때만 필수(라우터에서 검사)
+    role: str = Field(default="customer", pattern="^(admin|customer)$")
+    customer: Optional[str] = None
     allowed_ips: List[str] = []
 
 class UserUpdate(BaseModel):
@@ -37,6 +39,8 @@ class UserResponse(BaseModel):
     customer: Optional[str] = None
     allowed_ips: List[str] = []
     is_active: bool
+    locked_seconds: int = 0                # 0 이면 잠기지 않음
+    last_login_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
@@ -116,6 +120,11 @@ class StoragePartition(BaseModel):
     total_bytes: int                       # 테이블 + 인덱스 + TOAST
     table_bytes: int
     index_bytes: int
+    # 파티션은 보존 기간만큼 '미리' 만들어 두므로 목록에 있다고 데이터가 있는 건 아니다.
+    # 아래 두 값으로 실제 데이터 유무·기간을 구분한다 (없으면 빈 파티션).
+    has_rows: bool = False
+    first_log: Optional[datetime] = None
+    last_log: Optional[datetime] = None
 
 class StorageInfo(BaseModel):
     db_bytes: int                          # 데이터베이스 전체 크기
@@ -124,6 +133,19 @@ class StorageInfo(BaseModel):
     default_rows: int                      # ftp_logs_default 정확한 행 수
     default_months: List[str]              # default 에 들어있는 월(YYYY-MM) 목록
     retention_months: int
+    disk_total_bytes: int = 0              # DB 데이터 디렉토리가 있는 디스크
+    disk_used_bytes: int = 0
+    disk_percent: float = 0.0
+    autopurge_enabled: bool = True         # 임계치 초과 시 오래된 월부터 자동 삭제
+    autopurge_percent: int = 90
+
+class DiskPurgeUpdate(BaseModel):
+    enabled: bool = True
+    percent: int = Field(default=90, ge=50, le=99)
+
+class RetentionUpdate(BaseModel):
+    # app/retention.py 의 허용 범위와 같은 값 (여기서 먼저 걸러 422 로 돌려준다)
+    months: int = Field(ge=1, le=120)
 
 
 # ── Device ────────────────────────────────────────────────────────────────────

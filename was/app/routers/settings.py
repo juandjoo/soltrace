@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import shutil
 import subprocess
 from datetime import datetime, timezone
 
@@ -8,19 +9,19 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app import alert_settings, notifier
+from app import alert_settings, disk_guard, notifier, retention
 from app.config import settings as cfg
 from app.database import get_db
-from app.deps import require_admin
+from app.deps import Principal, require_admin
 from app.gitinfo import git, git_run, repo_dir
 from app.schemas import (
     AlertSettings, AlertSettingsInfo,
     PasswordChangeRequest, UpdateTriggerResponse, VersionInfo, NotifySettings,
-    StorageInfo, StoragePartition,
+    StorageInfo, StoragePartition, RetentionUpdate, DiskPurgeUpdate,
     ChangelogEntry, ChangelogItem,
 )
 from app.security import (
-    client_ip_from_request, parse_ip_entries,
+    client_ip_from_request, get_user, hash_password, parse_ip_entries, verify_password,
     verify_admin_password, set_admin_password,
     get_admin_username, set_admin_username,
     get_office_ips, set_office_ips,
@@ -102,13 +103,25 @@ def get_version(_: str = Depends(require_admin)):
 def change_password(
     body: PasswordChangeRequest,
     db: Session = Depends(get_db),
-    _: str = Depends(require_admin),
+    me: Principal = Depends(require_admin),
 ):
-    if not verify_admin_password(db, body.current_password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="현재 비밀번호가 일치하지 않습니다")
+    """로그인한 관리자 본인의 비밀번호를 바꾼다.
+
+    다른 관리자의 비밀번호는 설정 > 관리자 계정에서 재설정한다.
+    users 에 행이 없는 부트스트랩 관리자는 예전처럼 app_config 를 고친다.
+    """
     if body.new_password == body.current_password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="새 비밀번호가 기존과 동일합니다")
-    set_admin_password(db, body.new_password)
+    user = get_user(db, me.username)
+    if user is None:
+        if not verify_admin_password(db, body.current_password):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="현재 비밀번호가 일치하지 않습니다")
+        set_admin_password(db, body.new_password)
+        return
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="현재 비밀번호가 일치하지 않습니다")
+    user.password_hash = hash_password(body.new_password)
+    db.commit()
 
 
 @router.post("/check-update", response_model=VersionInfo)
@@ -117,13 +130,46 @@ def check_update(_: str = Depends(require_admin)):
 
 
 # ── DB 저장소 현황 ────────────────────────────────────────────────────────────
-# backup_db.sh 의 RETENTION_MONTHS 와 동일. 파티션 자동 생성 범위(main.PARTITION_PAST_MONTHS)도 이 값.
-RETENTION_MONTHS = 36
+# 보존 기간은 app_config 한 곳에서만 읽는다 (app/retention.py).
+
+# 월별 파티션 이름 — 삭제 API 가 임의 테이블을 지우지 못하게 형식부터 고정한다.
+_PARTITION_NAME = re.compile(r"^ftp_logs_\d{4}_\d{2}$")
+
+# 디스크 사용률 기준 경로 — 자동 정리와 같은 경로를 본다.
+DISK_PATH = disk_guard.DISK_PATH
+
+
+def _partition_ranges(db: Session, names: list[str]) -> dict[str, tuple]:
+    """파티션별 실제 데이터 기간(min/max log_time).
+
+    파티션은 보존 기간만큼 '미리' 만들어 두기 때문에 목록에 있다고 데이터가 있는 게
+    아니다("2025년 데이터가 있다"로 보이던 원인). 여기서 실제 기간을 확인해 빈 파티션과
+    구분한다. MIN/MAX 는 log_time 인덱스를 타므로 파티션이 커도 즉시 끝난다.
+    이름은 pg_class 에서 온 값이지만 문자열로 넣으므로 형식을 한 번 더 확인한다.
+    """
+    safe = [n for n in names if _PARTITION_NAME.match(n) or n == "ftp_logs_default"]
+    if not safe:
+        return {}
+    union = " UNION ALL ".join(
+        f"SELECT '{n}' AS part, MIN(log_time) AS first_log, MAX(log_time) AS last_log FROM {n}"
+        for n in safe
+    )
+    return {r.part: (r.first_log, r.last_log) for r in db.execute(text(union)).fetchall()}
+
+
+def _disk_usage(path: str = DISK_PATH) -> tuple[int, int, float]:
+    """총량·사용량·사용률. 사용률은 자동 정리(disk_guard)와 같은 계산을 쓴다."""
+    try:
+        du = shutil.disk_usage(path)
+    except OSError as e:
+        log.warning("디스크 사용량 조회 실패(%s): %s", path, e)
+        return 0, 0, 0.0
+    return du.total, du.total - du.free, disk_guard.disk_percent(path)
 
 
 @router.get("/storage", response_model=StorageInfo)
 def get_storage(db: Session = Depends(get_db), _: str = Depends(require_admin)):
-    """ftp_logs 파티션별 크기/행수 + default 파티션 잔존 여부.
+    """ftp_logs 파티션별 크기/행수/실제 데이터 기간 + default 파티션 잔존 여부 + 디스크 사용률.
 
     행수는 pg_class.reltuples(통계 추정치)로 읽어 수억 행이어도 즉시 응답한다.
     default 파티션만 정확히 센다 — 재배치 필요 여부 판단용이며 보통 0이어야 한다.
@@ -140,8 +186,15 @@ def get_storage(db: Session = Depends(get_db), _: str = Depends(require_admin)):
          WHERE p.relname = 'ftp_logs'
          ORDER BY c.relname DESC
     """)).fetchall()
-    parts = [StoragePartition(name=r.relname, rows_est=r.rows_est, total_bytes=r.total_bytes,
-                              table_bytes=r.table_bytes, index_bytes=r.index_bytes) for r in rows]
+    ranges = _partition_ranges(db, [r.relname for r in rows])
+    parts = []
+    for r in rows:
+        first_log, last_log = ranges.get(r.relname, (None, None))
+        parts.append(StoragePartition(
+            name=r.relname, rows_est=r.rows_est, total_bytes=r.total_bytes,
+            table_bytes=r.table_bytes, index_bytes=r.index_bytes,
+            has_rows=first_log is not None, first_log=first_log, last_log=last_log,
+        ))
     db_bytes = db.execute(text("SELECT pg_database_size(current_database())")).scalar() or 0
     default_rows = db.execute(text("SELECT COUNT(*) FROM ftp_logs_default")).scalar() or 0
     default_months = []
@@ -150,22 +203,101 @@ def get_storage(db: Session = Depends(get_db), _: str = Depends(require_admin)):
             "SELECT DISTINCT to_char(log_time AT TIME ZONE 'UTC', 'YYYY-MM') "
             "FROM ftp_logs_default ORDER BY 1"
         )).fetchall()]
+    disk_total, disk_used, disk_pct = _disk_usage()
     return StorageInfo(
         db_bytes=db_bytes,
         ftp_logs_bytes=sum(p.total_bytes for p in parts),
         partitions=parts,
         default_rows=default_rows,
         default_months=default_months,
-        retention_months=RETENTION_MONTHS,
+        retention_months=retention.get_retention_months(db),
+        disk_total_bytes=disk_total,
+        disk_used_bytes=disk_used,
+        disk_percent=disk_pct,
+        autopurge_enabled=disk_guard.is_enabled(db),
+        autopurge_percent=disk_guard.get_threshold(db),
     )
+
+
+@router.put("/storage/autopurge", response_model=StorageInfo)
+def update_autopurge(
+    body: DiskPurgeUpdate,
+    db: Session = Depends(get_db),
+    _: Principal = Depends(require_admin),
+):
+    """디스크 임계치 초과 시 자동 삭제 설정.
+
+    켜 두면 롤업 주기마다 확인해 **백업 여부와 무관하게** 가장 오래된 월 파티션부터
+    지운다(운영 결정). 삭제 전후로 로그와 알림이 남는다.
+    """
+    try:
+        disk_guard.save_settings(db, body.enabled, body.percent)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    log.warning("디스크 자동 정리 설정 변경: enabled=%s threshold=%d%%", body.enabled, body.percent)
+    return get_storage(db)
+
+
+@router.put("/storage/retention", response_model=StorageInfo)
+def update_retention(
+    body: RetentionUpdate,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """보존 기간(개월) 변경. 파티션 자동 생성 범위와 백업 스크립트가 같은 값을 읽는다.
+
+    줄이는 것만으로 기존 데이터가 지워지지는 않는다 — 실제 삭제는 야간 백업
+    스크립트(백업이 끝난 파티션부터)나 아래 월별 삭제가 한다.
+    """
+    try:
+        retention.set_retention_months(db, body.months)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    log.info("보존 기간 변경: %s개월", body.months)
+    return get_storage(db)
+
+
+@router.delete("/storage/partitions/{name}", response_model=StorageInfo)
+def drop_partition(
+    name: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """월별 파티션 1개를 DROP 한다 — 되돌릴 수 없다.
+
+    안전장치: 이름 형식(ftp_logs_YYYY_MM) 확인 → 실제로 ftp_logs 의 파티션인지 확인 →
+    당월/미래 파티션 거부(수집 중인 데이터를 지우지 않게).
+    """
+    if not _PARTITION_NAME.match(name):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="월별 파티션(ftp_logs_YYYY_MM)만 삭제할 수 있습니다")
+    is_partition = db.execute(text("""
+        SELECT COUNT(*) FROM pg_inherits i
+          JOIN pg_class c ON c.oid = i.inhrelid
+          JOIN pg_class p ON p.oid = i.inhparent
+         WHERE p.relname = 'ftp_logs' AND c.relname = :n
+    """), {"n": name}).scalar()
+    if not is_partition:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="파티션을 찾을 수 없습니다")
+
+    now = datetime.now(timezone.utc)
+    if name >= f"ftp_logs_{now.year:04d}_{now.month:02d}":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="당월 이후 파티션은 삭제할 수 없습니다")
+
+    db.execute(text(f"DROP TABLE IF EXISTS public.{name}"))
+    db.commit()
+    log.warning("파티션 삭제: %s (관리자 요청)", name)
+    return get_storage(db)
 
 
 # ── 계정 보안 ─────────────────────────────────────────────────────────────────
 
 @router.get("/security")
-def get_security(request: Request, db: Session = Depends(get_db), _: str = Depends(require_admin)):
+def get_security(request: Request, db: Session = Depends(get_db),
+                 me: Principal = Depends(require_admin)):
     return {
-        "username": get_admin_username(db),
+        "username": me.username,
         "allowed_ips": get_office_ips(db),
         "my_ip": client_ip_from_request(request),
     }

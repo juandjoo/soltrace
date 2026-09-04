@@ -10,11 +10,11 @@ const _centerPlugin = {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = `bold ${ct.size || 13}px sans-serif`;
-    ctx.fillStyle = ct.color || '#333';
+    ctx.fillStyle = ct.color || Chart.defaults.color;
     ctx.fillText(ct.line1 || '', cx, ct.line2 ? cy - 9 : cy);
     if (ct.line2) {
       ctx.font = `${(ct.size || 13) - 1}px sans-serif`;
-      ctx.fillStyle = ct.subColor || '#888';
+      ctx.fillStyle = ct.subColor || Chart.defaults.color;
       ctx.fillText(ct.line2, cx, cy + 9);
     }
     ctx.restore();
@@ -38,16 +38,28 @@ function _fmtHourBucket(b, withDate) {
   const hh = pad2(d.getUTCHours());
   return withDate ? `${pad2(d.getUTCMonth() + 1)}/${pad2(d.getUTCDate())} ${hh}시` : hh + '시';
 }
+
+// 버킷 라벨 — 일 단위면 MM/DD, 시간 단위면 기존 규칙.
+// (버킷 문자열은 서버가 로컬 시각을 'Z' 로 붙여 보내므로 getUTC* 로 읽는다)
+function _fmtBucketLabel(b, unit, withDate) {
+  if (unit !== 'day') return _fmtHourBucket(b, withDate);
+  const d = new Date(b);
+  return `${pad2(d.getUTCMonth() + 1)}/${pad2(d.getUTCDate())}`;
+}
 function fmtMetricVal(metric, v) { return metric === 'throughput' ? fmtBytesPerSec(v) : fmtPct(v); }
 
 function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
-// 시간대 라인차트 공통 규칙 — 사용자별 사용량 · 업로드양 · 삭제량 · 장비 그룹별이 모두 같다.
+// 시계열 차트 공통 규칙 — 업로드/삭제 카운트 · 업로드양 · 삭제량이 모두 같다.
 // (색·굵기·점 크기, x축 눈금 밀도가 차트마다 갈라지면 같은 화면에서 다르게 보인다)
-function _hourlyLineStyle(idx, bucketCount) {
+// unit='day' 는 일 단위 합산 막대라 선 스타일 대신 채움색을 쓴다.
+function _hourlyLineStyle(idx, bucketCount, unit) {
   const color = HOURLY_PALETTE[idx % HOURLY_PALETTE.length];
+  if (unit === 'day') {
+    return {backgroundColor: color, borderColor: color, borderWidth: 0};
+  }
   return {
     borderColor: color,
     backgroundColor: color + '22',
@@ -86,6 +98,20 @@ function _dashDateParams() {
   }
   return 'days=7';
 }
+
+// 조회 기간(일). 주/월 처럼 긴 기간은 시간 버킷이면 점이 너무 촘촘해 읽히지 않는다.
+function _dashRangeDays() {
+  if (_dashExactStart && _dashExactEnd) {
+    return (new Date(_dashExactEnd) - new Date(_dashExactStart)) / 86400000;
+  }
+  const s = document.getElementById('dashStart').value;
+  const e = document.getElementById('dashEnd').value;
+  if (s && e) return (new Date(e + 'T23:59:59') - new Date(s + 'T00:00:00')) / 86400000;
+  return 7;
+}
+
+// 2일을 넘으면 일 단위 합산(막대), 그 이하는 시간 단위(선).
+function _dashBucketUnit() { return _dashRangeDays() > 2 ? 'day' : 'hour'; }
 
 function dashLast24() {
   const end   = new Date();
@@ -131,6 +157,77 @@ function dashCustom() {
 function loadAll() {
   loadServiceHealth();
   loadUserHourly();
+}
+
+// ── 대시보드 카드 순서 (드래그) ──────────────────────────────────────────────
+// 손잡이(.dash-grip)를 눌렀을 때만 드래그가 시작된다 — 카드 전체를 draggable 로 두면
+// 차트의 드래그 확대가 먹지 않는다. 순서는 브라우저(localStorage)에만 저장한다.
+const DASH_ORDER_KEY = 'dashCardOrder';
+
+function _dashSlots() {
+  return Array.from(document.querySelectorAll('#dashGrid .dash-slot'));
+}
+
+function _saveDashOrder() {
+  try {
+    localStorage.setItem(DASH_ORDER_KEY,
+      JSON.stringify(_dashSlots().map(el => el.dataset.card)));
+  } catch { /* 저장 실패는 무시 — 순서만 못 기억할 뿐 화면은 정상 */ }
+}
+
+function _restoreDashOrder() {
+  const grid = document.getElementById('dashGrid');
+  if (!grid) return;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(DASH_ORDER_KEY) || 'null'); } catch { saved = null; }
+  if (!Array.isArray(saved)) return;
+  const byId = Object.fromEntries(_dashSlots().map(el => [el.dataset.card, el]));
+  // 저장된 순서에 없는 카드(새로 추가된 것)는 원래 자리에 그대로 남는다
+  saved.forEach(id => { if (byId[id]) grid.appendChild(byId[id]); });
+}
+
+let _dashDragEl = null;
+
+function initDashLayout() {
+  const grid = document.getElementById('dashGrid');
+  if (!grid || grid.dataset.dndReady) return;
+  grid.dataset.dndReady = '1';
+  _restoreDashOrder();
+
+  _dashSlots().forEach(slot => {
+    const grip = slot.querySelector('.dash-grip');
+    if (grip) {
+      grip.addEventListener('mousedown', () => { slot.draggable = true; });
+      grip.addEventListener('mouseup',   () => { slot.draggable = false; });
+    }
+    slot.addEventListener('dragstart', e => {
+      _dashDragEl = slot;
+      slot.classList.add('dash-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', slot.dataset.card);
+    });
+    slot.addEventListener('dragend', () => {
+      slot.classList.remove('dash-dragging');
+      slot.draggable = false;
+      _dashDragEl = null;
+      _saveDashOrder();
+    });
+    slot.addEventListener('dragover', e => {
+      if (!_dashDragEl || _dashDragEl === slot) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      // 커서가 대상 카드의 앞쪽 절반이면 앞에, 뒤쪽 절반이면 뒤에 넣는다
+      const box = slot.getBoundingClientRect();
+      const before = (e.clientX - box.left) < box.width / 2;
+      grid.insertBefore(_dashDragEl, before ? slot : slot.nextSibling);
+    });
+    slot.addEventListener('drop', e => e.preventDefault());
+  });
+}
+
+function resetDashLayout() {
+  try { localStorage.removeItem(DASH_ORDER_KEY); } catch { /* noop */ }
+  location.reload();
 }
 
 // 슬라이스 인덱스 0=전송 실패, 1=로그인 실패, 2=CWD 실패
@@ -186,35 +283,36 @@ function _chartState(key) {
 async function loadUserHourly() {
   _setPeriodLabels('userUploadCntPeriod', 'userDeleteCntPeriod',
                    'userUploadPeriod', 'userDeletePeriod');
-  const data = await api('GET', `/dashboard/users-hourly?${_dashDateParams()}`);
+  const unit = _dashBucketUnit();
+  const data = await api('GET', `/dashboard/users-hourly?${_dashDateParams()}&bucket=${unit}`);
   if (!data) return;
 
   if (!data.length) {
-    Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, [], [], String));
-    _renderUserVolumeChart('userUpload', 'chartUserUpload', [], [], String, () => [0, 0]);
-    _renderUserVolumeChart('userDelete', 'chartUserDelete', [], [], String, () => [0, 0]);
+    Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, [], [], String, unit));
+    _renderUserVolumeChart('userUpload', 'chartUserUpload', [], [], String, () => [0, 0], unit);
+    _renderUserVolumeChart('userDelete', 'chartUserDelete', [], [], String, () => [0, 0], unit);
     return;
   }
 
   // 버킷은 전체 사용자 기준 — 삭제만 한 사용자도 x축에 들어와야 한다
   const bucketSet = new Set(data.flatMap(u => u.data.map(h => h.bucket)));
   const allBuckets = [...bucketSet].sort();
-  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
+  const fmtBucket = b => _fmtBucketLabel(b, unit, allBuckets.length > 25);
 
   // 버킷 → 시점 맵. 네 차트(업로드·삭제 카운트, 업로드양·삭제량)가 같은 맵을 쓴다.
   data.forEach(u => { u._map = Object.fromEntries(u.data.map(h => [h.bucket, h])); });
 
-  Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, data, allBuckets, fmtBucket));
+  Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, data, allBuckets, fmtBucket, unit));
 
   // 업로드양 · 삭제량 (기간별) — 같은 응답으로 그린다 (추가 요청 없음).
   _renderUserVolumeChart('userUpload', 'chartUserUpload', data, allBuckets, fmtBucket,
-                         h => [h.bytes_in || 0, h.uploads || 0]);
+                         h => [h.bytes_in || 0, h.uploads || 0], unit);
   _renderUserVolumeChart('userDelete', 'chartUserDelete', data, allBuckets, fmtBucket,
-                         h => [h.bytes_del || 0, h.deletes || 0]);
+                         h => [h.bytes_del || 0, h.deletes || 0], unit);
 }
 
 // 사용자별 건수 라인차트 + 범례표(사용자·최대·현재, 클릭 시 해당 계정만 표시).
-function _renderUserCountChart(key, series, buckets, fmtBucket) {
+function _renderUserCountChart(key, series, buckets, fmtBucket, unit) {
   const cfg = USER_COUNT_CHARTS[key];
   const legendEl = document.getElementById(cfg.legend);
   const st = _chartState(key);
@@ -231,11 +329,11 @@ function _renderUserCountChart(key, series, buckets, fmtBucket) {
   const datasets = active.map((u, i) => ({
     label: u.username,
     data: buckets.map(b => cfg.pick(u._map[b] || {})),
-    ..._hourlyLineStyle(i, buckets.length),
+    ..._hourlyLineStyle(i, buckets.length, unit),
   }));
 
   charts[key] = new Chart(document.getElementById(cfg.canvas), {
-    type: 'line',
+    type: unit === 'day' ? 'bar' : 'line',
     data: {labels: buckets.map(fmtBucket), datasets},
     options: {
       responsive: true,
@@ -253,8 +351,10 @@ function _renderUserCountChart(key, series, buckets, fmtBucket) {
         },
       },
       scales: {
-        x: _hourlyXScale(buckets.length),
-        y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
+        // 일 단위 막대는 사용자별로 쌓아 그날의 합이 한눈에 보이게 한다
+        x: {..._hourlyXScale(buckets.length), stacked: unit === 'day'},
+        y: {beginAtZero: true, stacked: unit === 'day',
+            ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
   });
@@ -278,7 +378,7 @@ function _renderUserCountChart(key, series, buckets, fmtBucket) {
   st.sort = {col: null, asc: true};
   legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
     <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
-    <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
+    <thead><tr style="color:var(--st-muted);border-bottom:1px solid var(--st-border)">
       <th data-col="name" onclick="sortUserChart('${key}', 'name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">${cfg.head}<span class="sort-arrow"></span></th>
       <th data-col="max" onclick="sortUserChart('${key}', 'max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
       <th data-col="cur" onclick="sortUserChart('${key}', 'cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
@@ -289,8 +389,9 @@ function _renderUserCountChart(key, series, buckets, fmtBucket) {
 
 // 사용자별 '양' 추이 라인차트 — 업로드양·삭제량 카드가 같은 코드를 쓴다.
 // pick(h) → [바이트, 건수]. 값이 모두 0인 사용자는 빼고, 아무도 없으면 안내 문구로 대체한다.
-function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, pick) {
+function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, pick, unit) {
   destroyChart(chartKey);
+  _chartState(chartKey).focus = null;
   const canvas = document.getElementById(canvasId);
   const empty  = document.getElementById(canvasId + 'Empty');
   if (!canvas || !empty) return;
@@ -303,7 +404,7 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
       label: u.username,
       data: picked.map(([v]) => v),
       counts: picked.map(([, n]) => n),
-      ..._hourlyLineStyle(datasets.length, buckets.length),
+      ..._hourlyLineStyle(datasets.length, buckets.length, unit),
     });
   });
 
@@ -316,22 +417,29 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
   empty.classList.add('d-none');
 
   charts[chartKey] = new Chart(canvas, {
-    type: 'line',
+    type: unit === 'day' ? 'bar' : 'line',
     data: {labels: buckets.map(fmtBucket), datasets},
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: {mode: 'index', intersect: false},
       plugins: {
-        legend: {position: 'right', labels: {boxWidth: 10, font: {size: 10}}},
+        legend: {
+          position: 'right',
+          labels: {boxWidth: 10, font: {size: 10}},
+          // 계정을 클릭하면 그 계정만 표시, 같은 계정을 다시 누르면 전체 복원
+          // (카운트 카드의 범례 클릭과 같은 동작을 쓴다)
+          onClick: (e, item) => focusUserChart(chartKey, item.datasetIndex),
+        },
         tooltip: {callbacks: {label: c => {
           const n = c.dataset.counts?.[c.dataIndex] || 0;
           return `${c.dataset.label}: ${fmtBytes(c.parsed.y)} (${n.toLocaleString()}건)`;
         }}},
       },
       scales: {
-        x: _hourlyXScale(buckets.length),
-        y: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}},
+        x: {..._hourlyXScale(buckets.length), stacked: unit === 'day'},
+        y: {beginAtZero: true, stacked: unit === 'day',
+            ticks: {callback: v => fmtBytes(v), font: {size: 10}}},
       },
     },
   });

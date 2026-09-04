@@ -85,7 +85,7 @@ function renderGroupPage(page) {
     const headerLabel = telco
       ? `<i class="bi bi-broadcast-pin-fill me-2 text-brand"></i><span class="fw-semibold">${esc(telco)}</span>`
       : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-semibold text-muted">통신사 미지정</span>`;
-    const spacer = isFirst ? '' : `<tr><td colspan="${GROUP_COLS}" style="height:10px;padding:0;background:#f5f7fa;border-top:2px solid #dee2e6"></td></tr>`;
+    const spacer = isFirst ? '' : `<tr><td colspan="${GROUP_COLS}" style="height:10px;padding:0;background:var(--st-bg);border-top:2px solid var(--st-border)"></td></tr>`;
     isFirst = false;
     return `${spacer}
       <tr class="table-secondary" data-telco="${telco || ''}">

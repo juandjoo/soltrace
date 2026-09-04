@@ -23,12 +23,15 @@ class AppConfig(Base):
 
 
 class User(Base):
-    """웹 로그인 계정.
+    """웹 로그인 계정 — 관리자(admin)와 고객사(customer)를 모두 담는다.
 
-    admin은 기존대로 app_config(admin_username/admin_password_hash)로 부트스트랩되며
-    이 테이블에는 고객사(customer) 계정을 저장한다.
+    최초 기동 시 app_config(admin_username/admin_password_hash)의 부트스트랩 관리자가
+    이 테이블로 옮겨진다(security.ensure_admin_user). 이후 관리자 계정도 여기서 관리한다.
+    - role='admin'    : 전체 접근. 전역 허용 IP(설정 > 계정 보안)가 함께 적용된다
     - role='customer' : customer 값과 일치하는 groups.customer 그룹의 장비 데이터만 조회 가능
     - allowed_ips     : 이 계정에 한해 허용할 IP/CIDR 목록(줄바꿈/쉼표 구분). 비어있으면 제한 없음
+    - failed_attempts / locked_until : 비밀번호 연속 실패 잠금. 메모리가 아니라 DB에 둬야
+      재시작·다중 워커에서도 같은 상태를 본다.
     """
     __tablename__ = "users"
 
@@ -39,6 +42,9 @@ class User(Base):
     customer = Column(Text)              # role=customer일 때 groups.customer 와 매칭
     allowed_ips = Column(Text)           # 계정별 허용 IP/CIDR (비어있으면 제한 없음)
     is_active = Column(Boolean, nullable=False, default=True)
+    failed_attempts = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime(timezone=True))
+    last_login_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=_now)
 
 

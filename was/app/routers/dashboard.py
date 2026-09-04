@@ -232,9 +232,15 @@ def get_users_hourly(
     days: int = Query(default=7, ge=1, le=366),
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    bucket: str = Query(default="hour", pattern="^(hour|day)$"),
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
 ):
+    """bucket='day' 면 일 단위 합산 — 주/월 조회에서 시간 버킷은 점이 너무 촘촘하다.
+
+    bucket 은 정규식으로 hour|day 만 받는다 (DATE_TRUNC 인자는 바인딩할 수 없어
+    문자열로 넣기 때문에, 검증을 통과한 값만 들어가게 한다).
+    """
     since, until = _time_range(start_date, end_date, days=days)
     params = {"since": since, "until": until}
     cte_f = _scope_sql(params, scope, "device_id")      # top_users CTE 내부 (별칭 없음)
@@ -250,7 +256,7 @@ def get_users_hourly(
             LIMIT 10
         )
         SELECT fl.username,
-               DATE_TRUNC('hour', fl.log_time) AS bucket,
+               DATE_TRUNC('{bucket}', fl.log_time) AS bucket,
                COALESCE(SUM(CASE WHEN fl.action='upload'   THEN 1 ELSE 0 END), 0)::int AS uploads,
                COALESCE(SUM(CASE WHEN fl.action='download' THEN 1 ELSE 0 END), 0)::int AS downloads,
                COALESCE(SUM(CASE WHEN fl.action='delete'   THEN 1 ELSE 0 END), 0)::int AS deletes,
