@@ -93,7 +93,9 @@ function _renderStorage(s) {
     rangeEl.innerHTML = '<span class="text-muted">데이터 없음</span>';
   }
 
-  document.getElementById('stAutoPurge').checked = !!s.autopurge_enabled;
+  // 켜짐/꺼짐을 스위치가 아니라 선택 버튼으로 — 되돌릴 수 없는 동작이라 상태가 분명해야 한다
+  document.getElementById('stAutoPurgeOn').checked = !!s.autopurge_enabled;
+  document.getElementById('stAutoPurgeOff').checked = !s.autopurge_enabled;
   document.getElementById('stAutoPurgePct').value = s.autopurge_percent;
 
   const disk = document.getElementById('stDisk');
@@ -143,7 +145,7 @@ async function saveRetention() {
 }
 
 async function saveAutoPurge() {
-  const enabled = document.getElementById('stAutoPurge').checked;
+  const enabled = document.getElementById('stAutoPurgeOn').checked;
   const percent = parseInt(document.getElementById('stAutoPurgePct').value, 10);
   if (!Number.isFinite(percent) || percent < 50 || percent > 99) {
     settingsMsg('storageMsg', 'danger', '임계치는 50~99% 사이여야 합니다.');
