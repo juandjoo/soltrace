@@ -95,12 +95,6 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   } finally { btn.disabled = false; }
 });
 
-['logUserFilter', 'logStartTime', 'logEndTime'].forEach(id => {
-  document.getElementById(id).addEventListener('keydown', e => {
-    if (e.key === 'Enter') searchLogs(1);
-  });
-});
-
 (function init() {
   if (token) {
     startSessionTimers(token);

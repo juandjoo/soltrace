@@ -18,10 +18,26 @@
   --st-text:     #475569;
   --st-topbar-h: 52px;   /* 왼쪽 탭 sticky 기준 (상단 탭바 높이) */
   --st-sidenav-w: 92px;
+  /* 아래 4개는 다크 모드에서 값만 바뀐다 — 색을 직접 쓰지 말고 이 변수를 쓸 것 */
+  --st-bg:       #f5f7fa;   /* 페이지 바탕 */
+  --st-surface:  #fff;      /* 카드·상단바·사이드바 면 */
+  --st-border:   #d1d5db;   /* 경계선 */
+  --st-muted:    #6c757d;   /* 보조 텍스트 */
+}
+
+/* 다크 모드 — Bootstrap 5.3 의 data-bs-theme 를 그대로 쓰고,
+   BS 가 손대지 않는 고정색(.bg-white, 커스텀 배경)만 여기서 덮는다. */
+[data-bs-theme="dark"] {
+  --st-brand-bg: #3a2410;
+  --st-text:     #adb5bd;
+  --st-bg:       #14171a;
+  --st-surface:  #1e2227;
+  --st-border:   #2d333a;
+  --st-muted:    #8b949e;
 }
 
 /* ── 레이아웃 ──────────────────────────────────────────────────── */
-body        { background: #f5f7fa; font-size: 14px; }
+body        { background: var(--st-bg); font-size: 14px; }
 #main       { overflow: auto; }
 .page       { display: none; }
 .page.active { display: block; }
@@ -30,8 +46,8 @@ body        { background: #f5f7fa; font-size: 14px; }
 
 /* ── 상단 탭바 ─────────────────────────────────────────────────── */
 #topbar {
-  background: #fff;
-  border-bottom: 1px solid #d1d5db;
+  background: var(--st-surface);
+  border-bottom: 1px solid var(--st-border);
   box-shadow: 0 2px 4px rgba(0,0,0,.06);
   position: sticky;
   top: 0;
@@ -80,8 +96,8 @@ body        { background: #f5f7fa; font-size: 14px; }
 #sidenav {
   flex: 0 0 var(--st-sidenav-w);
   width: var(--st-sidenav-w);
-  background: #fff;
-  border-right: 1px solid #d1d5db;
+  background: var(--st-surface);
+  border-right: 1px solid var(--st-border);
   padding: 10px 6px;
   display: flex;
   flex-direction: column;
@@ -124,7 +140,7 @@ body        { background: #f5f7fa; font-size: 14px; }
 .card                    { border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .btn-xs                  { padding: 2px 8px; font-size: 12px; }
 
-.table th                { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #6c757d; }
+.table th                { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--st-muted); }
 #loginModal .modal-dialog { max-width: 380px; margin-top: 15vh; }
 
 /* ── 대시보드 ──────────────────────────────────────────────────── */
@@ -170,7 +186,42 @@ body        { background: #f5f7fa; font-size: 14px; }
 }
 #page-apiguide table code { font-size: .78rem; }
 
+/* ── 대시보드 카드 드래그 ───────────────────────────────────────── */
+.dash-grip {
+  cursor: grab;
+  color: #adb5bd;
+  margin-right: 6px;
+  font-size: 1rem;
+  line-height: 1;
+}
+.dash-grip:active     { cursor: grabbing; }
+.dash-slot:hover .dash-grip { color: var(--st-brand); }
+.dash-dragging        { opacity: .45; }
+
+/* ── 다크 모드 보정 ─────────────────────────────────────────────── */
+/* .bg-white / .table-light 는 Bootstrap 이 라이트 고정색으로 두는 유틸리티라 직접 덮는다 */
+[data-bs-theme="dark"] .bg-white { background-color: var(--st-surface) !important; }
+/* .bg-light 는 Bootstrap 이 다크에서도 흰색에 가깝게 둔다 — 본문 배경으로 쓴 곳만 덮는다.
+   배지(.badge.bg-light.text-dark)는 글자색이 어두우므로 제외해야 읽힌다. */
+[data-bs-theme="dark"] .bg-light:not(.badge) { background-color: #262b31 !important; }
+[data-bs-theme="dark"] .table-light > :not(caption) > * > * {
+  background-color: #24292f;
+  color: var(--st-text);
+}
+[data-bs-theme="dark"] .api-code      { background: #1b1f24; border-color: var(--st-border); }
+[data-bs-theme="dark"] .api-code code { color: #c9d1d9; }
+[data-bs-theme="dark"] .card          { box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+[data-bs-theme="dark"] .btn-extend    { border-color: var(--st-border); color: var(--st-text); }
+[data-bs-theme="dark"] #page-logs table thead th:not(:last-child) { border-right-color: var(--st-border); }
+
 </style>
+<script>
+  // 저장된 테마를 첫 페인트 전에 적용한다 (utils.js 는 body 끝에서 로드되어 늦다)
+  try {
+    document.documentElement.setAttribute('data-bs-theme',
+      localStorage.getItem('soltrace_theme') === 'dark' ? 'dark' : 'light');
+  } catch (e) { /* 저장소 차단 환경 — 기본(라이트)으로 둔다 */ }
+</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 </head>
@@ -215,6 +266,15 @@ body        { background: #f5f7fa; font-size: 14px; }
       <i class="bi bi-hdd-network me-2 text-brand"></i><span class="text-brand">Sol</span><span>Trace</span>
     </button>
     <div class="ms-auto d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-topbar-icon" id="themeToggleBtn" onclick="toggleTheme()" title="다크 모드로">
+        <i class="bi bi-moon-stars" id="themeToggleIcon" style="font-size:1.15rem"></i>
+      </button>
+      <span id="currentUserBox" class="d-flex align-items-center gap-1 small me-1">
+        <i class="bi bi-person-circle" style="font-size:1rem"></i>
+        <span id="currentUserName" class="fw-semibold"></span>
+        <span id="currentUserRole" class="badge rounded-pill"></span>
+      </span>
+      <span class="vr" style="opacity:.2"></span>
       <span id="sessionTimerDisplay" class="session-timer d-flex align-items-center gap-1 small">
         <i class="bi bi-clock" style="font-size:.85rem"></i>
         <span id="sessionTimerText" style="font-variant-numeric:tabular-nums;min-width:2.6rem;font-weight:500">--:--</span>
@@ -232,6 +292,8 @@ body        { background: #f5f7fa; font-size: 14px; }
   <nav id="sidenav">
     <a class="nav-link active" href="#" onclick="nav('dashboard')" title="대시보드"><i class="bi bi-speedometer2"></i><span>대시보드</span></a>
     <a class="nav-link" href="#" onclick="nav('logs')" title="로그 조회"><i class="bi bi-list-ul"></i><span>로그 조회</span></a>
+    <a class="nav-link" href="#" onclick="nav('devices')" title="장비 관리" data-admin-only><i class="bi bi-hdd-stack-fill"></i><span>장비 관리</span></a>
+    <a class="nav-link" href="#" onclick="nav('groups')" title="그룹 관리" data-admin-only><i class="bi bi-diagram-3-fill"></i><span>그룹 관리</span></a>
     <a class="nav-link" href="#" onclick="nav('apiguide')" title="API 가이드"><i class="bi bi-code-slash"></i><span>API 가이드</span></a>
     <a class="nav-link" href="#" onclick="nav('changelog')" title="변경 이력" data-admin-only><i class="bi bi-clock-history"></i><span>변경 이력</span></a>
     <a class="nav-link" href="#" onclick="nav('settings')" title="설정" data-admin-only><i class="bi bi-gear-fill"></i><span>설정</span></a>
@@ -255,40 +317,46 @@ body        { background: #f5f7fa; font-size: 14px; }
           <input type="date" class="form-control form-control-sm" id="dashEnd" style="width:130px" onchange="dashCustom()">
           <button class="btn btn-sm btn-outline-secondary" id="btnDashAuto" onclick="toggleDashAutoRefresh()" title="자동 새로고침 켜기"><i class="bi bi-arrow-repeat"></i> <span>자동</span></button>
           <button class="btn btn-sm btn-outline-primary" onclick="loadAll()"><i class="bi bi-arrow-clockwise"></i></button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="resetDashLayout()" title="카드 순서를 기본값으로"><i class="bi bi-grid-1x2"></i></button>
         </div>
       </div>
-      <!-- 1행: 사용자별 사용량 + 장비 그룹별 시간대별 사용량 -->
-      <div class="row g-3 mb-3">
-        <div class="col-lg-6">
+      <!-- 카드는 드래그(왼쪽 손잡이)로 순서를 바꿀 수 있고 순서는 브라우저에 저장된다 -->
+      <div class="row g-3" id="dashGrid">
+
+        <div class="col-lg-6 dash-slot" data-card="userUploadCnt">
           <div class="card dash-card p-3 h-100">
             <div class="d-flex align-items-center mb-2">
-              <span class="fw-semibold small">사용자별 사용량</span>
-              <button id="resetUserZoomBtn" class="btn btn-xs btn-outline-secondary ms-2 d-none" onclick="resetUserHourlyZoom()"><i class="bi bi-zoom-out me-1"></i>초기화</button>
+              <i class="bi bi-grip-vertical dash-grip" title="드래그해서 카드 위치 변경"></i>
+              <span class="fw-semibold small">사용자별 업로드 카운트</span>
+              <span id="userUploadCntPeriod" class="text-muted ms-2" style="font-size:0.75rem"></span>
+              <button id="resetUserUploadCntZoomBtn" class="btn btn-xs btn-outline-secondary ms-2 d-none" onclick="resetUserChartZoom('userUploadCnt')"><i class="bi bi-zoom-out me-1"></i>초기화</button>
             </div>
             <div class="d-flex gap-2">
-              <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartUserHourly"></canvas></div>
-              <div id="userHourlyLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
+              <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartUserUploadCnt"></canvas></div>
+              <div id="userUploadCntLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
             </div>
           </div>
         </div>
-        <div class="col-lg-6">
+
+        <div class="col-lg-6 dash-slot" data-card="userDeleteCnt">
           <div class="card dash-card p-3 h-100">
             <div class="d-flex align-items-center mb-2">
-              <span class="fw-semibold small">장비 그룹별 시간대별 사용량</span>
-              <button id="resetHourlyZoomBtn" class="btn btn-xs btn-outline-secondary ms-2 d-none" onclick="resetHourlyZoom()"><i class="bi bi-zoom-out me-1"></i>초기화</button>
+              <i class="bi bi-grip-vertical dash-grip" title="드래그해서 카드 위치 변경"></i>
+              <span class="fw-semibold small">사용자별 삭제 카운트</span>
+              <span id="userDeleteCntPeriod" class="text-muted ms-2" style="font-size:0.75rem"></span>
+              <button id="resetUserDeleteCntZoomBtn" class="btn btn-xs btn-outline-secondary ms-2 d-none" onclick="resetUserChartZoom('userDeleteCnt')"><i class="bi bi-zoom-out me-1"></i>초기화</button>
             </div>
             <div class="d-flex gap-2">
-              <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartHourly"></canvas></div>
-              <div id="hourlyGroupLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
+              <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartUserDeleteCnt"></canvas></div>
+              <div id="userDeleteCntLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
             </div>
           </div>
         </div>
-      </div>
-      <!-- 2행: 사용자별 업로드양 · 삭제량 (기간별) -->
-      <div class="row g-3 mb-3">
-        <div class="col-lg-6">
+
+        <div class="col-lg-6 dash-slot" data-card="userUpload">
           <div class="card dash-card p-3 h-100">
-            <div class="d-flex align-items-baseline gap-2 mb-2">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <i class="bi bi-grip-vertical dash-grip" title="드래그해서 카드 위치 변경"></i>
               <span class="fw-semibold small">사용자별 업로드양</span>
               <span id="userUploadPeriod" class="text-muted" style="font-size:0.75rem"></span>
             </div>
@@ -298,9 +366,11 @@ body        { background: #f5f7fa; font-size: 14px; }
             </div>
           </div>
         </div>
-        <div class="col-lg-6">
+
+        <div class="col-lg-6 dash-slot" data-card="userDelete">
           <div class="card dash-card p-3 h-100">
-            <div class="d-flex align-items-baseline gap-2 mb-2">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <i class="bi bi-grip-vertical dash-grip" title="드래그해서 카드 위치 변경"></i>
               <span class="fw-semibold small">사용자별 삭제량</span>
               <span id="userDeletePeriod" class="text-muted" style="font-size:0.75rem"></span>
             </div>
@@ -310,21 +380,22 @@ body        { background: #f5f7fa; font-size: 14px; }
             </div>
           </div>
         </div>
-      </div>
-      <!-- 3행: 영향도 + 실패건수 -->
-      <div class="row g-3 mb-3">
-        <div class="col-lg-6">
+
+        <div class="col-lg-6 dash-slot" data-card="healthStatus">
           <div class="card dash-card p-3 h-100">
-            <div class="d-flex align-items-baseline gap-2 mb-2">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <i class="bi bi-grip-vertical dash-grip" title="드래그해서 카드 위치 변경"></i>
               <span class="fw-semibold small">서비스 영향도 (상태)</span>
               <span id="healthStatusPeriod" class="text-muted" style="font-size:0.75rem"></span>
             </div>
             <div style="position:relative;height:220px"><canvas id="chartHealthStatus"></canvas></div>
           </div>
         </div>
-        <div class="col-lg-6">
+
+        <div class="col-lg-6 dash-slot" data-card="healthRate">
           <div class="card dash-card p-3 h-100">
-            <div class="d-flex align-items-baseline gap-2 mb-2">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <i class="bi bi-grip-vertical dash-grip" title="드래그해서 카드 위치 변경"></i>
               <span class="fw-semibold small">전송/로그인 실패 건수</span>
               <span id="healthRatePeriod" class="text-muted" style="font-size:0.75rem"></span>
               <button class="btn btn-outline-secondary btn-xs ms-auto" onclick="openCwdAnalysis()"
@@ -335,12 +406,13 @@ body        { background: #f5f7fa; font-size: 14px; }
             <div style="position:relative;height:220px"><canvas id="chartHealthRate"></canvas></div>
           </div>
         </div>
-      </div>
-      <!-- 4행: 이상 알림 -->
-      <div class="row g-3">
-        <div class="col-12">
+
+        <div class="col-12 dash-slot" data-card="healthAlerts">
           <div class="card dash-card p-3">
-            <div class="fw-semibold mb-2 small">최근 이상 알림</div>
+            <div class="d-flex align-items-center mb-2">
+              <i class="bi bi-grip-vertical dash-grip" title="드래그해서 카드 위치 변경"></i>
+              <span class="fw-semibold small">최근 이상 알림</span>
+            </div>
             <div class="table-responsive" style="max-height:260px;overflow:auto">
               <table class="table table-sm align-middle mb-0">
                 <thead><tr class="text-muted small">
@@ -351,6 +423,7 @@ body        { background: #f5f7fa; font-size: 14px; }
             </div>
           </div>
         </div>
+
       </div>
     </div>
 
@@ -440,16 +513,16 @@ body        { background: #f5f7fa; font-size: 14px; }
       <!-- 검색 필터 -->
       <div class="card mb-3 px-3 py-2">
         <div class="d-flex gap-1 align-items-center flex-wrap">
-          <select class="form-select form-select-sm" style="flex:0.8;min-width:80px" id="logTelcoFilter" onchange="onTelcoFilter()">
-            <option value="">전체 텔코</option>
-          </select>
-          <div style="position:relative;flex:1;min-width:90px">
+          <div style="position:relative;flex:1;min-width:110px">
             <select class="form-select form-select-sm w-100" id="logGroupFilter" onchange="searchLogs(1)">
               <option value="">전체 그룹</option>
             </select>
-            <div id="logGroupTip" class="d-none position-absolute bg-white border rounded shadow-sm px-2 py-1 small" style="top:calc(100% + 4px);left:0;z-index:1055;min-width:200px;line-height:1.6;pointer-events:none"></div>
+            <div id="logGroupTip" class="d-none position-absolute bg-white border rounded shadow-sm px-2 py-1 small" style="top:calc(100% + 4px);left:0;z-index:1055;min-width:200px;line-height:1.6;white-space:pre-wrap;pointer-events:none"></div>
           </div>
-          <input class="form-control form-control-sm" style="flex:0.8;min-width:80px" id="logUserFilter" placeholder="사용자ID" readonly autocomplete="off" onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')searchLogs(1)">
+          <div class="input-group input-group-sm" style="flex:1;min-width:150px">
+            <input class="form-control form-control-sm" id="logUserFilter" placeholder="사용자ID" readonly autocomplete="off" onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')searchLogs(1)">
+            <button class="btn btn-outline-secondary" id="logUserPickBtn" onclick="openUserPicker()" title="접근한 계정 중에서 여러 개 선택"><i class="bi bi-people"></i></button>
+          </div>
           <input class="form-control form-control-sm" style="flex:0.9;min-width:95px" id="logIpFilter" placeholder="사용자IP" readonly autocomplete="off" onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')searchLogs(1)">
           <input class="form-control form-control-sm" style="flex:1.4;min-width:110px" id="logFileFilter" placeholder="파일명/경로" autocomplete="off" onkeydown="if(event.key==='Enter')searchLogs(1)">
           <select class="form-select form-select-sm" style="flex:0.9;min-width:90px" id="logActionFilter" onchange="searchLogs(1)">
@@ -477,11 +550,18 @@ body        { background: #f5f7fa; font-size: 14px; }
             <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(-1)">어제</button>
             <button class="btn btn-outline-secondary btn-xs" onclick="logDateQuick(-7)">7일</button>
           </div>
-          <input type="datetime-local" class="form-control form-control-sm" style="flex:1.3;min-width:135px" id="logStartTime">
+          <input type="date" class="form-control form-control-sm" style="flex:1;min-width:120px" id="logStartTime" onkeydown="return false" onclick="openDatePicker(this)" title="시작일 — 클릭하면 달력이 열립니다">
           <span class="flex-shrink-0 text-muted small">~</span>
-          <input type="datetime-local" class="form-control form-control-sm" style="flex:1.3;min-width:135px" id="logEndTime">
+          <input type="date" class="form-control form-control-sm" style="flex:1;min-width:120px" id="logEndTime" onkeydown="return false" onclick="openDatePicker(this)" title="종료일 — 클릭하면 달력이 열립니다">
           <button class="btn btn-primary btn-sm flex-shrink-0" onclick="searchLogs(1)"><i class="bi bi-search"></i></button>
           <button class="btn btn-outline-secondary btn-sm flex-shrink-0" onclick="resetLogFilters()" title="검색 초기화"><i class="bi bi-x-circle"></i></button>
+        </div>
+        <div id="logCustomerChip" class="d-none px-1 pt-1">
+          <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">
+            고객사: <span id="logCustomerChipName" class="fw-semibold"></span>
+            <button type="button" class="btn-close btn-close-sm ms-1 align-middle" style="font-size:.55rem"
+                    onclick="clearCustomerFilter()" title="고객사 조건 지우기"></button>
+          </span>
         </div>
         <div class="px-1 pt-1 pb-0">
           <span class="text-muted" style="font-size:0.72rem"><i class="bi bi-info-circle me-1"></i>기본 조회 3개월, 이상 조회 시 날짜 지정 후 진행 · CWD 실패 중 직후 그 경로가 생성된 건(존재 확인)은 실패가 아니라 목록에서 제외</span>
@@ -512,9 +592,73 @@ body        { background: #f5f7fa; font-size: 14px; }
         </div>
         <div class="d-flex align-items-center px-3 py-2 border-top">
           <span class="text-muted small" id="logTotal"></span>
-          <nav class="ms-auto"><ul class="pagination pagination-sm mb-0" id="logPager"></ul></nav>
+          <nav class="ms-auto d-flex align-items-center gap-2">
+            <ul class="pagination pagination-sm mb-0" id="logPager"></ul>
+            <div id="logPageJump" class="d-none align-items-center gap-1">
+              <input type="number" min="1" class="form-control form-control-sm" id="logPageJumpInput"
+                     style="width:74px" title="이동할 페이지 번호"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();jumpLogPage();}">
+              <button class="btn btn-sm btn-outline-secondary" onclick="jumpLogPage()">이동</button>
+            </div>
+          </nav>
         </div>
       </div>
+    </div>
+
+    <!-- 장비 관리 -->
+    <div id="page-devices" class="page">
+      <div class="d-flex align-items-center mb-3">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-hdd-stack-fill me-2 text-brand"></i>장비 관리</h5>
+        <div class="ms-auto d-flex gap-2">
+          <select class="form-select form-select-sm" id="deviceFilter" onchange="loadDevices()" style="width:120px">
+            <option value="">전체</option>
+            <option value="pending">대기중</option>
+            <option value="confirmed">확인됨</option>
+            <option value="disabled">비활성</option>
+          </select>
+          <button class="btn btn-sm btn-outline-primary" onclick="loadDevices()"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="text-center">호스트명</th><th class="text-center">IP</th><th class="text-center">장비상태</th><th class="text-center">데몬상태</th>
+                <th class="text-center">CPU / MEM / Disk</th><th class="text-center">버퍼</th>
+                <th class="text-center">마지막 연결</th><th class="text-center">그룹</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="deviceTable"><tr><td colspan="9" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 그룹 관리 -->
+    <div id="page-groups" class="page">
+      <div class="d-flex align-items-center mb-3">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-diagram-3-fill me-2 text-brand"></i>그룹 관리</h5>
+        <button class="btn btn-sm btn-primary ms-auto" onclick="openGroupModal()">
+          <i class="bi bi-plus-lg me-1"></i>그룹 추가
+        </button>
+      </div>
+      <div class="d-flex align-items-center mb-2 gap-2 flex-wrap">
+        <div id="groupFilter" class="d-flex gap-2 flex-wrap"></div>
+        <div class="ms-auto d-flex align-items-center gap-1">
+          <label class="form-label mb-0 small text-muted">페이지당</label>
+          <select class="form-select form-select-sm" style="width:72px" id="groupPageSize" onchange="renderGroupPage(1)">
+            <option value="10">10</option>
+            <option value="20" selected>20</option>
+            <option value="50">50</option>
+            <option value="0">전체</option>
+          </select>
+        </div>
+      </div>
+      <div id="groupCards">
+        <div class="text-center text-muted py-4">로딩 중...</div>
+      </div>
+      <div id="groupPager" class="d-flex justify-content-center mt-2"></div>
     </div>
 
     <!-- API 가이드 -->
@@ -615,10 +759,9 @@ body        { background: #f5f7fa; font-size: 14px; }
           <ul class="nav settings-vnav flex-column" style="min-width:170px">
             <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-telephone-fill me-2"></i>텔코 정보</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('security')"><i class="bi bi-shield-lock-fill me-2"></i>계정 보안</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('admins')"><i class="bi bi-person-badge-fill me-2"></i>관리자 계정</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('storage')"><i class="bi bi-database-fill me-2"></i>DB 저장소</a></li>
-            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('devices')"><i class="bi bi-hdd-stack-fill me-2"></i>장비 관리</a></li>
-            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('groups')"><i class="bi bi-diagram-3-fill me-2"></i>그룹 관리</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('notify')"><i class="bi bi-bell-fill me-2"></i>알림 설정</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('users')"><i class="bi bi-people-fill me-2"></i>고객 계정</a></li>
           </ul>
@@ -718,79 +861,50 @@ body        { background: #f5f7fa; font-size: 14px; }
                 <dl class="row small mb-2">
                   <dt class="col-sm-4 text-muted">데이터베이스 전체</dt><dd class="col-sm-8" id="stDbSize">-</dd>
                   <dt class="col-sm-4 text-muted">ftp_logs (전체 파티션)</dt><dd class="col-sm-8" id="stLogsSize">-</dd>
-                  <dt class="col-sm-4 text-muted">보존 기간</dt><dd class="col-sm-8" id="stRetention">-</dd>
+                  <dt class="col-sm-4 text-muted">데이터 보유 기간</dt><dd class="col-sm-8" id="stDataRange">-</dd>
+                  <dt class="col-sm-4 text-muted">디스크 (/)</dt><dd class="col-sm-8" id="stDisk">-</dd>
                   <dt class="col-sm-4 text-muted">default 파티션</dt><dd class="col-sm-8" id="stDefault">-</dd>
                 </dl>
-                <div class="form-text">행 수는 통계 추정치입니다. default 파티션에 행이 남아 있으면 해당 월 파티션이 만들어지지 않고 보존기간 정리에서도 제외되므로 <code>scripts/rebalance_default_partition.sql</code> 로 재배치하세요.</div>
+                <div class="d-flex align-items-center gap-2 p-2 bg-light rounded mb-2">
+                  <span class="small fw-semibold">보존 기간</span>
+                  <input type="number" class="form-control form-control-sm" id="stRetentionInput" min="1" max="120" style="width:88px">
+                  <span class="small text-muted">개월</span>
+                  <button class="btn btn-sm btn-primary py-0 px-2" onclick="saveRetention()">저장</button>
+                  <span class="text-muted" style="font-size:0.75rem">초과 파티션은 야간 백업 후 삭제됩니다. 기간을 줄여도 즉시 지워지지는 않습니다.</span>
+                </div>
+                <div class="d-flex align-items-center gap-2 p-2 bg-light rounded mb-2 flex-wrap">
+                  <span class="small fw-semibold">디스크 자동 정리</span>
+                  <div class="btn-group btn-group-sm" role="group" aria-label="디스크 자동 정리 사용 여부">
+                    <input type="radio" class="btn-check" name="stAutoPurgeMode" id="stAutoPurgeOn" autocomplete="off">
+                    <label class="btn btn-outline-danger" for="stAutoPurgeOn">사용</label>
+                    <input type="radio" class="btn-check" name="stAutoPurgeMode" id="stAutoPurgeOff" autocomplete="off">
+                    <label class="btn btn-outline-secondary" for="stAutoPurgeOff">사용 안 함</label>
+                  </div>
+                  <input type="number" class="form-control form-control-sm" id="stAutoPurgePct" min="50" max="99" style="width:78px">
+                  <span class="small text-muted">% 초과 시</span>
+                  <button class="btn btn-sm btn-primary py-0 px-2" onclick="saveAutoPurge()">저장</button>
+                  <span class="text-danger" style="font-size:0.75rem"><i class="bi bi-exclamation-triangle me-1"></i>백업 여부와 관계없이 가장 오래된 월 파티션부터 삭제합니다. 되돌릴 수 없습니다.</span>
+                </div>
+                <div class="form-text">행 수는 통계 추정치입니다. 월별 파티션은 보존 기간만큼 <b>미리 만들어 두므로</b>, 목록에 있는 과거 월이라도 '데이터 기간'이 비어 있으면 실제 로그는 없습니다. default 파티션에 행이 남아 있으면 해당 월 파티션이 만들어지지 않고 보존기간 정리에서도 제외되므로 <code>scripts/rebalance_default_partition.sql</code> 로 재배치하세요.</div>
               </div>
             </div>
             <div class="card">
-              <div class="card-header bg-white fw-semibold"><i class="bi bi-table me-1"></i>월별 파티션</div>
+              <div class="card-header bg-white fw-semibold d-flex align-items-center">
+                <span><i class="bi bi-table me-1"></i>월별 파티션</span>
+                <div class="form-check form-switch ms-auto mb-0">
+                  <input class="form-check-input" type="checkbox" role="switch" id="stHideEmpty" checked onchange="renderStorageTable()">
+                  <label class="form-check-label small text-muted" for="stHideEmpty">빈 파티션 숨기기</label>
+                </div>
+              </div>
               <div class="table-responsive">
                 <table class="table table-sm table-hover mb-0 small">
                   <thead class="table-light"><tr>
-                    <th>파티션</th><th class="text-end">행 수(추정)</th><th class="text-end">테이블</th><th class="text-end">인덱스</th><th class="text-end">합계</th>
+                    <th>파티션</th><th>데이터 기간</th><th class="text-end">행 수(추정)</th><th class="text-end">테이블</th><th class="text-end">인덱스</th><th class="text-end">합계</th><th class="text-end">삭제</th>
                   </tr></thead>
-                  <tbody id="storageTable"><tr><td colspan="5" class="text-center text-muted py-3">불러오는 중…</td></tr></tbody>
+                  <tbody id="storageTable"><tr><td colspan="7" class="text-center text-muted py-3">불러오는 중…</td></tr></tbody>
                 </table>
               </div>
             </div>
-          </div>
-
-          <!-- 장비 관리 -->
-          <div id="settings-devices" class="settings-pane d-none">
-            <div class="d-flex align-items-center justify-content-center gap-3 mb-3">
-              <h6 class="mb-0 fw-bold">장비 관리</h6>
-              <div class="d-flex gap-2">
-                <select class="form-select form-select-sm" id="deviceFilter" onchange="loadDevices()" style="width:120px">
-                  <option value="">전체</option>
-                  <option value="pending">대기중</option>
-                  <option value="confirmed">확인됨</option>
-                  <option value="disabled">비활성</option>
-                </select>
-                <button class="btn btn-sm btn-outline-primary" onclick="loadDevices()"><i class="bi bi-arrow-clockwise"></i></button>
-              </div>
-            </div>
-            <div class="card">
-              <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                  <thead class="table-light">
-                    <tr>
-                      <th class="text-center">호스트명</th><th class="text-center">IP</th><th class="text-center">장비상태</th><th class="text-center">데몬상태</th>
-                      <th class="text-center">CPU / MEM / Disk</th><th class="text-center">버퍼</th>
-                      <th class="text-center">마지막 연결</th><th class="text-center">그룹</th><th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="deviceTable"><tr><td colspan="9" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- 그룹 관리 -->
-          <div id="settings-groups" class="settings-pane d-none">
-            <div class="d-flex align-items-center mb-3">
-              <h6 class="mb-0 fw-bold">그룹 관리</h6>
-              <button class="btn btn-sm btn-primary ms-auto" onclick="openGroupModal()">
-                <i class="bi bi-plus-lg me-1"></i>그룹 추가
-              </button>
-            </div>
-            <div class="d-flex align-items-center mb-2 gap-2 flex-wrap">
-              <div id="groupFilter" class="d-flex gap-2 flex-wrap"></div>
-              <div class="ms-auto d-flex align-items-center gap-1">
-                <label class="form-label mb-0 small text-muted">페이지당</label>
-                <select class="form-select form-select-sm" style="width:72px" id="groupPageSize" onchange="renderGroupPage(1)">
-                  <option value="10">10</option>
-                  <option value="20" selected>20</option>
-                  <option value="50">50</option>
-                  <option value="0">전체</option>
-                </select>
-              </div>
-            </div>
-            <div id="groupCards">
-              <div class="text-center text-muted py-4">로딩 중...</div>
-            </div>
-            <div id="groupPager" class="d-flex justify-content-center mt-2"></div>
           </div>
 
           <!-- 알림 설정 -->
@@ -907,6 +1021,52 @@ body        { background: #f5f7fa; font-size: 14px; }
             </div>
           </div>
 
+          <!-- 관리자 계정 -->
+          <div id="settings-admins" class="settings-pane d-none" style="max-width:760px">
+            <div class="card mb-3">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-person-plus me-1"></i>관리자 계정 추가</div>
+              <div class="card-body">
+                <div id="adminMsg" class="alert d-none py-2 small"></div>
+                <div class="row g-2">
+                  <div class="col-md-5">
+                    <label class="form-label small fw-semibold">아이디</label>
+                    <input class="form-control form-control-sm" id="newAdminName" placeholder="예: operator1" autocomplete="off">
+                  </div>
+                  <div class="col-md-5">
+                    <label class="form-label small fw-semibold">비밀번호 (8자 이상)</label>
+                    <input type="password" class="form-control form-control-sm" id="newAdminPwd" autocomplete="new-password">
+                  </div>
+                  <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-sm btn-primary w-100" onclick="createAdmin()"><i class="bi bi-plus-lg me-1"></i>추가</button>
+                  </div>
+                </div>
+                <div class="form-text mt-2">
+                  관리자 계정에는 <b>설정 > 계정 보안의 접속 허용 IP</b>가 그대로 적용됩니다.
+                  비밀번호를 <span id="lockPolicyText">5</span>회 연속 틀리면 계정이 <span id="lockPolicyMin">15</span>분간 잠깁니다.
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header bg-white fw-semibold d-flex align-items-center">
+                <span><i class="bi bi-people me-1"></i>관리자 목록</span>
+                <button class="btn btn-sm btn-outline-primary ms-auto" onclick="loadAdmins()"><i class="bi bi-arrow-clockwise"></i></button>
+              </div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover mb-0 align-middle">
+                    <thead><tr class="small text-muted">
+                      <th class="ps-3">아이디</th><th>상태</th><th>마지막 로그인</th><th class="text-end pe-3">작업</th>
+                    </tr></thead>
+                    <tbody id="adminList"><tr><td colspan="4" class="text-muted small p-3">불러오는 중…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div class="form-text mt-2">
+              <i class="bi bi-info-circle me-1"></i>마지막 활성 관리자와 로그인 중인 본인 계정은 비활성화·삭제할 수 없습니다.
+            </div>
+          </div>
+
           <!-- 고객 계정 -->
           <div id="settings-users" class="settings-pane d-none" style="max-width:760px">
             <div class="card mb-3">
@@ -1010,6 +1170,68 @@ body        { background: #f5f7fa; font-size: 14px; }
   </div><!-- /main -->
   </div><!-- /shell -->
 </div><!-- /appLayout -->
+
+<!-- 접근 계정 선택 모달 (로그 조회) -->
+<div class="modal fade" id="userPickerModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-people me-1"></i>접근한 계정 선택</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <input class="form-control form-control-sm" id="userPickerSearch" placeholder="계정 검색" oninput="filterUserPicker()" autocomplete="off">
+          <button class="btn btn-xs btn-outline-secondary flex-shrink-0" onclick="toggleAllUserPicker(true)">전체 선택</button>
+          <button class="btn btn-xs btn-outline-secondary flex-shrink-0" onclick="toggleAllUserPicker(false)">해제</button>
+        </div>
+        <div class="form-text mb-2">현재 필터(고객사·그룹·기간)에서 실제로 접근한 계정입니다.</div>
+        <div id="userPickerList" style="max-height:320px;overflow:auto"></div>
+      </div>
+      <div class="modal-footer">
+        <span class="me-auto small text-muted" id="userPickerCount"></span>
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="applyUserPicker()">선택 계정만 조회</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 고객 계정 수정 모달 -->
+<div class="modal fade" id="userEditModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-person-gear me-1"></i>고객 계정 수정 — <span id="editUserName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editUserId">
+        <div id="editUserMsg" class="alert d-none py-2 small"></div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">고객사 (그룹의 customer 와 일치)</label>
+          <input class="form-control form-control-sm" id="editUserCustomer" list="customerOptions">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">허용 IP/CIDR (줄바꿈 구분, 비우면 제한 없음)</label>
+          <textarea class="form-control form-control-sm" id="editUserIps" rows="3" placeholder="예) 203.0.113.0/24"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">새 비밀번호 (선택, 8자 이상)</label>
+          <input type="password" class="form-control form-control-sm" id="editUserPwd" placeholder="변경하지 않으려면 비워두세요" autocomplete="new-password">
+        </div>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" role="switch" id="editUserActive">
+          <label class="form-check-label small" for="editUserActive">계정 활성</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="saveUserEdit()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- 그룹 모달 -->
 <div class="modal fade" id="groupModal" tabindex="-1">
@@ -1505,6 +1727,41 @@ let allTelcos = [];
 let logPage = 1;
 let logPageSize = 50;
 
+// ── 테마 (라이트/다크) ───────────────────────────────────────────────────────
+// 첫 적용은 index.html <head> 인라인 스크립트가 한다(흰 화면 번쩍임 방지).
+// 여기서는 토글과 차트 색 반영만 맡는다.
+const THEME_KEY = 'soltrace_theme';
+
+function currentTheme() {
+  return document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'light';
+}
+
+function applyTheme(mode) {
+  document.documentElement.setAttribute('data-bs-theme', mode);
+  try { localStorage.setItem(THEME_KEY, mode); } catch { /* 저장소 차단 — 이번 세션만 적용 */ }
+  const icon = document.getElementById('themeToggleIcon');
+  const btn  = document.getElementById('themeToggleBtn');
+  if (icon) icon.className = mode === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-stars';
+  if (btn)  btn.title = mode === 'dark' ? '라이트 모드로' : '다크 모드로';
+  _applyChartTheme(mode);
+}
+
+// Chart.js 기본 눈금·격자 색. 이미 그려진 차트에는 적용되지 않으므로 토글 후 다시 그린다.
+function _applyChartTheme(mode) {
+  if (typeof Chart === 'undefined') return;
+  Chart.defaults.color       = mode === 'dark' ? '#adb5bd' : '#666';
+  Chart.defaults.borderColor = mode === 'dark' ? '#343a40' : 'rgba(0,0,0,.1)';
+}
+
+function toggleTheme() {
+  applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  // 차트는 생성 시점의 색을 들고 있어 다시 그려야 바뀐다
+  if (typeof loadAll === 'function' &&
+      document.getElementById('page-dashboard')?.classList.contains('active')) {
+    loadAll();
+  }
+}
+
 // ── 세션 타이머 ──────────────────────────────────────────────────────────────
 let _expireTimer = null;
 let _countdownInterval = null;
@@ -1527,11 +1784,32 @@ function getRole() {
 }
 
 // role 에 따라 admin 전용 UI(설정 등) 표시/숨김. data-admin-only 요소를 토글한다.
+// 상단바의 로그인 사용자 표시도 같은 토큰에서 채운다 (표시가 권한과 갈라지지 않게 한 곳에서).
 function applyRoleUI() {
   const isAdmin = getRole() === 'admin';
   document.querySelectorAll('[data-admin-only]').forEach(el => {
     el.classList.toggle('d-none', !isAdmin);
   });
+  _renderCurrentUser(isAdmin);
+}
+
+function _renderCurrentUser(isAdmin) {
+  const p = token ? _parseJwt(token) : null;
+  const nameEl = document.getElementById('currentUserName');
+  const roleEl = document.getElementById('currentUserRole');
+  if (!nameEl || !roleEl) return;
+  nameEl.textContent = p?.sub || '-';
+  nameEl.title = p?.sub || '';
+  if (isAdmin) {
+    roleEl.textContent = '관리자';
+    roleEl.className = 'badge rounded-pill text-bg-secondary';
+    roleEl.title = '';
+  } else {
+    const customer = p?.customer || '';
+    roleEl.textContent = customer || '고객';
+    roleEl.className = 'badge rounded-pill text-bg-light border';
+    roleEl.title = customer ? `고객사: ${customer}` : '고객 계정';
+  }
 }
 
 function _updateTopbarTimer(expiresAt) {
@@ -1623,10 +1901,6 @@ function fmtBytes(b) {
 
 // ── 로컬 시각 포맷 (대시보드/로그 조회가 공유) ──────────────────────────────
 function pad2(n) { return String(n).padStart(2, '0'); }
-// datetime-local input 값: YYYY-MM-DDTHH:MM
-function fmtLocalInput(d) {
-  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
 // YYYY-MM-DD
 function fmtLocalDate(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
@@ -1653,6 +1927,9 @@ function timeAgo(dt) {
   return new Date(dt).toLocaleDateString('ko-KR');
 }
 
+// 페이지 로드 시 현재 테마에 맞춰 버튼 아이콘·차트 기본색을 맞춘다
+applyTheme(currentTheme());
+
 /* === dashboard.js === */
 // Register center-text plugin for doughnut charts (used by all donut charts on dashboard)
 const _centerPlugin = {
@@ -1666,11 +1943,11 @@ const _centerPlugin = {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = `bold ${ct.size || 13}px sans-serif`;
-    ctx.fillStyle = ct.color || '#333';
+    ctx.fillStyle = ct.color || Chart.defaults.color;
     ctx.fillText(ct.line1 || '', cx, ct.line2 ? cy - 9 : cy);
     if (ct.line2) {
       ctx.font = `${(ct.size || 13) - 1}px sans-serif`;
-      ctx.fillStyle = ct.subColor || '#888';
+      ctx.fillStyle = ct.subColor || Chart.defaults.color;
       ctx.fillText(ct.line2, cx, cy + 9);
     }
     ctx.restore();
@@ -1694,14 +1971,23 @@ function _fmtHourBucket(b, withDate) {
   const hh = pad2(d.getUTCHours());
   return withDate ? `${pad2(d.getUTCMonth() + 1)}/${pad2(d.getUTCDate())} ${hh}시` : hh + '시';
 }
+
+// 버킷 라벨 — 일 단위면 MM/DD, 시간 단위면 기존 규칙.
+// (버킷 문자열은 서버가 로컬 시각을 'Z' 로 붙여 보내므로 getUTC* 로 읽는다)
+function _fmtBucketLabel(b, unit, withDate) {
+  if (unit !== 'day') return _fmtHourBucket(b, withDate);
+  const d = new Date(b);
+  return `${pad2(d.getUTCMonth() + 1)}/${pad2(d.getUTCDate())}`;
+}
 function fmtMetricVal(metric, v) { return metric === 'throughput' ? fmtBytesPerSec(v) : fmtPct(v); }
 
 function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
-// 시간대 라인차트 공통 규칙 — 사용자별 사용량 · 업로드양 · 삭제량 · 장비 그룹별이 모두 같다.
+// 시계열 차트 공통 규칙 — 업로드/삭제 카운트 · 업로드양 · 삭제량이 모두 같다.
 // (색·굵기·점 크기, x축 눈금 밀도가 차트마다 갈라지면 같은 화면에서 다르게 보인다)
+// 주/월(일 단위 합산)도 같은 선 차트로 그린다 — 버킷만 하루 단위로 묶인다.
 function _hourlyLineStyle(idx, bucketCount) {
   const color = HOURLY_PALETTE[idx % HOURLY_PALETTE.length];
   return {
@@ -1742,6 +2028,20 @@ function _dashDateParams() {
   }
   return 'days=7';
 }
+
+// 조회 기간(일). 주/월 처럼 긴 기간은 시간 버킷이면 점이 너무 촘촘해 읽히지 않는다.
+function _dashRangeDays() {
+  if (_dashExactStart && _dashExactEnd) {
+    return (new Date(_dashExactEnd) - new Date(_dashExactStart)) / 86400000;
+  }
+  const s = document.getElementById('dashStart').value;
+  const e = document.getElementById('dashEnd').value;
+  if (s && e) return (new Date(e + 'T23:59:59') - new Date(s + 'T00:00:00')) / 86400000;
+  return 7;
+}
+
+// 2일을 넘으면 일 단위 합산(막대), 그 이하는 시간 단위(선).
+function _dashBucketUnit() { return _dashRangeDays() > 2 ? 'day' : 'hour'; }
 
 function dashLast24() {
   const end   = new Date();
@@ -1785,10 +2085,79 @@ function dashCustom() {
 }
 
 function loadAll() {
-  loadDashboard();
   loadServiceHealth();
   loadUserHourly();
-  loadHourly();
+}
+
+// ── 대시보드 카드 순서 (드래그) ──────────────────────────────────────────────
+// 손잡이(.dash-grip)를 눌렀을 때만 드래그가 시작된다 — 카드 전체를 draggable 로 두면
+// 차트의 드래그 확대가 먹지 않는다. 순서는 브라우저(localStorage)에만 저장한다.
+const DASH_ORDER_KEY = 'dashCardOrder';
+
+function _dashSlots() {
+  return Array.from(document.querySelectorAll('#dashGrid .dash-slot'));
+}
+
+function _saveDashOrder() {
+  try {
+    localStorage.setItem(DASH_ORDER_KEY,
+      JSON.stringify(_dashSlots().map(el => el.dataset.card)));
+  } catch { /* 저장 실패는 무시 — 순서만 못 기억할 뿐 화면은 정상 */ }
+}
+
+function _restoreDashOrder() {
+  const grid = document.getElementById('dashGrid');
+  if (!grid) return;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(DASH_ORDER_KEY) || 'null'); } catch { saved = null; }
+  if (!Array.isArray(saved)) return;
+  const byId = Object.fromEntries(_dashSlots().map(el => [el.dataset.card, el]));
+  // 저장된 순서에 없는 카드(새로 추가된 것)는 원래 자리에 그대로 남는다
+  saved.forEach(id => { if (byId[id]) grid.appendChild(byId[id]); });
+}
+
+let _dashDragEl = null;
+
+function initDashLayout() {
+  const grid = document.getElementById('dashGrid');
+  if (!grid || grid.dataset.dndReady) return;
+  grid.dataset.dndReady = '1';
+  _restoreDashOrder();
+
+  _dashSlots().forEach(slot => {
+    const grip = slot.querySelector('.dash-grip');
+    if (grip) {
+      grip.addEventListener('mousedown', () => { slot.draggable = true; });
+      grip.addEventListener('mouseup',   () => { slot.draggable = false; });
+    }
+    slot.addEventListener('dragstart', e => {
+      _dashDragEl = slot;
+      slot.classList.add('dash-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', slot.dataset.card);
+    });
+    slot.addEventListener('dragend', () => {
+      slot.classList.remove('dash-dragging');
+      slot.draggable = false;
+      _dashDragEl = null;
+      _saveDashOrder();
+    });
+    slot.addEventListener('dragover', e => {
+      if (!_dashDragEl || _dashDragEl === slot) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      // 커서가 대상 카드의 앞쪽 절반이면 앞에, 뒤쪽 절반이면 뒤에 넣는다
+      const box = slot.getBoundingClientRect();
+      const before = (e.clientX - box.left) < box.width / 2;
+      grid.insertBefore(_dashDragEl, before ? slot : slot.nextSibling);
+    });
+    slot.addEventListener('drop', e => e.preventDefault());
+  });
+}
+
+function resetDashLayout() {
+  try { localStorage.removeItem(DASH_ORDER_KEY); } catch { /* noop */ }
+  location.reload();
 }
 
 // 슬라이스 인덱스 0=전송 실패, 1=로그인 실패, 2=CWD 실패
@@ -1801,14 +2170,16 @@ const RATE_DRILL_ACTIONS = [
 
 // 대시보드 날짜 범위를 유지하면서 로그 조회 페이지로 드릴다운
 function navToLogsFilters({action = '', status = '', filePath = ''} = {}) {
+  // 로그 조회는 날짜 단위라 시각은 떨군다 (setLogDateRange 가 형식을 맡는다)
   if (_dashExactStart && _dashExactEnd) {
-    document.getElementById('logStartTime').value = fmtLocalInput(new Date(_dashExactStart));
-    document.getElementById('logEndTime').value   = fmtLocalInput(new Date(_dashExactEnd));
+    setLogDateRange(new Date(_dashExactStart), new Date(_dashExactEnd));
   } else {
     const s = document.getElementById('dashStart').value;
     const e = document.getElementById('dashEnd').value;
-    if (s) document.getElementById('logStartTime').value = s + 'T00:00';
-    if (e) document.getElementById('logEndTime').value   = e + 'T23:59';
+    if (s || e) {
+      setLogDateRange(s ? new Date(s + 'T00:00:00') : null,
+                      e ? new Date(e + 'T00:00:00') : null);
+    }
   }
   document.getElementById('logActionFilter').value = action;
   document.getElementById('logStatusFilter').value  = status;
@@ -1818,74 +2189,84 @@ function navToLogsFilters({action = '', status = '', filePath = ''} = {}) {
   nav('logs');
 }
 
-async function loadDashboard() {
-  const data = await api('GET', `/dashboard?${_dashDateParams()}`);
-  if (!data) return;
+// 사용자별 '건수' 추이 카드 — 업로드 카운트·삭제 카운트가 같은 코드를 쓴다.
+// (같은 규칙이 두 벌이 되면 한쪽만 고쳐져 두 카드가 갈라진다)
+const USER_COUNT_CHARTS = {
+  userUploadCnt: {
+    canvas: 'chartUserUploadCnt', legend: 'userUploadCntLegend',
+    resetBtn: 'resetUserUploadCntZoomBtn', head: '사용자',
+    pick: h => h.uploads || 0, empty: '기간 내 업로드 없음',
+  },
+  userDeleteCnt: {
+    canvas: 'chartUserDeleteCnt', legend: 'userDeleteCntLegend',
+    resetBtn: 'resetUserDeleteCntZoomBtn', head: '사용자',
+    pick: h => h.deletes || 0, empty: '기간 내 삭제 없음',
+  },
+};
 
-  const bytesBarOpts = {
-    indexAxis: 'y',
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {display: false},
-      tooltip: {callbacks: {label: c => fmtBytes(c.parsed.x)}},
-    },
-    scales: {x: {beginAtZero: true, ticks: {callback: v => fmtBytes(v), font: {size: 10}}}},
-  };
+// key → {focus, sort}. 카드마다 따로 둔다(한 카드에서 계정을 골라도 다른 카드는 그대로).
+const _userChartState = {};
 
+function _chartState(key) {
+  if (!_userChartState[key]) _userChartState[key] = {focus: null, sort: {col: null, asc: true}};
+  return _userChartState[key];
 }
 
-let _userHourlyFocusIdx = null;
-
 async function loadUserHourly() {
-  _userHourlyFocusIdx = null;
-  _setPeriodLabels('userUploadPeriod', 'userDeletePeriod');
-  const data = await api('GET', `/dashboard/users-hourly?${_dashDateParams()}`);
+  _setPeriodLabels('userUploadCntPeriod', 'userDeleteCntPeriod',
+                   'userUploadPeriod', 'userDeletePeriod');
+  const unit = _dashBucketUnit();
+  const data = await api('GET', `/dashboard/users-hourly?${_dashDateParams()}&bucket=${unit}`);
   if (!data) return;
 
-  const legendEl = document.getElementById('userHourlyLegend');
   if (!data.length) {
-    destroyChart('userHourly');
+    Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, [], [], String));
     _renderUserVolumeChart('userUpload', 'chartUserUpload', [], [], String, () => [0, 0]);
     _renderUserVolumeChart('userDelete', 'chartUserDelete', [], [], String, () => [0, 0]);
-    legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
     return;
   }
 
   // 버킷은 전체 사용자 기준 — 삭제만 한 사용자도 x축에 들어와야 한다
   const bucketSet = new Set(data.flatMap(u => u.data.map(h => h.bucket)));
   const allBuckets = [...bucketSet].sort();
+  const fmtBucket = b => _fmtBucketLabel(b, unit, allBuckets.length > 25);
 
-  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
-
-  // 버킷 → 시점 맵. 세 차트(사용량·업로드양·삭제량)가 같은 맵을 쓴다.
+  // 버킷 → 시점 맵. 네 차트(업로드·삭제 카운트, 업로드양·삭제량)가 같은 맵을 쓴다.
   data.forEach(u => { u._map = Object.fromEntries(u.data.map(h => [h.bucket, h])); });
 
+  Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, data, allBuckets, fmtBucket));
+
   // 업로드양 · 삭제량 (기간별) — 같은 응답으로 그린다 (추가 요청 없음).
-  // 사용량 차트가 비어도(전송이 없어도) 삭제는 있을 수 있으므로 먼저 그린다.
   _renderUserVolumeChart('userUpload', 'chartUserUpload', data, allBuckets, fmtBucket,
                          h => [h.bytes_in || 0, h.uploads || 0]);
   _renderUserVolumeChart('userDelete', 'chartUserDelete', data, allBuckets, fmtBucket,
                          h => [h.bytes_del || 0, h.deletes || 0]);
+}
 
-  const active = data.filter(u => u.data.some(h => (h.uploads || 0) + (h.downloads || 0) > 0));
+// 사용자별 건수 라인차트 + 범례표(사용자·최대·현재, 클릭 시 해당 계정만 표시).
+function _renderUserCountChart(key, series, buckets, fmtBucket) {
+  const cfg = USER_COUNT_CHARTS[key];
+  const legendEl = document.getElementById(cfg.legend);
+  const st = _chartState(key);
+  st.focus = null;
+  destroyChart(key);
+  document.getElementById(cfg.resetBtn)?.classList.add('d-none');
+
+  const active = series.filter(u => u.data.some(h => cfg.pick(h) > 0));
   if (!active.length) {
-    destroyChart('userHourly');
-    legendEl.innerHTML = '<div class="text-muted small">사용자 데이터 없음</div>';
+    if (legendEl) legendEl.innerHTML = `<div class="text-muted small">${cfg.empty}</div>`;
     return;
   }
 
   const datasets = active.map((u, i) => ({
     label: u.username,
-    data: allBuckets.map(b => (u._map[b]?.uploads || 0) + (u._map[b]?.downloads || 0)),
-    ..._hourlyLineStyle(i, allBuckets.length),
+    data: buckets.map(b => cfg.pick(u._map[b] || {})),
+    ..._hourlyLineStyle(i, buckets.length),
   }));
 
-  document.getElementById('resetUserZoomBtn')?.classList.add('d-none');
-  destroyChart('userHourly');
-  charts.userHourly = new Chart(document.getElementById('chartUserHourly'), {
+  charts[key] = new Chart(document.getElementById(cfg.canvas), {
     type: 'line',
-    data: {labels: allBuckets.map(fmtBucket), datasets},
+    data: {labels: buckets.map(fmtBucket), datasets},
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -1897,42 +2278,42 @@ async function loadUserHourly() {
           zoom: {
             drag: {enabled: true, backgroundColor: 'rgba(13,110,253,0.08)', borderColor: 'rgba(13,110,253,0.4)', borderWidth: 1},
             mode: 'x',
-            onZoomComplete: () => document.getElementById('resetUserZoomBtn')?.classList.remove('d-none'),
+            onZoomComplete: () => document.getElementById(cfg.resetBtn)?.classList.remove('d-none'),
           },
         },
       },
       scales: {
-        x: _hourlyXScale(allBuckets.length),
+        x: _hourlyXScale(buckets.length),
         y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
       },
     },
   });
 
-  const userRows = active.map((u, i) => {
+  const rows = active.map((u, i) => {
     const vals = datasets[i].data;
     const maxVal = Math.max(0, ...vals);
     const curVal = vals[vals.length - 1] ?? 0;
     const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
-    return `<tr onclick="focusUserSeries(${i})" id="userHourlyLegendItem${i}" style="cursor:pointer" data-name="${u.username}" data-max="${maxVal}" data-cur="${curVal}">
+    return `<tr onclick="focusUserChart('${key}', ${i})" id="${key}LegendItem${i}" style="cursor:pointer" data-name="${esc(u.username)}" data-max="${maxVal}" data-cur="${curVal}">
       <td style="padding:3px 4px;min-width:0;max-width:0">
         <div class="d-flex align-items-center gap-1" style="min-width:0">
           <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
-          <span class="text-truncate" style="font-size:0.75rem" title="${u.username}">${u.username}</span>
+          <span class="text-truncate" style="font-size:0.75rem" title="${esc(u.username)}">${esc(u.username)}</span>
         </div>
       </td>
       <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${maxVal.toLocaleString()}</td>
       <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
     </tr>`;
   }).join('');
-  _userLegendSort = {col: null, asc: true};
+  st.sort = {col: null, asc: true};
   legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
     <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
-    <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
-      <th data-col="name" onclick="sortUserLegend('name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">사용자<span class="sort-arrow"></span></th>
-      <th data-col="max" onclick="sortUserLegend('max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
-      <th data-col="cur" onclick="sortUserLegend('cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
+    <thead><tr style="color:var(--st-muted);border-bottom:1px solid var(--st-border)">
+      <th data-col="name" onclick="sortUserChart('${key}', 'name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">${cfg.head}<span class="sort-arrow"></span></th>
+      <th data-col="max" onclick="sortUserChart('${key}', 'max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
+      <th data-col="cur" onclick="sortUserChart('${key}', 'cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
     </tr></thead>
-    <tbody>${userRows}</tbody>
+    <tbody>${rows}</tbody>
   </table>`;
 }
 
@@ -1940,6 +2321,7 @@ async function loadUserHourly() {
 // pick(h) → [바이트, 건수]. 값이 모두 0인 사용자는 빼고, 아무도 없으면 안내 문구로 대체한다.
 function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, pick) {
   destroyChart(chartKey);
+  _chartState(chartKey).focus = null;
   const canvas = document.getElementById(canvasId);
   const empty  = document.getElementById(canvasId + 'Empty');
   if (!canvas || !empty) return;
@@ -1972,7 +2354,13 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
       maintainAspectRatio: false,
       interaction: {mode: 'index', intersect: false},
       plugins: {
-        legend: {position: 'right', labels: {boxWidth: 10, font: {size: 10}}},
+        legend: {
+          position: 'right',
+          labels: {boxWidth: 10, font: {size: 10}},
+          // 계정을 클릭하면 그 계정만 표시, 같은 계정을 다시 누르면 전체 복원
+          // (카운트 카드의 범례 클릭과 같은 동작을 쓴다)
+          onClick: (e, item) => focusUserChart(chartKey, item.datasetIndex),
+        },
         tooltip: {callbacks: {label: c => {
           const n = c.dataset.counts?.[c.dataIndex] || 0;
           return `${c.dataset.label}: ${fmtBytes(c.parsed.y)} (${n.toLocaleString()}건)`;
@@ -1985,9 +2373,6 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
     },
   });
 }
-
-let _userLegendSort   = {col: null, asc: true};
-let _hourlyLegendSort = {col: null, asc: true};
 
 function _applyLegendSort(legendId, state) {
   const legendEl = document.getElementById(legendId);
@@ -2011,164 +2396,35 @@ function _applyLegendSort(legendId, state) {
   });
 }
 
-function sortUserLegend(col) {
-  if (_userLegendSort.col === col) _userLegendSort.asc = !_userLegendSort.asc;
-  else _userLegendSort = {col, asc: col === 'name'};
-  _applyLegendSort('userHourlyLegend', _userLegendSort);
+function sortUserChart(key, col) {
+  const st = _chartState(key);
+  if (st.sort.col === col) st.sort.asc = !st.sort.asc;
+  else st.sort = {col, asc: col === 'name'};
+  _applyLegendSort(USER_COUNT_CHARTS[key].legend, st.sort);
 }
 
-function sortHourlyLegend(col) {
-  if (_hourlyLegendSort.col === col) _hourlyLegendSort.asc = !_hourlyLegendSort.asc;
-  else _hourlyLegendSort = {col, asc: col === 'name'};
-  _applyLegendSort('hourlyGroupLegend', _hourlyLegendSort);
+function resetUserChartZoom(key) {
+  charts[key]?.resetZoom();
+  document.getElementById(USER_COUNT_CHARTS[key].resetBtn)?.classList.add('d-none');
 }
 
-function resetUserHourlyZoom() {
-  charts.userHourly?.resetZoom();
-  document.getElementById('resetUserZoomBtn')?.classList.add('d-none');
-}
-
-function focusUserSeries(idx) {
-  if (!charts.userHourly) return;
-  const total = charts.userHourly.data.datasets.length;
-  if (_userHourlyFocusIdx === idx) {
-    _userHourlyFocusIdx = null;
-    for (let i = 0; i < total; i++) {
-      charts.userHourly.setDatasetVisibility(i, true);
-      const el = document.getElementById('userHourlyLegendItem' + i);
-      if (el) el.style.opacity = '1';
-    }
-  } else {
-    _userHourlyFocusIdx = idx;
-    for (let i = 0; i < total; i++) {
-      const show = i === idx;
-      charts.userHourly.setDatasetVisibility(i, show);
-      const el = document.getElementById('userHourlyLegendItem' + i);
-      if (el) el.style.opacity = show ? '1' : '0.3';
-    }
+// 범례에서 계정을 클릭하면 그 계정만 표시, 같은 계정을 다시 클릭하면 전체 복원.
+function focusUserChart(key, idx) {
+  const chart = charts[key];
+  if (!chart) return;
+  const st = _chartState(key);
+  const clear = st.focus === idx;
+  st.focus = clear ? null : idx;
+  for (let i = 0; i < chart.data.datasets.length; i++) {
+    const show = clear || i === idx;
+    chart.setDatasetVisibility(i, show);
+    const el = document.getElementById(`${key}LegendItem${i}`);
+    if (el) el.style.opacity = show ? '1' : '0.3';
   }
-  charts.userHourly.update();
+  chart.update();
 }
 
 const HOURLY_PALETTE = ['#0d6efd','#198754','#dc3545','#fd7e14','#6f42c1','#20c997','#0dcaf0','#ffc107','#e83e8c','#6c757d'];
-
-async function loadHourly() {
-  _hourlyFocusIdx = null;
-  const data = await api('GET', `/dashboard/hourly?${_dashDateParams()}`);
-  if (!data) return;
-
-  const legendEl = document.getElementById('hourlyGroupLegend');
-  if (!data.length) {
-    destroyChart('hourly');
-    legendEl.innerHTML = '<div class="text-muted small">그룹 데이터 없음</div>';
-    return;
-  }
-
-  const active = data.filter(g => g.data.some(h => (h.uploads || 0) + (h.downloads || 0) > 0));
-  if (!active.length) {
-    destroyChart('hourly');
-    legendEl.innerHTML = '<div class="text-muted small">그룹 데이터 없음</div>';
-    return;
-  }
-  const bucketSet = new Set(active.flatMap(g => g.data.map(h => h.bucket)));
-  const allBuckets = [...bucketSet].sort();
-
-  const fmtBucket = b => _fmtHourBucket(b, allBuckets.length > 25);
-
-  const datasets = active.map((g, i) => {
-    const map = Object.fromEntries(g.data.map(h => [h.bucket, h]));
-    return {
-      label: g.name,
-      data: allBuckets.map(b => (map[b]?.uploads || 0) + (map[b]?.downloads || 0)),
-      ..._hourlyLineStyle(i, allBuckets.length),
-    };
-  });
-
-  document.getElementById('resetHourlyZoomBtn')?.classList.add('d-none');
-  destroyChart('hourly');
-  charts.hourly = new Chart(document.getElementById('chartHourly'), {
-    type: 'line',
-    data: {labels: allBuckets.map(fmtBucket), datasets},
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {mode: 'index', intersect: false},
-      plugins: {
-        legend: {display: false},
-        tooltip: {callbacks: {label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}건`}},
-        zoom: {
-          zoom: {
-            drag: {enabled: true, backgroundColor: 'rgba(13,110,253,0.08)', borderColor: 'rgba(13,110,253,0.4)', borderWidth: 1},
-            mode: 'x',
-            onZoomComplete: () => document.getElementById('resetHourlyZoomBtn')?.classList.remove('d-none'),
-          },
-        },
-      },
-      scales: {
-        x: _hourlyXScale(allBuckets.length),
-        y: {beginAtZero: true, ticks: {callback: v => v.toLocaleString(), font: {size: 10}}},
-      },
-    },
-  });
-
-  const groupRows = active.map((g, i) => {
-    const vals = datasets[i].data;
-    const maxVal = Math.max(0, ...vals);
-    const curVal = vals[vals.length - 1] ?? 0;
-    const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
-    return `<tr onclick="focusHourlySeries(${i})" id="hourlyLegendItem${i}" style="cursor:pointer" data-name="${g.name}" data-max="${maxVal}" data-cur="${curVal}">
-      <td style="padding:3px 4px;min-width:0;max-width:0">
-        <div class="d-flex align-items-center gap-1" style="min-width:0">
-          <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
-          <span class="text-truncate" style="font-size:0.75rem" title="${g.name}">${g.name}</span>
-        </div>
-      </td>
-      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${maxVal.toLocaleString()}</td>
-      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
-    </tr>`;
-  }).join('');
-  _hourlyLegendSort = {col: null, asc: true};
-  legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
-    <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
-    <thead><tr style="color:#6c757d;border-bottom:1px solid #dee2e6">
-      <th data-col="name" onclick="sortHourlyLegend('name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">그룹<span class="sort-arrow"></span></th>
-      <th data-col="max" onclick="sortHourlyLegend('max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
-      <th data-col="cur" onclick="sortHourlyLegend('cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
-    </tr></thead>
-    <tbody>${groupRows}</tbody>
-  </table>`;
-}
-
-function resetHourlyZoom() {
-  charts.hourly?.resetZoom();
-  document.getElementById('resetHourlyZoomBtn')?.classList.add('d-none');
-}
-
-let _hourlyFocusIdx = null;
-
-function focusHourlySeries(idx) {
-  if (!charts.hourly) return;
-  const total = charts.hourly.data.datasets.length;
-  if (_hourlyFocusIdx === idx) {
-    // 같은 그룹 재클릭 → 전체 표시 복원
-    _hourlyFocusIdx = null;
-    for (let i = 0; i < total; i++) {
-      charts.hourly.setDatasetVisibility(i, true);
-      const el = document.getElementById('hourlyLegendItem' + i);
-      if (el) el.style.opacity = '1';
-    }
-  } else {
-    // 선택 그룹만 표시, 나머지 숨김
-    _hourlyFocusIdx = idx;
-    for (let i = 0; i < total; i++) {
-      const show = i === idx;
-      charts.hourly.setDatasetVisibility(i, show);
-      const el = document.getElementById('hourlyLegendItem' + i);
-      if (el) el.style.opacity = show ? '1' : '0.3';
-    }
-  }
-  charts.hourly.update();
-}
 
 function _dashPeriodLabel() {
   const s = document.getElementById('dashStart').value;
@@ -2285,12 +2541,12 @@ async function loadServiceHealth() {
         : '<span class="badge bg-warning text-dark">주의</span>';
       return `<tr>
         <td class="small">${fmtTime(a.bucket)}</td>
-        <td class="small">${a.hostname}</td>
-        <td class="small">${METRIC_LABEL[a.metric] || a.metric}</td>
+        <td class="small">${esc(a.hostname)}</td>
+        <td class="small">${esc(METRIC_LABEL[a.metric] || a.metric)}</td>
         <td>${sev}</td>
         <td class="small fw-semibold">${fmtMetricVal(a.metric, a.value)}</td>
         <td class="small text-muted">${a.baseline==null?'-':fmtMetricVal(a.metric, a.baseline)}</td>
-        <td class="small text-muted">${a.message || ''}</td>
+        <td class="small text-muted">${esc(a.message || '')}</td>
       </tr>`;
     }).join('');
   }
@@ -2328,7 +2584,7 @@ async function openCwdAnalysis() {
     '<span class="spinner-border spinner-border-sm me-1" style="width:.8rem;height:.8rem"></span>집계 중…';
   document.getElementById('cwdPaths').innerHTML = '<tr><td colspan="7" class="text-muted small">-</td></tr>';
   document.getElementById('cwdUsers').innerHTML = '<tr><td colspan="3" class="text-muted small">-</td></tr>';
-  new bootstrap.Modal(document.getElementById('cwdAnalysisModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('cwdAnalysisModal')).show();
   await loadCwdAnalysis();
 }
 
@@ -2442,6 +2698,16 @@ function daemonBadge(s, errMsg) {
   return `<span class="badge bg-${c.cls} text-${s==='unknown'?'dark':''}"${tip}><i class="bi ${c.icon} me-1"></i>${c.label}</span>`;
 }
 
+// 소속 그룹 배지 — 통신사를 그룹명 앞에 함께 보여준다. 같은 이름의 그룹이 통신사별로
+// 있을 수 있어 그룹명만으로는 어느 쪽인지 알 수 없다 (그룹 배정 모달도 텔코를 보여준다).
+function groupBadge(g) {
+  const telco = g.telco
+    ? `<span class="text-primary-emphasis fw-semibold">${esc(g.telco)}</span> · `
+    : '';
+  const title = g.telco ? `${g.telco} · ${g.name}` : g.name;
+  return `<span class="badge bg-light text-dark border me-1 fw-normal" title="${esc(title)}">${telco}${esc(g.name)}</span>`;
+}
+
 function metricBar(val, max, unit, warnAt, dangerAt) {
   if (val == null) return '<span class="text-muted small">-</span>';
   const pct = Math.min(100, (val / max) * 100);
@@ -2466,6 +2732,12 @@ async function loadDevices() {
   _deviceCache = devices;
 
   const tbody = document.getElementById('deviceTable');
+  // 이전 렌더의 툴팁을 먼저 정리한다. Bootstrap 은 인스턴스를 element 키의 Map(강한 참조)에
+  // 담으므로, dispose 없이 innerHTML 을 갈아끼우면 떨어져 나간 DOM 이 계속 붙잡혀 있다
+  // (장비 목록은 탭 이동·승인·삭제 때마다 다시 그려진다).
+  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
+    bootstrap.Tooltip.getInstance(el)?.dispose()
+  );
   if (!devices.length) {
     tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">등록된 장비가 없습니다.</td></tr>';
     return;
@@ -2503,7 +2775,7 @@ async function loadDevices() {
         ${d.queue_size > 0 ? `<span class="badge bg-info text-dark ms-1">Q:${d.queue_size}</span>` : ''}
       </td>
       <td class="text-center text-muted small">${timeAgo(d.last_heartbeat)}</td>
-      <td>${d.groups.map(g=>`<span class="badge bg-light text-dark border me-1">${esc(g.name)}</span>`).join('')||'<span class="text-muted small">-</span>'}</td>
+      <td>${d.groups.map(groupBadge).join('')||'<span class="text-muted small">-</span>'}</td>
       <td class="text-end text-nowrap">
         ${d.status === 'pending' ? `<button class="btn btn-xs btn-success me-1" onclick="confirmDevice(${d.id})">확인</button>` : ''}
         ${d.status === 'confirmed' ? `<button class="btn btn-xs btn-warning me-1" onclick="disableDevice(${d.id})">비활성</button>` : ''}
@@ -2516,7 +2788,8 @@ async function loadDevices() {
     </tr>`;
   }).join('');
 
-  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
+  // 방금 만든 행에만 붙인다 (예전엔 document 전체를 훑어 다른 화면 요소까지 다시 초기화했다)
+  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
     new bootstrap.Tooltip(el, {placement:'top'})
   );
 }
@@ -2546,7 +2819,7 @@ function showDeviceStatus(id) {
     <table class="table table-sm">
       <tbody>${rows.map(([k,v])=>`<tr><th class="text-muted fw-normal" style="width:140px">${k}</th><td>${v}</td></tr>`).join('')}</tbody>
     </table>`;
-  new bootstrap.Modal(document.getElementById('deviceStatusModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('deviceStatusModal')).show();
 }
 
 async function confirmDevice(id) {
@@ -2598,7 +2871,7 @@ async function openDeviceGroups(deviceId) {
       </label>
     </div>
   `).join('');
-  new bootstrap.Modal(document.getElementById('deviceGroupModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('deviceGroupModal')).show();
 }
 
 async function saveDeviceGroups() {
@@ -2624,7 +2897,7 @@ function renderVersion(v) {
   document.getElementById('verSubject').textContent = v.subject || '-';
   const st = document.getElementById('verStatus');
   if (v.error) {
-    st.innerHTML = `<span class="text-danger">원격 확인 실패: ${v.error}</span>`;
+    st.innerHTML = `<span class="text-danger">원격 확인 실패: ${esc(v.error)}</span>`;
   } else if (!v.checked) {
     st.innerHTML = '<span class="text-muted">미확인 — "업데이트 확인"을 눌러주세요</span>';
   } else if (v.update_available) {
@@ -2645,40 +2918,144 @@ async function loadVersion() {
   } catch (e) { settingsMsg('updMsg', 'danger', e.message); }
 }
 
-async function loadStorage() {
-  const msg = document.getElementById('storageMsg');
-  msg.className = 'alert d-none py-2 small';
+let _storage = null;   // 마지막 조회 결과 — '빈 파티션 숨기기' 토글이 다시 그릴 때 쓴다
+
+// 파티션의 데이터 기간 표시. 미리 만들어 둔 빈 파티션과 실제 데이터를 구분한다.
+function _partRange(p) {
+  if (!p.has_rows) return '<span class="text-muted">비어 있음</span>';
+  const f = new Date(p.first_log), t = new Date(p.last_log);
+  const d = x => `${x.getFullYear()}/${pad2(x.getMonth()+1)}/${pad2(x.getDate())}`;
+  return `${d(f)} ~ ${d(t)}`;
+}
+
+function renderStorageTable() {
   const tbody = document.getElementById('storageTable');
-  try {
-    const s = await api('GET', '/settings/storage');
-    if (!s) return;
-    document.getElementById('stDbSize').textContent = fmtBytes(s.db_bytes);
-    document.getElementById('stLogsSize').textContent = fmtBytes(s.ftp_logs_bytes);
-    document.getElementById('stRetention').textContent = `${s.retention_months}개월 (초과 파티션은 백업 후 자동 삭제)`;
-    const def = document.getElementById('stDefault');
-    if (s.default_rows > 0) {
-      def.innerHTML = `<span class="text-danger fw-semibold">${s.default_rows.toLocaleString()}행 잔존</span>`
-        + ` <span class="text-muted">(${s.default_months.map(esc).join(', ')})</span>`;
-      settingsMsg('storageMsg', 'warning', 'default 파티션에 데이터가 남아 있습니다. 재배치가 필요합니다.');
-    } else {
-      def.innerHTML = '<span class="text-success">비어 있음</span>';
-    }
-    if (!s.partitions.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">파티션이 없습니다.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = s.partitions.map(p => `
+  const s = _storage;
+  if (!s) return;
+  const hideEmpty = document.getElementById('stHideEmpty').checked;
+  const rows = s.partitions.filter(p => !hideEmpty || p.has_rows || p.name === 'ftp_logs_default');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">${
+      s.partitions.length ? '데이터가 있는 파티션이 없습니다.' : '파티션이 없습니다.'}</td></tr>`;
+    return;
+  }
+  // 당월 이후 파티션은 수집 중이므로 삭제 버튼을 주지 않는다 (서버도 같은 기준으로 막는다)
+  const now = new Date();
+  const curName = `ftp_logs_${now.getFullYear()}_${pad2(now.getMonth() + 1)}`;
+  tbody.innerHTML = rows.map(p => {
+    const monthly = /^ftp_logs_\d{4}_\d{2}$/.test(p.name);
+    const deletable = monthly && p.name < curName;
+    return `
       <tr class="${p.name === 'ftp_logs_default' && s.default_rows > 0 ? 'table-warning' : ''}">
         <td class="font-monospace">${esc(p.name)}</td>
+        <td>${_partRange(p)}</td>
         <td class="text-end">${p.rows_est.toLocaleString()}</td>
         <td class="text-end">${fmtBytes(p.table_bytes)}</td>
         <td class="text-end">${fmtBytes(p.index_bytes)}</td>
         <td class="text-end fw-semibold">${fmtBytes(p.total_bytes)}</td>
-      </tr>`).join('');
+        <td class="text-end">${deletable
+          ? `<button class="btn btn-xs btn-outline-danger" onclick="dropPartition('${esc(p.name)}')" title="이 달 데이터를 완전히 삭제"><i class="bi bi-trash"></i></button>`
+          : '<span class="text-muted">-</span>'}</td>
+      </tr>`;
+  }).join('');
+}
+
+function _renderStorage(s) {
+  _storage = s;
+  document.getElementById('stDbSize').textContent = fmtBytes(s.db_bytes);
+  document.getElementById('stLogsSize').textContent = fmtBytes(s.ftp_logs_bytes);
+  document.getElementById('stRetentionInput').value = s.retention_months;
+
+  // 실제 데이터가 있는 파티션만 모아 보유 기간을 계산 (미리 만든 빈 파티션은 제외)
+  const filled = s.partitions.filter(p => p.has_rows);
+  const rangeEl = document.getElementById('stDataRange');
+  if (filled.length) {
+    const first = filled.map(p => p.first_log).sort()[0];
+    const last  = filled.map(p => p.last_log).sort().slice(-1)[0];
+    const d = x => { const v = new Date(x); return `${v.getFullYear()}/${pad2(v.getMonth()+1)}/${pad2(v.getDate())}`; };
+    rangeEl.textContent = `${d(first)} ~ ${d(last)} (${filled.length}개 파티션)`;
+  } else {
+    rangeEl.innerHTML = '<span class="text-muted">데이터 없음</span>';
+  }
+
+  // 켜짐/꺼짐을 스위치가 아니라 선택 버튼으로 — 되돌릴 수 없는 동작이라 상태가 분명해야 한다
+  document.getElementById('stAutoPurgeOn').checked = !!s.autopurge_enabled;
+  document.getElementById('stAutoPurgeOff').checked = !s.autopurge_enabled;
+  document.getElementById('stAutoPurgePct').value = s.autopurge_percent;
+
+  const disk = document.getElementById('stDisk');
+  if (s.disk_total_bytes) {
+    const cls = s.disk_percent >= 90 ? 'text-danger fw-semibold'
+              : s.disk_percent >= 80 ? 'text-warning-emphasis fw-semibold' : '';
+    disk.innerHTML = `<span class="${cls}">${s.disk_percent}%</span>`
+      + ` <span class="text-muted">(${fmtBytes(s.disk_used_bytes)} / ${fmtBytes(s.disk_total_bytes)})</span>`;
+  } else {
+    disk.innerHTML = '<span class="text-muted">확인 불가</span>';
+  }
+
+  const def = document.getElementById('stDefault');
+  if (s.default_rows > 0) {
+    def.innerHTML = `<span class="text-danger fw-semibold">${s.default_rows.toLocaleString()}행 잔존</span>`
+      + ` <span class="text-muted">(${s.default_months.map(esc).join(', ')})</span>`;
+    settingsMsg('storageMsg', 'warning', 'default 파티션에 데이터가 남아 있습니다. 재배치가 필요합니다.');
+  } else {
+    def.innerHTML = '<span class="text-success">비어 있음</span>';
+  }
+  renderStorageTable();
+}
+
+async function loadStorage() {
+  const msg = document.getElementById('storageMsg');
+  msg.className = 'alert d-none py-2 small';
+  try {
+    const s = await api('GET', '/settings/storage');
+    if (s) _renderStorage(s);
   } catch (e) {
     settingsMsg('storageMsg', 'danger', e.message);
-    tbody.innerHTML = '';
+    document.getElementById('storageTable').innerHTML = '';
   }
+}
+
+async function saveRetention() {
+  const months = parseInt(document.getElementById('stRetentionInput').value, 10);
+  if (!Number.isFinite(months) || months < 1 || months > 120) {
+    settingsMsg('storageMsg', 'danger', '보존 기간은 1~120개월 사이여야 합니다.');
+    return;
+  }
+  try {
+    const s = await api('PUT', '/settings/storage/retention', {months});
+    if (s) _renderStorage(s);
+    settingsMsg('storageMsg', 'success', `보존 기간을 ${months}개월로 저장했습니다.`);
+  } catch (e) { settingsMsg('storageMsg', 'danger', e.message); }
+}
+
+async function saveAutoPurge() {
+  const enabled = document.getElementById('stAutoPurgeOn').checked;
+  const percent = parseInt(document.getElementById('stAutoPurgePct').value, 10);
+  if (!Number.isFinite(percent) || percent < 50 || percent > 99) {
+    settingsMsg('storageMsg', 'danger', '임계치는 50~99% 사이여야 합니다.');
+    return;
+  }
+  if (enabled && !confirm(
+      `디스크 ${percent}% 초과 시 가장 오래된 월 파티션부터 자동 삭제합니다.\n\n` +
+      '백업 파일이 없어도 삭제되며 되돌릴 수 없습니다. 계속할까요?')) return;
+  try {
+    const s = await api('PUT', '/settings/storage/autopurge', {enabled, percent});
+    if (s) _renderStorage(s);
+    settingsMsg('storageMsg', 'success',
+      enabled ? `자동 정리를 켰습니다 (임계치 ${percent}%).` : '자동 정리를 껐습니다.');
+  } catch (e) { settingsMsg('storageMsg', 'danger', e.message); }
+}
+
+async function dropPartition(name) {
+  const p = _storage?.partitions.find(x => x.name === name);
+  const size = p ? ` (${fmtBytes(p.total_bytes)}, 약 ${p.rows_est.toLocaleString()}행)` : '';
+  if (!confirm(`${name}${size} 을(를) 삭제합니다.\n\n되돌릴 수 없습니다. 백업 파일이 있는지 확인하셨습니까?`)) return;
+  try {
+    const s = await api('DELETE', `/settings/storage/partitions/${encodeURIComponent(name)}`);
+    if (s) _renderStorage(s);
+    settingsMsg('storageMsg', 'success', `${name} 파티션을 삭제했습니다.`);
+  } catch (e) { settingsMsg('storageMsg', 'danger', e.message); }
 }
 
 async function getTelcos() {
@@ -2693,7 +3070,7 @@ async function loadTelcos() {
     list.innerHTML = telcos.length
       ? telcos.map(t => `
           <li class="list-group-item d-flex align-items-center px-0">
-            <span>${t.name}</span>
+            <span>${esc(t.name)}</span>
             <button class="btn btn-xs btn-outline-danger ms-auto" onclick="deleteTelco(${t.id})"><i class="bi bi-trash"></i></button>
           </li>`).join('')
       : '<li class="list-group-item text-muted small px-0">등록된 통신사가 없습니다.</li>';
@@ -2870,7 +3247,7 @@ async function toggleMute(muted) {
     msg.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>알림 ${muted ? '중지' : '재개'}됨</span>`;
   } catch(e) {
     document.getElementById('notifyMuteToggle').checked = !muted;
-    msg.innerHTML = `<span class="text-danger">변경 실패: ${e.message}</span>`;
+    msg.innerHTML = `<span class="text-danger">변경 실패: ${esc(e.message)}</span>`;
   }
   setTimeout(() => { msg.innerHTML = ''; }, 3000);
 }
@@ -2885,7 +3262,7 @@ async function saveNotify() {
     await api('PUT', '/settings/notify', body);
     msg.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>저장되었습니다.</span>';
   } catch(e) {
-    msg.innerHTML = `<span class="text-danger">저장 실패: ${e.message}</span>`;
+    msg.innerHTML = `<span class="text-danger">저장 실패: ${esc(e.message)}</span>`;
   }
   setTimeout(() => { msg.innerHTML = ''; }, 3000);
 }
@@ -2898,7 +3275,7 @@ async function testNotify(channel = 'all') {
     await api('POST', `/settings/notify/test?channel=${channel}`);
     msg.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${label} 테스트 발송 성공</span>`;
   } catch(e) {
-    msg.innerHTML = `<span class="text-danger">발송 실패: ${e.message}</span>`;
+    msg.innerHTML = `<span class="text-danger">발송 실패: ${esc(e.message)}</span>`;
   }
   setTimeout(() => { msg.innerHTML = ''; }, 4000);
 }
@@ -3034,6 +3411,8 @@ async function deleteApiKey(id, prefix) {
   } catch (e) { settingsMsg('apiKeyMsg', 'danger', e.message); }
 }
 
+let _users = [];          // 목록 캐시 — 수정 모달이 현재 값을 채울 때 쓴다
+
 async function loadUsers() {
   const tbody = document.getElementById('userList');
   document.getElementById('apiKeyIssued').classList.add('d-none');
@@ -3049,11 +3428,12 @@ async function loadUsers() {
     document.getElementById('customerOptions').innerHTML =
       customers.map(c => `<option value="${esc(c)}">`).join('');
 
-    if (!users || users.length === 0) {
+    _users = users.filter(u => u.role === 'customer');
+    if (!_users.length) {
       tbody.innerHTML = '<tr><td colspan="5" class="text-muted small p-3">등록된 고객 계정이 없습니다.</td></tr>';
       return;
     }
-    tbody.innerHTML = users.map(u => {
+    tbody.innerHTML = _users.map(u => {
       const ips = u.allowed_ips && u.allowed_ips.length ? u.allowed_ips.join(', ') : '<span class="text-muted">제한 없음</span>';
       const badge = u.is_active
         ? '<span class="badge bg-success-subtle text-success">활성</span>'
@@ -3064,7 +3444,8 @@ async function loadUsers() {
         <td class="small">${ips}</td>
         <td>${badge}</td>
         <td class="text-end pe-3">
-          <button class="btn btn-xs btn-outline-secondary" onclick="resetUserPwd(${u.id}, '${esc(u.username)}')" title="비밀번호 재설정"><i class="bi bi-key"></i></button>
+          <button class="btn btn-xs btn-outline-secondary" onclick="viewCustomerLogs('${esc(u.customer || '')}')" title="이 고객사의 접근 계정별 사용 내역 보기">사용 내역</button>
+          <button class="btn btn-xs btn-outline-primary" onclick="openUserEdit(${u.id})" title="고객사·허용 IP·비밀번호 수정">수정</button>
           <button class="btn btn-xs btn-outline-secondary" onclick="toggleUser(${u.id}, ${u.is_active ? 'false' : 'true'})">${u.is_active ? '비활성화' : '활성화'}</button>
           <button class="btn btn-xs btn-outline-danger" onclick="deleteUser(${u.id}, '${esc(u.username)}')"><i class="bi bi-trash"></i></button>
         </td>
@@ -3100,14 +3481,38 @@ async function toggleUser(id, active) {
   } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
 }
 
-async function resetUserPwd(id, username) {
-  const pw = prompt(`'${username}' 계정의 새 비밀번호 (8자 이상):`);
-  if (pw === null) return;
-  if (pw.length < 8) { settingsMsg('userMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+// 고객사·허용 IP·비밀번호·활성 상태를 한 모달에서 수정한다 (PUT /users/{id}).
+function openUserEdit(id) {
+  const u = _users.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('editUserId').value = u.id;
+  document.getElementById('editUserName').textContent = u.username;
+  document.getElementById('editUserCustomer').value = u.customer || '';
+  document.getElementById('editUserIps').value = (u.allowed_ips || []).join('\n');
+  document.getElementById('editUserPwd').value = '';
+  document.getElementById('editUserActive').checked = !!u.is_active;
+  document.getElementById('editUserMsg').classList.add('d-none');
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('userEditModal')).show();
+}
+
+async function saveUserEdit() {
+  const id = parseInt(document.getElementById('editUserId').value, 10);
+  const customer = document.getElementById('editUserCustomer').value.trim();
+  const pw = document.getElementById('editUserPwd').value;
+  if (!customer) { settingsMsg('editUserMsg', 'danger', '고객사는 비울 수 없습니다.'); return; }
+  if (pw && pw.length < 8) { settingsMsg('editUserMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  const body = {
+    customer,
+    allowed_ips: _taLines('editUserIps'),
+    is_active: document.getElementById('editUserActive').checked,
+  };
+  if (pw) body.password = pw;
   try {
-    await api('PUT', `/users/${id}`, {password: pw});
-    settingsMsg('userMsg', 'success', `'${username}' 비밀번호가 변경되었습니다.`);
-  } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+    await api('PUT', `/users/${id}`, body);
+    bootstrap.Modal.getInstance(document.getElementById('userEditModal'))?.hide();
+    settingsMsg('userMsg', 'success', '계정 정보를 수정했습니다.');
+    loadUsers();
+  } catch (e) { settingsMsg('editUserMsg', 'danger', e.message); }
 }
 
 async function deleteUser(id, username) {
@@ -3116,6 +3521,95 @@ async function deleteUser(id, username) {
     await api('DELETE', `/users/${id}`);
     loadUsers();
   } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
+}
+
+
+// ── 관리자 계정 ─────────────────────────────────────────────────────────────
+// 고객 계정과 같은 /users API 를 쓰고 role 로만 나눈다 (규칙이 두 벌이 되지 않게).
+let _admins = [];
+
+function _lockBadge(u) {
+  if (!u.is_active) return '<span class="badge bg-secondary-subtle text-secondary">비활성</span>';
+  if (u.locked_seconds > 0) {
+    const min = Math.ceil(u.locked_seconds / 60);
+    return `<span class="badge bg-danger-subtle text-danger">잠김 (${min}분 남음)</span>`;
+  }
+  return '<span class="badge bg-success-subtle text-success">활성</span>';
+}
+
+async function loadAdmins() {
+  const tbody = document.getElementById('adminList');
+  try {
+    const users = await api('GET', '/users');
+    if (!users) return;
+    _admins = users.filter(u => u.role === 'admin');
+    if (!_admins.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">관리자 계정이 없습니다.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = _admins.map(u => `
+      <tr>
+        <td class="ps-3 fw-semibold">${esc(u.username)}</td>
+        <td>${_lockBadge(u)}</td>
+        <td class="small text-muted">${u.last_login_at ? fmtLocalDateTime(new Date(u.last_login_at)) : '-'}</td>
+        <td class="text-end pe-3">
+          ${u.locked_seconds > 0 ? `<button class="btn btn-xs btn-outline-warning" onclick="unlockAdmin(${u.id})" title="잠금 해제">해제</button>` : ''}
+          <button class="btn btn-xs btn-outline-secondary" onclick="resetAdminPwd(${u.id}, '${esc(u.username)}')" title="비밀번호 재설정"><i class="bi bi-key"></i></button>
+          <button class="btn btn-xs btn-outline-secondary" onclick="toggleAdmin(${u.id}, ${u.is_active ? 'false' : 'true'})">${u.is_active ? '비활성화' : '활성화'}</button>
+          <button class="btn btn-xs btn-outline-danger" onclick="deleteAdmin(${u.id}, '${esc(u.username)}')"><i class="bi bi-trash"></i></button>
+        </td>
+      </tr>`).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-danger small p-3">${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function createAdmin() {
+  const username = document.getElementById('newAdminName').value.trim();
+  const password = document.getElementById('newAdminPwd').value;
+  if (!username) { settingsMsg('adminMsg', 'danger', '아이디는 필수입니다.'); return; }
+  if (password.length < 8) { settingsMsg('adminMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  try {
+    await api('POST', '/users', {username, password, role: 'admin'});
+    settingsMsg('adminMsg', 'success', `'${username}' 관리자 계정이 생성되었습니다.`);
+    document.getElementById('newAdminName').value = '';
+    document.getElementById('newAdminPwd').value = '';
+    loadAdmins();
+  } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
+}
+
+async function toggleAdmin(id, active) {
+  try {
+    await api('PUT', `/users/${id}`, {is_active: active});
+    loadAdmins();
+  } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
+}
+
+async function unlockAdmin(id) {
+  try {
+    await api('POST', `/users/${id}/unlock`);
+    settingsMsg('adminMsg', 'success', '잠금을 해제했습니다.');
+    loadAdmins();
+  } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
+}
+
+async function resetAdminPwd(id, username) {
+  const pw = prompt(`'${username}' 계정의 새 비밀번호 (8자 이상):`);
+  if (pw === null) return;
+  if (pw.length < 8) { settingsMsg('adminMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  try {
+    await api('PUT', `/users/${id}`, {password: pw});
+    settingsMsg('adminMsg', 'success', `'${username}' 비밀번호를 변경했습니다 (잠금도 해제됨).`);
+    loadAdmins();
+  } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
+}
+
+async function deleteAdmin(id, username) {
+  if (!confirm(`'${username}' 관리자 계정을 삭제하시겠습니까?`)) return;
+  try {
+    await api('DELETE', `/users/${id}`);
+    loadAdmins();
+  } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
 }
 
 /* === groups.js === */
@@ -3189,8 +3683,8 @@ function renderGroupPage(page) {
       <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
       <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer ? esc(g.customer) : '<span class="text-muted">-</span>'}</td>
       <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains ? esc(g.upload_domains) : '-'}</td>
-      <td class="small" style="word-break:break-word">${g.application ? esc(g.application) : '<span class="text-muted">-</span>'}</td>
-      <td class="small text-muted" style="word-break:break-word">${g.description ? esc(g.description) : '-'}</td>
+      <td class="small" style="word-break:break-word;white-space:pre-wrap">${g.application ? esc(g.application) : '<span class="text-muted">-</span>'}</td>
+      <td class="small text-muted" style="word-break:break-word;white-space:pre-wrap">${g.description ? esc(g.description) : '-'}</td>
       <td><div class="d-flex gap-1 justify-content-end">
         <button class="btn btn-xs btn-outline-secondary" onclick="openGroupDevices(${g.id})" title="이 그룹에 장비 등록"><i class="bi bi-hdd-network me-1"></i>장비</button>
         <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
@@ -3206,7 +3700,7 @@ function renderGroupPage(page) {
     const headerLabel = telco
       ? `<i class="bi bi-broadcast-pin-fill me-2 text-brand"></i><span class="fw-semibold">${esc(telco)}</span>`
       : `<i class="bi bi-dash-circle me-2 text-muted"></i><span class="fw-semibold text-muted">통신사 미지정</span>`;
-    const spacer = isFirst ? '' : `<tr><td colspan="${GROUP_COLS}" style="height:10px;padding:0;background:#f5f7fa;border-top:2px solid #dee2e6"></td></tr>`;
+    const spacer = isFirst ? '' : `<tr><td colspan="${GROUP_COLS}" style="height:10px;padding:0;background:var(--st-bg);border-top:2px solid var(--st-border)"></td></tr>`;
     isFirst = false;
     return `${spacer}
       <tr class="table-secondary" data-telco="${telco || ''}">
@@ -3265,7 +3759,7 @@ function filterGroups(btn) {
 function populateGroupTelco(selected) {
   const sel = document.getElementById('groupTelco');
   const opts = ['<option value="">(통신사 미지정)</option>']
-    .concat(allTelcos.map(t => `<option value="${t.name}"${t.name===selected?' selected':''}>${t.name}</option>`));
+    .concat(allTelcos.map(t => `<option value="${esc(t.name)}"${t.name===selected?' selected':''}>${esc(t.name)}</option>`));
   sel.innerHTML = opts.join('');
 }
 
@@ -3280,7 +3774,7 @@ async function openGroupModal(id) {
   await getTelcos();
   populateGroupTelco(g?.telco || '');
   document.getElementById('groupModalTitle').textContent = id ? '그룹 수정' : '그룹 추가';
-  new bootstrap.Modal(document.getElementById('groupModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('groupModal')).show();
 }
 
 async function saveGroup() {
@@ -3334,7 +3828,7 @@ async function openGroupDevices(groupId) {
   if (!targets.length) {
     list.innerHTML = '<div class="text-center text-muted py-4">등록 가능한 승인된 장비가 없습니다.<br><span class="small">장비 관리에서 먼저 장비를 확인(승인)해주세요.</span></div>';
     document.getElementById('gdCount').textContent = '0';
-    new bootstrap.Modal(document.getElementById('groupDeviceModal')).show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('groupDeviceModal')).show();
     return;
   }
 
@@ -3356,7 +3850,7 @@ async function openGroupDevices(groupId) {
   }).join('');
 
   updateGroupDeviceCount();
-  new bootstrap.Modal(document.getElementById('groupDeviceModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('groupDeviceModal')).show();
 }
 
 function updateGroupDeviceCount() {
@@ -3406,6 +3900,9 @@ const ACTION_ICON = {
 
 let _logGroupMap = {};   // id → group object
 let _pendingSearch = false;  // navToLogsFilters가 세팅, initLogsPage 완료 후 자동 검색
+let _pendingCustomer = null; // 설정 > 고객 계정에서 '사용 내역'으로 넘어온 고객사
+let _customerFilter = '';    // 그 고객사 조건 (드롭다운 없이 칩으로만 보인다)
+let _selectedUsernames = []; // 계정 다중 선택 (정확 일치). 비어 있으면 전체
 
 // 총건수 캐시: 필터(페이지/크기 제외)가 같으면 페이지 이동 시 재집계하지 않는다.
 // 카운트는 목록과 병렬로 요청해 첫 페이지가 COUNT 를 기다리지 않게 한다.
@@ -3422,52 +3919,167 @@ function _resetAutofillInputs() {
 }
 
 async function initLogsPage() {
+  // 왼쪽 탭으로 직접 들어온 경우엔 이전 검색 조건을 남기지 않는다.
+  // 대시보드 드릴다운(navToLogsFilters)은 조건을 들고 오므로 건드리지 않는다.
+  if (!_pendingSearch) _clearLogSearch();
   _resetAutofillInputs();
 
   const groups = await api('GET', '/groups');
   if (groups) {
     allGroups = groups;
     _logGroupMap = Object.fromEntries(groups.map(g => [String(g.id), g]));
-
-    // 텔코 목록 (그룹에서 추출, 중복 제거)
-    const telcos = [...new Set(groups.map(g => g.telco).filter(Boolean))].sort();
-    document.getElementById('logTelcoFilter').innerHTML =
-      '<option value="">전체 텔코</option>' + telcos.map(t => `<option value="${t}">${t}</option>`).join('');
-
-    _renderGroupOptions('');
+    _renderGroupOptions();
   }
   _initGroupTooltip();
   _initLogColResize();
 
+  if (_pendingCustomer !== null) {
+    _setCustomerFilter(_pendingCustomer);
+    _pendingCustomer = null;
+    searchLogs(1);
+    openUserPicker();       // 바로 '접근한 계정' 중에서 고르게 한다
+    return;
+  }
   if (_pendingSearch) {
     _pendingSearch = false;
     searchLogs(1);
   }
 }
 
-function _renderGroupOptions(telco) {
-  const filtered = telco ? allGroups.filter(g => g.telco === telco) : allGroups;
-  document.getElementById('logGroupFilter').innerHTML =
-    '<option value="">전체 그룹</option>' +
-    filtered.map(g => `<option value="${g.id}">${telco ? '' : (g.telco ? g.telco + ' · ' : '')}${g.name}</option>`).join('');
+// 고객사 조건은 필터줄에 두지 않는다 — 설정 > 고객 계정의 '사용 내역'으로 넘어왔을 때만
+// 칩으로 보여주고, 칩의 X 로 지운다.
+function _setCustomerFilter(customer) {
+  _customerFilter = customer || '';
+  const chip = document.getElementById('logCustomerChip');
+  if (!chip) return;
+  chip.classList.toggle('d-none', !_customerFilter);
+  if (_customerFilter) {
+    document.getElementById('logCustomerChipName').textContent = _customerFilter;
+  }
 }
 
-function onTelcoFilter() {
-  const telco = document.getElementById('logTelcoFilter').value;
-  _renderGroupOptions(telco);
+function clearCustomerFilter() {
+  _setCustomerFilter('');
+  _setSelectedUsernames([]);   // 고객사가 빠지면 그 안에서 고른 계정도 의미가 없다
   searchLogs(1);
+}
+
+// ── 접근 계정 다중 선택 ─────────────────────────────────────────────────────
+function _setSelectedUsernames(list) {
+  _selectedUsernames = list;
+  const btn = document.getElementById('logUserPickBtn');
+  const input = document.getElementById('logUserFilter');
+  if (!btn || !input) return;
+  btn.classList.toggle('btn-primary', list.length > 0);
+  btn.classList.toggle('text-white', list.length > 0);
+  btn.classList.toggle('btn-outline-secondary', list.length === 0);
+  btn.title = list.length ? `선택된 계정 ${list.length}개 — ${list.join(', ')}` : '접근한 계정 중에서 여러 개 선택';
+  if (list.length) {
+    input.value = `${list.length}개 계정 선택`;
+    input.setAttribute('readonly', '');
+    input.classList.add('bg-body-secondary');
+  } else if (input.value.endsWith('개 계정 선택')) {
+    input.value = '';
+    input.classList.remove('bg-body-secondary');
+  }
+}
+
+async function openUserPicker() {
+  const list = document.getElementById('userPickerList');
+  list.innerHTML = '<div class="text-muted small py-2">불러오는 중…</div>';
+  document.getElementById('userPickerSearch').value = '';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('userPickerModal')).show();
+  // 계정 목록은 계정 조건을 뺀 나머지 필터(고객사·그룹·기간) 기준으로 뽑는다
+  const params = _logParams({skipUsernames: true});
+  try {
+    const names = await api('GET', `/logs/usernames?${params}`);
+    if (!names || !names.length) {
+      list.innerHTML = '<div class="text-muted small py-2">이 조건에서 접근한 계정이 없습니다.</div>';
+      _updateUserPickerCount();
+      return;
+    }
+    list.innerHTML = names.map((n, i) => `
+      <div class="form-check user-pick-row" data-name="${esc(n.toLowerCase())}">
+        <input class="form-check-input" type="checkbox" id="upick${i}" value="${esc(n)}"
+               ${_selectedUsernames.includes(n) ? 'checked' : ''} onchange="_updateUserPickerCount()">
+        <label class="form-check-label small" for="upick${i}">${esc(n)}</label>
+      </div>`).join('');
+    _updateUserPickerCount();
+  } catch (e) {
+    list.innerHTML = `<div class="text-danger small py-2">${esc(e.message)}</div>`;
+  }
+}
+
+function _pickerBoxes() {
+  return Array.from(document.querySelectorAll('#userPickerList input[type=checkbox]'));
+}
+
+function _updateUserPickerCount() {
+  const n = _pickerBoxes().filter(b => b.checked).length;
+  document.getElementById('userPickerCount').textContent = n ? `${n}개 선택됨` : '선택 없음 = 전체';
+}
+
+function filterUserPicker() {
+  const q = document.getElementById('userPickerSearch').value.trim().toLowerCase();
+  document.querySelectorAll('#userPickerList .user-pick-row').forEach(row => {
+    row.classList.toggle('d-none', q && !row.dataset.name.includes(q));
+  });
+}
+
+function toggleAllUserPicker(on) {
+  // 검색으로 걸러진 항목만 대상으로 한다 (보이는 것과 다르게 동작하면 헷갈린다)
+  _pickerBoxes().forEach(b => {
+    if (!b.closest('.user-pick-row').classList.contains('d-none')) b.checked = on;
+  });
+  _updateUserPickerCount();
+}
+
+function applyUserPicker() {
+  _setSelectedUsernames(_pickerBoxes().filter(b => b.checked).map(b => b.value));
+  bootstrap.Modal.getInstance(document.getElementById('userPickerModal'))?.hide();
+  searchLogs(1);
+}
+
+// 설정 > 고객 계정에서 호출 — 그 고객사의 로그 조회로 이동해 계정 선택을 띄운다
+function viewCustomerLogs(customer) {
+  _pendingCustomer = customer || '';
+  nav('logs');
+}
+
+// 옵션 title — 목록을 펼친 상태에서 항목에 마우스를 올리면 고객사/서비스가 보인다.
+// (네이티브 select 는 option 에 커스텀 툴팁을 못 붙이므로 title 속성을 쓴다)
+function _groupOptionTitle(g) {
+  const rows = [];
+  if (g.customer)    rows.push(`고객사: ${g.customer}`);
+  if (g.application) rows.push(`서비스: ${g.application}`);
+  if (g.description) rows.push(`설명: ${g.description}`);
+  return rows.join('\n');
+}
+
+function _renderGroupOptions() {
+  document.getElementById('logGroupFilter').innerHTML =
+    '<option value="">전체 그룹</option>' +
+    allGroups.map(g => {
+      const tip = _groupOptionTitle(g);
+      const prefix = g.telco ? esc(g.telco) + ' · ' : '';
+      return `<option value="${g.id}"${tip ? ` title="${esc(tip)}"` : ''}>${prefix}${esc(g.name)}</option>`;
+    }).join('');
 }
 
 function _initGroupTooltip() {
   const sel = document.getElementById('logGroupFilter');
   const tip = document.getElementById('logGroupTip');
+  // initLogsPage 는 로그 탭에 들어올 때마다 불린다 — 가드가 없으면 같은 select 에
+  // 핸들러가 계속 쌓인다 (_initLogColResize 와 같은 방식).
+  if (!sel || sel.dataset.tipReady) return;
+  sel.dataset.tipReady = '1';
 
   sel.addEventListener('mouseenter', () => {
     const g = _logGroupMap[sel.value];
     if (!g || (!g.application && !g.description && !g.customer)) { tip.classList.add('d-none'); return; }
     const rows = [];
-    if (g.application) rows.push(`<span class="text-muted">서비스:</span> <b>${esc(g.application)}</b>`);
-    if (g.customer)    rows.push(`<span class="text-muted">고객사:</span> ${esc(g.customer)}`);
+    if (g.customer)    rows.push(`<span class="text-muted">고객사:</span> <b>${esc(g.customer)}</b>`);
+    if (g.application) rows.push(`<span class="text-muted">서비스:</span> ${esc(g.application)}`);
     if (g.description) rows.push(`<span class="text-muted">설명:</span> ${esc(g.description)}`);
     tip.innerHTML = rows.join('<br>');
     tip.classList.remove('d-none');
@@ -3541,10 +4153,13 @@ function _initLogColResize() {
   });
 }
 
-function _logParams() {
+// skipUsernames: 계정 선택 목록을 뽑을 때는 계정 조건을 빼고 나머지 필터만 쓴다.
+function _logParams({skipUsernames = false} = {}) {
   const params = new URLSearchParams();
   const grp = document.getElementById('logGroupFilter').value;
-  const user = document.getElementById('logUserFilter').value.trim();
+  const customer = _customerFilter;
+  // 다중 선택 중이면 입력칸은 '3개 계정 선택' 같은 안내문이라 부분일치 조건으로 보내지 않는다
+  const user = _selectedUsernames.length ? '' : document.getElementById('logUserFilter').value.trim();
   const ip = document.getElementById('logIpFilter').value.trim();
   const filePath = (document.getElementById('logFileFilter')?.value || '').trim();
   const action = document.getElementById('logActionFilter').value;
@@ -3552,15 +4167,18 @@ function _logParams() {
   const start = document.getElementById('logStartTime').value;
   const end = document.getElementById('logEndTime').value;
   if (grp) params.set('group_id', grp);
+  if (customer) params.set('customer', customer);
   if (user) params.set('username', user);
+  if (!skipUsernames && _selectedUsernames.length) params.set('usernames', _selectedUsernames.join(','));
   if (ip) params.set('client_ip', ip);
   if (filePath) params.set('file_path', filePath);
   if (action === '__exclude_login_logout__') params.set('exclude_actions', 'login,logout');
   else if (action === '__transfer_only__') params.set('exclude_actions', 'login,logout,cwd_fail,rename,mkdir,rmdir,delete');
   else if (action) params.set('action', action);
   if (status) params.set('status', status);
-  if (start) params.set('start_time', new Date(start).toISOString());
-  if (end) params.set('end_time', new Date(end).toISOString());
+  // 날짜 단위 입력 — 시작일은 00:00:00, 종료일은 23:59:59.999 로 그 날 전체를 덮는다
+  if (start) params.set('start_time', new Date(start + 'T00:00:00').toISOString());
+  if (end) params.set('end_time', new Date(end + 'T23:59:59.999').toISOString());
   return params;
 }
 
@@ -3594,7 +4212,8 @@ function _renderLogTotal(itemCount) {
       _setHtml(el, itemCount
         ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 <span class="text-muted">집계 중…</span>`
         : '결과 없음');
-      // 총건수 미확정: 이전/다음만 제공
+      // 총건수 미확정: 이전/다음만 제공 (이동할 마지막 페이지를 모르므로 직접 이동은 숨김)
+      _renderPageJump(0);
       _setHtml(pager, itemCount ? _simplePager(itemCount < logPageSize) : '');
     }, LOG_COUNT_PENDING_DELAY);
     return;
@@ -3604,7 +4223,7 @@ function _renderLogTotal(itemCount) {
   const to = Math.min(logPage * logPageSize, _logTotal);
   _setHtml(el, _logTotal
     ? `${from.toLocaleString()}–${to.toLocaleString()} / 총 ${_logTotal.toLocaleString()}건` : '결과 없음');
-  renderPager(Math.ceil(_logTotal / logPageSize), logPage);
+  renderPager(_logTotal ? Math.ceil(_logTotal / logPageSize) : 0, logPage);
 }
 
 function _simplePager(isLast) {
@@ -3633,6 +4252,7 @@ async function searchLogs(page) {
       `<tr><td colspan="9" class="text-center text-danger py-4">${msg}</td></tr>`;
     document.getElementById('logTotal').textContent = '';
     document.getElementById('logPager').innerHTML = '';
+    _renderPageJump(0);
   };
   try {
   logPage = page || 1;
@@ -3695,8 +4315,33 @@ async function searchLogs(page) {
   }
 }
 
+// 페이지 직접 이동 입력 — 총 페이지 수가 확정됐을 때만 보인다.
+let _logTotalPages = 0;
+
+function _renderPageJump(total) {
+  const box = document.getElementById('logPageJump');
+  const input = document.getElementById('logPageJumpInput');
+  if (!box || !input) return;
+  _logTotalPages = total;
+  box.classList.toggle('d-none', total <= 1);
+  box.classList.toggle('d-flex', total > 1);
+  if (total > 1) {
+    input.max = total;
+    input.placeholder = `1-${total}`;
+  }
+}
+
+function jumpLogPage() {
+  const input = document.getElementById('logPageJumpInput');
+  const n = parseInt(input.value, 10);
+  if (!_logTotalPages || !Number.isFinite(n)) return;
+  input.value = '';
+  searchLogs(Math.min(Math.max(1, n), _logTotalPages));
+}
+
 function renderPager(total, current) {
   const ul = document.getElementById('logPager');
+  _renderPageJump(total);
   if (total <= 1) { _setHtml(ul, ''); return; }
   const go = n => `searchLogs(${n})`;
   let html = '';
@@ -3719,46 +4364,74 @@ async function _download(endpoint, ext) {
   if (!r.ok) return alert('내보내기 실패');
   const blob = await r.blob();
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `ftp_logs_${new Date().toISOString().slice(0,10)}.${ext}`;
   a.click();
+  // 안 풀어주면 내보낸 파일이 통째로 탭에 남는다 (대용량 CSV 를 여러 번 받으면 그만큼 쌓인다).
+  // 다운로드가 시작될 때까지는 살려 둬야 하므로 다음 틱에 푼다.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 async function exportLogs() { await _download('/logs/export', 'csv'); }
 async function exportXlsx() { await _download('/logs/export/xlsx', 'xlsx'); }
 
-function resetLogFilters() {
-  document.getElementById('logTelcoFilter').value = '';
-  _renderGroupOptions('');
+// 검색 조건만 기본값으로 되돌린다 (조회는 하지 않음).
+function _clearLogFilters() {
   document.getElementById('logGroupFilter').value = '';
+  _setCustomerFilter('');
+  _setSelectedUsernames([]);
   _resetAutofillInputs();
   document.getElementById('logFileFilter').value = '';
   document.getElementById('logActionFilter').value = '__exclude_login_logout__';
   document.getElementById('logStatusFilter').value = '';
   document.getElementById('logStartTime').value = '';
   document.getElementById('logEndTime').value = '';
+}
+
+// 조건 + 결과를 화면 진입 직후 상태로 되돌린다 (탭 재진입용).
+function _clearLogSearch() {
+  _clearLogFilters();
+  _clearPendingTotal();
+  _logCountKey = null;
+  _logTotal = null;
+  document.getElementById('logTable').innerHTML =
+    '<tr><td colspan="9" class="text-center text-muted py-4">검색 조건을 입력하고 조회하세요.</td></tr>';
+  document.getElementById('logTotal').textContent = '';
+  document.getElementById('logPager').innerHTML = '';
+  _renderPageJump(0);
+}
+
+function resetLogFilters() {
+  _clearLogFilters();
   searchLogs(1);
 }
 
+// 날짜 단위 조회라 '어제'는 어제 하루, 그 밖에는 N일 전부터 오늘까지가 된다.
 function logDateQuick(dayOffset) {
-  const now = new Date();
-  let start, end;
+  const start = new Date();
+  const end = new Date();
   if (dayOffset === -1) {
-    // 어제 전체
-    start = new Date(now); start.setDate(start.getDate()-1); start.setHours(0,0,0,0);
-    end   = new Date(now); end.setDate(end.getDate()-1);     end.setHours(23,59,59,999);
-  } else if (dayOffset === 0) {
-    // 오늘 00:00 ~ 지금
-    start = new Date(now); start.setHours(0,0,0,0);
-    end   = now;
-  } else {
-    // N일 전 00:00 ~ 지금
-    start = new Date(now); start.setDate(start.getDate()+dayOffset); start.setHours(0,0,0,0);
-    end   = now;
+    start.setDate(start.getDate() - 1);
+    end.setDate(end.getDate() - 1);
+  } else if (dayOffset < 0) {
+    start.setDate(start.getDate() + dayOffset);
   }
-  document.getElementById('logStartTime').value = fmtLocalInput(start);
-  document.getElementById('logEndTime').value   = fmtLocalInput(end);
+  setLogDateRange(start, end);
   searchLogs(1);
+}
+
+// 로그 조회 기간 입력에 날짜를 넣는다 (대시보드 드릴다운도 이걸 쓴다 — 형식이 갈라지지 않게)
+function setLogDateRange(start, end) {
+  document.getElementById('logStartTime').value = start ? fmtLocalDate(start) : '';
+  document.getElementById('logEndTime').value   = end ? fmtLocalDate(end) : '';
+}
+
+// 날짜 칸은 타이핑을 막아 두었으므로(onkeydown="return false") 어디를 눌러도 달력이 열리게 한다.
+// readonly 로 막지 않는 이유: 브라우저에 따라 readonly 가 네이티브 달력까지 막아
+// 날짜를 아예 못 고르는 상태가 된다. 실패해도 조용히 넘긴다 — 달력 아이콘은 그대로 동작한다.
+function openDatePicker(el) {
+  try { el.showPicker?.(); } catch { /* 사용자 제스처 밖에서 호출됨 — 무시 */ }
 }
 
 /* === apiguide.js === */
@@ -3774,6 +4447,7 @@ const API_SAMPLE_KEY = 'slt_여기에_발급받은_키';
 const API_ENDPOINTS = [
   ['/api/v1/logs', '로그 목록. 페이징(<code>page</code>, <code>size</code>)과 아래 필터를 조합한다. 총건수는 포함되지 않는다.'],
   ['/api/v1/logs/count', '위와 같은 필터의 <b>정확한 총건수</b>. 목록과 따로 호출한다.'],
+  ['/api/v1/logs/usernames', '같은 필터에서 실제로 접근한 FTP 계정 목록(중복 제거).'],
   ['/api/v1/logs/export', '필터에 걸린 전체 로그를 CSV 로 내려받는다(스트리밍).'],
   ['/api/v1/logs/export/xlsx', '같은 조건을 XLSX 로 내려받는다.'],
   ['/api/v1/dashboard', '기간 합계와 일별 추이, 상위 사용자/장비/그룹, 작업유형 분포.'],
@@ -3790,7 +4464,9 @@ const API_PARAMS = [
   ['end_time', '2026-09-03T23:59:59Z', '조회 종료.'],
   ['device_id', '3', '특정 장비만.'],
   ['group_id', '2', '특정 그룹에 속한 장비만.'],
+  ['customer', 'ACME', '고객사 단위(그룹의 customer 정확 일치)로 제한.'],
   ['username', 'vod_', 'FTP 계정 부분 일치.'],
+  ['usernames', 'vod_a,vod_b', 'FTP 계정 여러 개를 <b>정확히</b> 지정(쉼표 구분). <code>username</code> 과 함께 쓰면 둘 다 적용된다.'],
   ['client_ip', '192.168.', '클라이언트 IP 부분 일치.'],
   ['file_path', '.mp4', '파일 경로/이름 부분 일치.'],
   ['action', 'upload', 'upload, download, delete, rename, login, logout, mkdir, rmdir, cwd_fail'],
@@ -3922,7 +4598,7 @@ async function loadChangelog() {
         <ul class="list-unstyled mb-0 ps-3">
           ${e.items.map(it => {
             const isCur = it.commit && curCommit && it.commit.startsWith(curCommit);
-            return `<li class="d-flex gap-2 py-1" style="border-bottom:1px solid #f1f3f5">
+            return `<li class="d-flex gap-2 py-1" style="border-bottom:1px solid var(--st-border)">
               <span class="flex-grow-1">${esc(it.text)}</span>
               ${it.commit ? `<code class="text-muted flex-shrink-0" style="font-size:0.72rem">${esc(it.commit)}</code>` : ''}
               ${isCur ? '<span class="badge bg-success flex-shrink-0">현재</span>' : ''}
@@ -3941,7 +4617,7 @@ const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {k
 let currentSettingsTab = 'telco';
 
 // 관리자 전용 페이지 — 고객 계정은 서버에서도 막히지만 UI 에서도 진입을 막는다.
-const ADMIN_PAGES = ['settings', 'changelog'];
+const ADMIN_PAGES = ['settings', 'changelog', 'devices', 'groups'];
 
 function nav(page) {
   if (ADMIN_PAGES.includes(page) && getRole() !== 'admin') page = 'dashboard';
@@ -3951,11 +4627,14 @@ function nav(page) {
   const link = document.querySelector(`#sidenav [onclick="nav('${page}')"]`);
   if (link) link.classList.add('active');
   if (page === 'dashboard') {
+    initDashLayout();
     if (_dashExactStart || document.getElementById('dashStart').value) loadAll();
     else dashLast24();
   }
   else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
   if (page === 'logs') initLogsPage();
+  if (page === 'devices') loadDevices();
+  if (page === 'groups') loadGroups();
   if (page === 'apiguide') initApiGuide();
   if (page === 'changelog') initChangelogPage();
   if (page === 'settings') settingsTab(currentSettingsTab);
@@ -3971,11 +4650,10 @@ function settingsTab(tab) {
   if (tab === 'telco') loadTelcos();
   if (tab === 'update') loadVersion();
   if (tab === 'storage') loadStorage();
-  if (tab === 'devices') loadDevices();
-  if (tab === 'groups') loadGroups();
   if (tab === 'notify') loadNotify();
   if (tab === 'users') loadUsers();
   if (tab === 'security') loadSecurity();
+  if (tab === 'admins') loadAdmins();
 }
 
 function initApp() {
@@ -4000,12 +4678,23 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     });
     if (res.status === 403) {
       const data = await res.json().catch(() => ({}));
-      const ip = data?.detail?.client_ip || '';
-      document.getElementById('blockedIpDisplay').textContent = ip;
+      const code = data?.detail?.code;
+      // 잠금·비활성은 IP 차단과 원인이 다르므로 안내도 달라야 한다
+      if (code === 'ACCOUNT_LOCKED' || code === 'ACCOUNT_DISABLED') {
+        errEl.textContent = data.detail.message || '로그인할 수 없는 계정입니다.';
+        errEl.classList.remove('d-none');
+        return;
+      }
+      document.getElementById('blockedIpDisplay').textContent = data?.detail?.client_ip || '';
       ipBlockedEl.classList.remove('d-none');
       return;
     }
-    if (!res.ok) throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.');
+    if (!res.ok) {
+      // 남은 시도 횟수 등 서버가 준 문구를 그대로 보여준다
+      const data = await res.json().catch(() => ({}));
+      throw new Error(typeof data.detail === 'string' && data.detail !== 'Incorrect credentials'
+        ? data.detail : '아이디 또는 비밀번호가 올바르지 않습니다.');
+    }
     const data = await res.json();
     token = data.access_token;
     localStorage.setItem('soltrace_token', token);
@@ -4018,12 +4707,6 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     errEl.textContent = err.message;
     errEl.classList.remove('d-none');
   } finally { btn.disabled = false; }
-});
-
-['logUserFilter', 'logStartTime', 'logEndTime'].forEach(id => {
-  document.getElementById(id).addEventListener('keydown', e => {
-    if (e.key === 'Enter') searchLogs(1);
-  });
 });
 
 (function init() {

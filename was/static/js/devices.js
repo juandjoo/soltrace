@@ -17,6 +17,16 @@ function daemonBadge(s, errMsg) {
   return `<span class="badge bg-${c.cls} text-${s==='unknown'?'dark':''}"${tip}><i class="bi ${c.icon} me-1"></i>${c.label}</span>`;
 }
 
+// 소속 그룹 배지 — 통신사를 그룹명 앞에 함께 보여준다. 같은 이름의 그룹이 통신사별로
+// 있을 수 있어 그룹명만으로는 어느 쪽인지 알 수 없다 (그룹 배정 모달도 텔코를 보여준다).
+function groupBadge(g) {
+  const telco = g.telco
+    ? `<span class="text-primary-emphasis fw-semibold">${esc(g.telco)}</span> · `
+    : '';
+  const title = g.telco ? `${g.telco} · ${g.name}` : g.name;
+  return `<span class="badge bg-light text-dark border me-1 fw-normal" title="${esc(title)}">${telco}${esc(g.name)}</span>`;
+}
+
 function metricBar(val, max, unit, warnAt, dangerAt) {
   if (val == null) return '<span class="text-muted small">-</span>';
   const pct = Math.min(100, (val / max) * 100);
@@ -84,7 +94,7 @@ async function loadDevices() {
         ${d.queue_size > 0 ? `<span class="badge bg-info text-dark ms-1">Q:${d.queue_size}</span>` : ''}
       </td>
       <td class="text-center text-muted small">${timeAgo(d.last_heartbeat)}</td>
-      <td>${d.groups.map(g=>`<span class="badge bg-light text-dark border me-1">${esc(g.name)}</span>`).join('')||'<span class="text-muted small">-</span>'}</td>
+      <td>${d.groups.map(groupBadge).join('')||'<span class="text-muted small">-</span>'}</td>
       <td class="text-end text-nowrap">
         ${d.status === 'pending' ? `<button class="btn btn-xs btn-success me-1" onclick="confirmDevice(${d.id})">확인</button>` : ''}
         ${d.status === 'confirmed' ? `<button class="btn btn-xs btn-warning me-1" onclick="disableDevice(${d.id})">비활성</button>` : ''}

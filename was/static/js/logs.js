@@ -15,6 +15,7 @@ const ACTION_ICON = {
 let _logGroupMap = {};   // id → group object
 let _pendingSearch = false;  // navToLogsFilters가 세팅, initLogsPage 완료 후 자동 검색
 let _pendingCustomer = null; // 설정 > 고객 계정에서 '사용 내역'으로 넘어온 고객사
+let _customerFilter = '';    // 그 고객사 조건 (드롭다운 없이 칩으로만 보인다)
 let _selectedUsernames = []; // 계정 다중 선택 (정확 일치). 비어 있으면 전체
 
 // 총건수 캐시: 필터(페이지/크기 제외)가 같으면 페이지 이동 시 재집계하지 않는다.
@@ -41,20 +42,13 @@ async function initLogsPage() {
   if (groups) {
     allGroups = groups;
     _logGroupMap = Object.fromEntries(groups.map(g => [String(g.id), g]));
-
-    // 텔코 목록 (그룹에서 추출, 중복 제거)
-    const telcos = [...new Set(groups.map(g => g.telco).filter(Boolean))].sort();
-    document.getElementById('logTelcoFilter').innerHTML =
-      '<option value="">전체 텔코</option>' + telcos.map(t => `<option value="${t}">${t}</option>`).join('');
-
-    _renderGroupOptions('');
-    _renderCustomerOptions();
+    _renderGroupOptions();
   }
   _initGroupTooltip();
   _initLogColResize();
 
   if (_pendingCustomer !== null) {
-    document.getElementById('logCustomerFilter').value = _pendingCustomer;
+    _setCustomerFilter(_pendingCustomer);
     _pendingCustomer = null;
     searchLogs(1);
     openUserPicker();       // 바로 '접근한 계정' 중에서 고르게 한다
@@ -66,23 +60,21 @@ async function initLogsPage() {
   }
 }
 
-// 고객사 목록은 그룹의 customer 값에서 뽑는다 (그룹마다 여러 줄일 수 있어 줄 단위로 분해)
-function _renderCustomerOptions() {
-  const set = new Set();
-  allGroups.forEach(g => (g.customer || '').split('\n').forEach(c => {
-    const v = c.trim();
-    if (v) set.add(v);
-  }));
-  const cur = document.getElementById('logCustomerFilter').value;
-  document.getElementById('logCustomerFilter').innerHTML =
-    '<option value="">전체 고객사</option>' +
-    [...set].sort().map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
-  document.getElementById('logCustomerFilter').value = cur;
+// 고객사 조건은 필터줄에 두지 않는다 — 설정 > 고객 계정의 '사용 내역'으로 넘어왔을 때만
+// 칩으로 보여주고, 칩의 X 로 지운다.
+function _setCustomerFilter(customer) {
+  _customerFilter = customer || '';
+  const chip = document.getElementById('logCustomerChip');
+  if (!chip) return;
+  chip.classList.toggle('d-none', !_customerFilter);
+  if (_customerFilter) {
+    document.getElementById('logCustomerChipName').textContent = _customerFilter;
+  }
 }
 
-function onCustomerFilter() {
-  // 고객사를 바꾸면 이전 계정 선택은 의미가 없다
-  _setSelectedUsernames([]);
+function clearCustomerFilter() {
+  _setCustomerFilter('');
+  _setSelectedUsernames([]);   // 고객사가 빠지면 그 안에서 고른 계정도 의미가 없다
   searchLogs(1);
 }
 
@@ -178,21 +170,14 @@ function _groupOptionTitle(g) {
   return rows.join('\n');
 }
 
-function _renderGroupOptions(telco) {
-  const filtered = telco ? allGroups.filter(g => g.telco === telco) : allGroups;
+function _renderGroupOptions() {
   document.getElementById('logGroupFilter').innerHTML =
     '<option value="">전체 그룹</option>' +
-    filtered.map(g => {
+    allGroups.map(g => {
       const tip = _groupOptionTitle(g);
-      const prefix = telco ? '' : (g.telco ? esc(g.telco) + ' · ' : '');
+      const prefix = g.telco ? esc(g.telco) + ' · ' : '';
       return `<option value="${g.id}"${tip ? ` title="${esc(tip)}"` : ''}>${prefix}${esc(g.name)}</option>`;
     }).join('');
-}
-
-function onTelcoFilter() {
-  const telco = document.getElementById('logTelcoFilter').value;
-  _renderGroupOptions(telco);
-  searchLogs(1);
 }
 
 function _initGroupTooltip() {
@@ -286,7 +271,7 @@ function _initLogColResize() {
 function _logParams({skipUsernames = false} = {}) {
   const params = new URLSearchParams();
   const grp = document.getElementById('logGroupFilter').value;
-  const customer = document.getElementById('logCustomerFilter').value;
+  const customer = _customerFilter;
   // 다중 선택 중이면 입력칸은 '3개 계정 선택' 같은 안내문이라 부분일치 조건으로 보내지 않는다
   const user = _selectedUsernames.length ? '' : document.getElementById('logUserFilter').value.trim();
   const ip = document.getElementById('logIpFilter').value.trim();
@@ -305,8 +290,9 @@ function _logParams({skipUsernames = false} = {}) {
   else if (action === '__transfer_only__') params.set('exclude_actions', 'login,logout,cwd_fail,rename,mkdir,rmdir,delete');
   else if (action) params.set('action', action);
   if (status) params.set('status', status);
-  if (start) params.set('start_time', new Date(start).toISOString());
-  if (end) params.set('end_time', new Date(end).toISOString());
+  // 날짜 단위 입력 — 시작일은 00:00:00, 종료일은 23:59:59.999 로 그 날 전체를 덮는다
+  if (start) params.set('start_time', new Date(start + 'T00:00:00').toISOString());
+  if (end) params.set('end_time', new Date(end + 'T23:59:59.999').toISOString());
   return params;
 }
 
@@ -492,9 +478,13 @@ async function _download(endpoint, ext) {
   if (!r.ok) return alert('내보내기 실패');
   const blob = await r.blob();
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `ftp_logs_${new Date().toISOString().slice(0,10)}.${ext}`;
   a.click();
+  // 안 풀어주면 내보낸 파일이 통째로 탭에 남는다 (대용량 CSV 를 여러 번 받으면 그만큼 쌓인다).
+  // 다운로드가 시작될 때까지는 살려 둬야 하므로 다음 틱에 푼다.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 async function exportLogs() { await _download('/logs/export', 'csv'); }
@@ -502,10 +492,8 @@ async function exportXlsx() { await _download('/logs/export/xlsx', 'xlsx'); }
 
 // 검색 조건만 기본값으로 되돌린다 (조회는 하지 않음).
 function _clearLogFilters() {
-  document.getElementById('logTelcoFilter').value = '';
-  _renderGroupOptions('');
   document.getElementById('logGroupFilter').value = '';
-  document.getElementById('logCustomerFilter').value = '';
+  _setCustomerFilter('');
   _setSelectedUsernames([]);
   _resetAutofillInputs();
   document.getElementById('logFileFilter').value = '';
@@ -533,23 +521,29 @@ function resetLogFilters() {
   searchLogs(1);
 }
 
+// 날짜 단위 조회라 '어제'는 어제 하루, 그 밖에는 N일 전부터 오늘까지가 된다.
 function logDateQuick(dayOffset) {
-  const now = new Date();
-  let start, end;
+  const start = new Date();
+  const end = new Date();
   if (dayOffset === -1) {
-    // 어제 전체
-    start = new Date(now); start.setDate(start.getDate()-1); start.setHours(0,0,0,0);
-    end   = new Date(now); end.setDate(end.getDate()-1);     end.setHours(23,59,59,999);
-  } else if (dayOffset === 0) {
-    // 오늘 00:00 ~ 지금
-    start = new Date(now); start.setHours(0,0,0,0);
-    end   = now;
-  } else {
-    // N일 전 00:00 ~ 지금
-    start = new Date(now); start.setDate(start.getDate()+dayOffset); start.setHours(0,0,0,0);
-    end   = now;
+    start.setDate(start.getDate() - 1);
+    end.setDate(end.getDate() - 1);
+  } else if (dayOffset < 0) {
+    start.setDate(start.getDate() + dayOffset);
   }
-  document.getElementById('logStartTime').value = fmtLocalInput(start);
-  document.getElementById('logEndTime').value   = fmtLocalInput(end);
+  setLogDateRange(start, end);
   searchLogs(1);
+}
+
+// 로그 조회 기간 입력에 날짜를 넣는다 (대시보드 드릴다운도 이걸 쓴다 — 형식이 갈라지지 않게)
+function setLogDateRange(start, end) {
+  document.getElementById('logStartTime').value = start ? fmtLocalDate(start) : '';
+  document.getElementById('logEndTime').value   = end ? fmtLocalDate(end) : '';
+}
+
+// 날짜 칸은 타이핑을 막아 두었으므로(onkeydown="return false") 어디를 눌러도 달력이 열리게 한다.
+// readonly 로 막지 않는 이유: 브라우저에 따라 readonly 가 네이티브 달력까지 막아
+// 날짜를 아예 못 고르는 상태가 된다. 실패해도 조용히 넘긴다 — 달력 아이콘은 그대로 동작한다.
+function openDatePicker(el) {
+  try { el.showPicker?.(); } catch { /* 사용자 제스처 밖에서 호출됨 — 무시 */ }
 }

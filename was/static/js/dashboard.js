@@ -237,14 +237,16 @@ const RATE_DRILL_ACTIONS = [
 
 // 대시보드 날짜 범위를 유지하면서 로그 조회 페이지로 드릴다운
 function navToLogsFilters({action = '', status = '', filePath = ''} = {}) {
+  // 로그 조회는 날짜 단위라 시각은 떨군다 (setLogDateRange 가 형식을 맡는다)
   if (_dashExactStart && _dashExactEnd) {
-    document.getElementById('logStartTime').value = fmtLocalInput(new Date(_dashExactStart));
-    document.getElementById('logEndTime').value   = fmtLocalInput(new Date(_dashExactEnd));
+    setLogDateRange(new Date(_dashExactStart), new Date(_dashExactEnd));
   } else {
     const s = document.getElementById('dashStart').value;
     const e = document.getElementById('dashEnd').value;
-    if (s) document.getElementById('logStartTime').value = s + 'T00:00';
-    if (e) document.getElementById('logEndTime').value   = e + 'T23:59';
+    if (s || e) {
+      setLogDateRange(s ? new Date(s + 'T00:00:00') : null,
+                      e ? new Date(e + 'T00:00:00') : null);
+    }
   }
   document.getElementById('logActionFilter').value = action;
   document.getElementById('logStatusFilter').value  = status;
