@@ -544,7 +544,7 @@
     <div id="page-architecture" class="page">
       <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
         <h5 class="mb-0 fw-bold"><i class="bi bi-diagram-2 me-2 text-brand"></i>구성도</h5>
-        <span class="text-muted small">수집 → 저장 → 판정 → 알림·조회</span>
+        <span class="text-muted small">수집 → 저장 → 판정 → 알림·조회 · 인수인계 문서</span>
       </div>
 
       <!-- 1. 시스템 구성 -->
@@ -711,6 +711,135 @@
         <div class="form-text mt-2">
           지속 버킷 수 · 임계값은 <b>설정 &gt; 알림 설정 &gt; 이상 감지 임계값</b>에서 바꾼다
           (저장하면 다음 판정 주기에 반영).
+        </div>
+      </div>
+
+      <!-- 3. 인수인계 문서 -->
+      <div class="card p-3 mt-3">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span class="fw-semibold small"><i class="bi bi-journal-text me-1"></i>인수인계 문서</span>
+          <span class="text-muted" style="font-size:0.75rem">운영을 넘겨받는 사람이 먼저 읽는 문서</span>
+        </div>
+        <div class="text-muted small mb-3">
+          위 구성도가 <b>무엇이 어떻게 연결돼 있는지</b>라면, 아래는 <b>무엇을 해야 하는지</b>다.
+          비밀값(비밀번호·토큰·웹훅 URL)은 여기에 적지 않는다 — 있는 <b>위치</b>만 적고 값은 서버의
+          <code>.env</code> 와 설정 화면에서 확인한다.
+        </div>
+
+        <div class="row g-3">
+
+          <!-- 한 장 요약 -->
+          <div class="col-lg-6">
+            <div class="arch-col h-100">
+              <div class="arch-col-title">1 · 한 장 요약</div>
+              <div class="small">
+                FTP 장비(proftpd)의 로그를 데몬이 파싱해 WAS 로 보내고, WAS 가 저장·분석해
+                대시보드와 알림으로 보여준다. <b>서비스 트래픽 경로가 아니라 관측 경로</b>라
+                이 시스템이 멈춰도 FTP 전송 자체는 계속된다 — 다만 그동안의 <b>기록과 알림이 비고</b>,
+                장비 쪽 버퍼(최대 5만 줄)를 넘기면 그만큼은 복구되지 않는다.
+                <div class="mt-2">
+                  <b>하루 한 번 볼 것</b> — 대시보드 <span class="text-brand">장비 상태</span>(현재 기준)에
+                  주의·심각이 있는지, <span class="text-brand">최근 이상 알림</span>에 새 항목이 있는지,
+                  설정 &gt; DB 저장소의 디스크 사용률.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 서버 · 경로 -->
+          <div class="col-lg-6">
+            <div class="arch-col h-100">
+              <div class="arch-col-title">2 · 서버 · 경로 (WAS)</div>
+              <table class="table table-sm mb-0" style="font-size:0.75rem">
+                <tbody>
+                  <tr><td class="text-muted" style="width:38%">코드</td><td><code>/opt/soltrace</code> (git 저장소)</td></tr>
+                  <tr><td class="text-muted">설정 · 비밀값</td><td><code>/opt/soltrace/.env</code> (DB 접속, SECRET_KEY, 관리자 초기 비밀번호)</td></tr>
+                  <tr><td class="text-muted">서비스</td><td><code>soltrace-was</code> · <code>nginx</code> · <code>postgresql-16</code></td></tr>
+                  <tr><td class="text-muted">앱 로그</td><td><code>/var/log/soltrace/error.log</code> (트레이스백)<br><code>access.log</code> · <code>selfupdate.log</code> — 저널이 아니라 <b>파일</b></td></tr>
+                  <tr><td class="text-muted">DB</td><td>PostgreSQL 16 · DB <code>soltrace</code></td></tr>
+                  <tr><td class="text-muted">백업</td><td><code>/var/backups/soltrace</code> (매일 03:00, 3년 보관)</td></tr>
+                  <tr><td class="text-muted">장비 데몬</td><td><code>/opt/soltrace-daemon</code> · <code>config.ini</code><br>서비스 <code>soltrace-daemon</code> · 로그 <code>/var/log/soltrace-daemon/daemon.log</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 자주 하는 작업 -->
+          <div class="col-lg-6">
+            <div class="arch-col h-100">
+              <div class="arch-col-title">3 · 자주 하는 작업</div>
+              <table class="table table-sm mb-0" style="font-size:0.75rem">
+                <tbody>
+                  <tr><td class="text-muted" style="width:42%">WAS 업데이트</td><td>설정 &gt; 시스템 업데이트 버튼<br>또는 서버에서 <code>sudo bash scripts/update_rocky8.sh main</code></td></tr>
+                  <tr><td class="text-muted">새 장비 붙이기</td><td>장비에 데몬 설치 → 장비 관리에서 <b>확인(Confirm)</b> → 그룹 배정</td></tr>
+                  <tr><td class="text-muted">데몬 업데이트</td><td>장비 관리 &gt; 해당 장비 &gt; 원격 업데이트</td></tr>
+                  <tr><td class="text-muted">고객사 계정 · API 키</td><td>설정 &gt; 고객 계정 (계정별로 볼 수 있는 장비를 제한)</td></tr>
+                  <tr><td class="text-muted">알림 채널</td><td>설정 &gt; 알림 설정 (웹훅 · HMS) · 테스트 발송 버튼</td></tr>
+                  <tr><td class="text-muted">알림이 잦을 때</td><td>설정 &gt; 이상 감지 임계값 — 먼저 <b>발송 전 지속 버킷 수</b>를 올리고, 그래도 잦으면 해당 지표의 하한을 올린다</td></tr>
+                  <tr><td class="text-muted">작업 중 알림 끄기</td><td>설정 &gt; 알림 설정 &gt; 음소거 — <b>다시 켜는 것을 잊지 않는다</b></td></tr>
+                  <tr><td class="text-muted">보존 기간</td><td>설정 &gt; DB 저장소 (기본 36개월)</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 장애 대응 -->
+          <div class="col-lg-6">
+            <div class="arch-col h-100">
+              <div class="arch-col-title">4 · 이럴 때 이렇게</div>
+              <table class="table table-sm mb-0" style="font-size:0.75rem">
+                <tbody>
+                  <tr><td class="text-muted" style="width:38%">화면이 안 뜨거나 500</td><td><code>systemctl status soltrace-was</code> → <code>/var/log/soltrace/error.log</code> 마지막 트레이스백. 배포 직후면 <code>selfupdate.log</code></td></tr>
+                  <tr><td class="text-muted">로그가 안 들어옴</td><td>장비 관리에서 <b>데몬 상태</b> 확인(하트비트 120초) → 장비에서 <code>systemctl status soltrace-daemon</code>, <code>daemon.log</code>. WAS 가 살아나면 장비 버퍼가 자동 재전송한다</td></tr>
+                  <tr><td class="text-muted">알림이 쏟아짐</td><td>같은 장비·지표면 대개 임계가 그 장비에 안 맞는 것 — 위 '알림이 잦을 때'. 작업 중이면 음소거</td></tr>
+                  <tr><td class="text-muted">디스크 부족</td><td>설정 &gt; DB 저장소에서 사용률·파티션 확인. 자동 정리가 켜져 있으면 오래된 월부터 <b>되돌릴 수 없이</b> 지운다 — 필요한 달은 먼저 백업 확인</td></tr>
+                  <tr><td class="text-muted">배포가 오래 걸림</td><td>스키마 단계에서 락 대기일 수 있다(<code>lock_timeout=5s</code>·3회 재시도). 로그를 보고 기다리되, 반복 실패면 한산한 시간에 다시 시도</td></tr>
+                  <tr><td class="text-muted">CWD 실패 급증</td><td>대시보드 &gt; CWD 실패 분석 — 한 경로에 몰려 있으면 침입 탐색이 아니라 <b>홈·업로드 경로 설정 오류</b>다. 원인 확인 후 그 경로를 알림에서 제외</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 자동으로 도는 것 -->
+          <div class="col-lg-6">
+            <div class="arch-col h-100">
+              <div class="arch-col-title">5 · 자동으로 도는 것 (건드리지 않아도 됨)</div>
+              <table class="table table-sm mb-0" style="font-size:0.75rem">
+                <tbody>
+                  <tr><td class="text-muted" style="width:34%">5분마다</td><td>롤업 · 이상 판정 · 알림 발송 · 디스크 점검 (WAS 내부 스레드)</td></tr>
+                  <tr><td class="text-muted">매일 03:00</td><td>DB 증분 백업 → <code>/var/backups/soltrace</code> (<code>/etc/cron.d/soltrace-backup</code>)</td></tr>
+                  <tr><td class="text-muted">매월 1일 00:30</td><td>월별 파티션 생성 (<code>/etc/cron.d/soltrace-partitions</code>)</td></tr>
+                  <tr><td class="text-muted">인증서</td><td>Let's Encrypt 자동 갱신 (설치 시 등록) — 만료 알림이 오면 갱신 동작부터 확인</td></tr>
+                </tbody>
+              </table>
+              <div class="form-text mt-2">
+                백업·파티션 cron 이 살아 있는지는 <code>ls /etc/cron.d/soltrace-*</code> 와
+                <code>/var/log/soltrace/backup.log</code> 로 확인한다.
+              </div>
+            </div>
+          </div>
+
+          <!-- 인계 체크리스트 -->
+          <div class="col-lg-6">
+            <div class="arch-col h-100">
+              <div class="arch-col-title">6 · 넘겨받을 때 확인할 것</div>
+              <div class="small">
+                <div class="mb-1">☐ WAS 서버 SSH 접근(sudo) · 장비 서버 접근</div>
+                <div class="mb-1">☐ 관리자 계정 인계 후 <b>비밀번호 변경</b>, 퇴사자 계정 비활성화</div>
+                <div class="mb-1">☐ 저장소(GitHub) 접근 권한 — 배포가 <code>git pull</code> 기반이다</div>
+                <div class="mb-1">☐ 알림 채널(웹훅 · HMS) 수신처가 <b>지금 팀</b>인지 · 테스트 발송</div>
+                <div class="mb-1">☐ 도메인 · 인증서 갱신 주체</div>
+                <div class="mb-1">☐ 백업 위치와 <b>복구를 실제로 해봤는지</b></div>
+                <div class="mb-1">☐ 고객사 계정 · API 키 목록과 용도</div>
+                <div class="mb-1">☐ 이상 감지 임계값을 손댔다면 <b>왜 그렇게 뒀는지</b></div>
+                <div class="text-muted mt-2" style="font-size:0.72rem">
+                  더 자세한 설치·배포·SQL 은 저장소 <code>README.md</code>, 변경 내역은 왼쪽
+                  <b>변경 이력</b> 탭, API 사용법은 <b>API 가이드</b> 탭.
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
