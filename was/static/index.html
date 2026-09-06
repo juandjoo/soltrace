@@ -154,9 +154,12 @@
               <span class="fw-semibold small">사용자별 업로드양</span>
               <span id="userUploadPeriod" class="text-muted" style="font-size:0.75rem"></span>
             </div>
-            <div style="position:relative;height:240px">
-              <canvas id="chartUserUpload"></canvas>
-              <div id="chartUserUploadEmpty" class="d-none h-100 d-flex align-items-center justify-content-center text-muted small">기간 내 업로드 없음</div>
+            <div class="d-flex gap-2">
+              <div style="position:relative;flex:1;min-width:0;height:240px">
+                <canvas id="chartUserUpload"></canvas>
+                <div id="chartUserUploadEmpty" class="d-none h-100 d-flex align-items-center justify-content-center text-muted small">기간 내 업로드 없음</div>
+              </div>
+              <div id="userUploadLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
             </div>
           </div>
         </div>
@@ -168,9 +171,12 @@
               <span class="fw-semibold small">사용자별 삭제량</span>
               <span id="userDeletePeriod" class="text-muted" style="font-size:0.75rem"></span>
             </div>
-            <div style="position:relative;height:240px">
-              <canvas id="chartUserDelete"></canvas>
-              <div id="chartUserDeleteEmpty" class="d-none h-100 d-flex align-items-center justify-content-center text-muted small">기간 내 삭제 없음</div>
+            <div class="d-flex gap-2">
+              <div style="position:relative;flex:1;min-width:0;height:240px">
+                <canvas id="chartUserDelete"></canvas>
+                <div id="chartUserDeleteEmpty" class="d-none h-100 d-flex align-items-center justify-content-center text-muted small">기간 내 삭제 없음</div>
+              </div>
+              <div id="userDeleteLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
             </div>
           </div>
         </div>

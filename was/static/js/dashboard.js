@@ -271,6 +271,24 @@ const USER_COUNT_CHARTS = {
   },
 };
 
+// 사용자별 '양' 추이 카드 — 업로드양·삭제량이 같은 코드를 쓴다.
+// pick(h) → [바이트, 건수]. 건수 카드와 나란히 두어야 범례(최대/현재)가 갈라지지 않는다.
+const USER_VOLUME_CHARTS = {
+  userUpload: {
+    canvas: 'chartUserUpload', legend: 'userUploadLegend', empty: 'chartUserUploadEmpty',
+    head: '사용자', pick: h => [h.bytes_in || 0, h.uploads || 0],
+  },
+  userDelete: {
+    canvas: 'chartUserDelete', legend: 'userDeleteLegend', empty: 'chartUserDeleteEmpty',
+    head: '사용자', pick: h => [h.bytes_del || 0, h.deletes || 0],
+  },
+};
+
+// 네 카드(건수 2 · 양 2)의 설정을 한 곳에서 찾는다 — 정렬·줌 초기화가 종류를 가리지 않게.
+function _userChartCfg(key) {
+  return USER_COUNT_CHARTS[key] || USER_VOLUME_CHARTS[key];
+}
+
 // key → {focus, sort}. 카드마다 따로 둔다(한 카드에서 계정을 골라도 다른 카드는 그대로).
 const _userChartState = {};
 
@@ -288,8 +306,7 @@ async function loadUserHourly() {
 
   if (!data.length) {
     Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, [], [], String));
-    _renderUserVolumeChart('userUpload', 'chartUserUpload', [], [], String, () => [0, 0]);
-    _renderUserVolumeChart('userDelete', 'chartUserDelete', [], [], String, () => [0, 0]);
+    Object.keys(USER_VOLUME_CHARTS).forEach(k => _renderUserVolumeChart(k, [], [], String));
     return;
   }
 
@@ -304,10 +321,7 @@ async function loadUserHourly() {
   Object.keys(USER_COUNT_CHARTS).forEach(k => _renderUserCountChart(k, data, allBuckets, fmtBucket));
 
   // 업로드양 · 삭제량 (기간별) — 같은 응답으로 그린다 (추가 요청 없음).
-  _renderUserVolumeChart('userUpload', 'chartUserUpload', data, allBuckets, fmtBucket,
-                         h => [h.bytes_in || 0, h.uploads || 0]);
-  _renderUserVolumeChart('userDelete', 'chartUserDelete', data, allBuckets, fmtBucket,
-                         h => [h.bytes_del || 0, h.deletes || 0]);
+  Object.keys(USER_VOLUME_CHARTS).forEach(k => _renderUserVolumeChart(k, data, allBuckets, fmtBucket));
 }
 
 // 사용자별 건수 라인차트 + 범례표(사용자·최대·현재, 클릭 시 해당 계정만 표시).
@@ -356,25 +370,38 @@ function _renderUserCountChart(key, series, buckets, fmtBucket) {
     },
   });
 
-  const rows = active.map((u, i) => {
-    const vals = datasets[i].data;
-    const maxVal = Math.max(0, ...vals);
-    const curVal = vals[vals.length - 1] ?? 0;
+  _renderUserLegend(key, active.map((u, i) => ({
+    name: u.username,
+    max: Math.max(0, ...datasets[i].data),
+    cur: datasets[i].data[datasets[i].data.length - 1] ?? 0,
+  })), v => v.toLocaleString());
+}
+
+// 범례표(사용자 · 최대 · 현재) — 건수 카드와 양 카드가 같은 표를 쓴다.
+// 한쪽에만 값이 나오던 문제(양 카드는 Chart.js 기본 범례라 이름만 나왔다)를 막으려면
+// 표를 만드는 곳이 하나여야 한다. items: [{name, max, cur}] · fmtVal: 표시 형식.
+function _renderUserLegend(key, items, fmtVal) {
+  const cfg = _userChartCfg(key);
+  const legendEl = document.getElementById(cfg.legend);
+  if (!legendEl) return;
+  // 바이트는 '1.2 GB' 처럼 폭이 넓어 숫자 칸을 형식에 맞춰 잡는다
+  const valW = fmtVal === fmtBytes ? 62 : 46;
+  const rows = items.map((it, i) => {
     const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
-    return `<tr onclick="focusUserChart('${key}', ${i})" id="${key}LegendItem${i}" style="cursor:pointer" data-name="${esc(u.username)}" data-max="${maxVal}" data-cur="${curVal}">
+    return `<tr onclick="focusUserChart('${key}', ${i})" id="${key}LegendItem${i}" style="cursor:pointer" data-name="${esc(it.name)}" data-max="${it.max}" data-cur="${it.cur}">
       <td style="padding:3px 4px;min-width:0;max-width:0">
         <div class="d-flex align-items-center gap-1" style="min-width:0">
           <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
-          <span class="text-truncate" style="font-size:0.75rem" title="${esc(u.username)}">${esc(u.username)}</span>
+          <span class="text-truncate" style="font-size:0.75rem" title="${esc(it.name)}">${esc(it.name)}</span>
         </div>
       </td>
-      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${maxVal.toLocaleString()}</td>
-      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${curVal.toLocaleString()}</td>
+      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${esc(fmtVal(it.max))}</td>
+      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${esc(fmtVal(it.cur))}</td>
     </tr>`;
   }).join('');
-  st.sort = {col: null, asc: true};
+  _chartState(key).sort = {col: null, asc: true};
   legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
-    <colgroup><col><col style="width:46px"><col style="width:46px"></colgroup>
+    <colgroup><col><col style="width:${valW}px"><col style="width:${valW}px"></colgroup>
     <thead><tr style="color:var(--st-muted);border-bottom:1px solid var(--st-border)">
       <th data-col="name" onclick="sortUserChart('${key}', 'name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">${cfg.head}<span class="sort-arrow"></span></th>
       <th data-col="max" onclick="sortUserChart('${key}', 'max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
@@ -385,17 +412,20 @@ function _renderUserCountChart(key, series, buckets, fmtBucket) {
 }
 
 // 사용자별 '양' 추이 라인차트 — 업로드양·삭제량 카드가 같은 코드를 쓴다.
-// pick(h) → [바이트, 건수]. 값이 모두 0인 사용자는 빼고, 아무도 없으면 안내 문구로 대체한다.
-function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, pick) {
+// 값이 모두 0인 사용자는 빼고, 아무도 없으면 안내 문구로 대체한다.
+// 범례는 건수 카드와 같은 표(사용자·최대·현재)를 쓴다 — _renderUserLegend.
+function _renderUserVolumeChart(chartKey, series, buckets, fmtBucket) {
+  const cfg = USER_VOLUME_CHARTS[chartKey];
   destroyChart(chartKey);
   _chartState(chartKey).focus = null;
-  const canvas = document.getElementById(canvasId);
-  const empty  = document.getElementById(canvasId + 'Empty');
+  const canvas = document.getElementById(cfg.canvas);
+  const empty  = document.getElementById(cfg.empty);
+  const legendEl = document.getElementById(cfg.legend);
   if (!canvas || !empty) return;
 
   const datasets = [];
-  series.forEach((u, i) => {
-    const picked = buckets.map(b => pick(u._map[b] || {}));
+  series.forEach(u => {
+    const picked = buckets.map(b => cfg.pick(u._map[b] || {}));
     if (!picked.some(([v]) => v > 0)) return;
     datasets.push({
       label: u.username,
@@ -408,6 +438,7 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
   if (!datasets.length) {
     canvas.classList.add('d-none');
     empty.classList.remove('d-none');
+    if (legendEl) legendEl.innerHTML = '';
     return;
   }
   canvas.classList.remove('d-none');
@@ -421,13 +452,8 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
       maintainAspectRatio: false,
       interaction: {mode: 'index', intersect: false},
       plugins: {
-        legend: {
-          position: 'right',
-          labels: {boxWidth: 10, font: {size: 10}},
-          // 계정을 클릭하면 그 계정만 표시, 같은 계정을 다시 누르면 전체 복원
-          // (카운트 카드의 범례 클릭과 같은 동작을 쓴다)
-          onClick: (e, item) => focusUserChart(chartKey, item.datasetIndex),
-        },
+        // 범례는 오른쪽 표(_renderUserLegend)가 대신한다 — 최대/현재 값까지 보여준다
+        legend: {display: false},
         tooltip: {callbacks: {label: c => {
           const n = c.dataset.counts?.[c.dataIndex] || 0;
           return `${c.dataset.label}: ${fmtBytes(c.parsed.y)} (${n.toLocaleString()}건)`;
@@ -439,6 +465,12 @@ function _renderUserVolumeChart(chartKey, canvasId, series, buckets, fmtBucket, 
       },
     },
   });
+
+  _renderUserLegend(chartKey, datasets.map(ds => ({
+    name: ds.label,
+    max: Math.max(0, ...ds.data),
+    cur: ds.data[ds.data.length - 1] ?? 0,
+  })), fmtBytes);
 }
 
 function _applyLegendSort(legendId, state) {
@@ -467,12 +499,12 @@ function sortUserChart(key, col) {
   const st = _chartState(key);
   if (st.sort.col === col) st.sort.asc = !st.sort.asc;
   else st.sort = {col, asc: col === 'name'};
-  _applyLegendSort(USER_COUNT_CHARTS[key].legend, st.sort);
+  _applyLegendSort(_userChartCfg(key).legend, st.sort);
 }
 
 function resetUserChartZoom(key) {
   charts[key]?.resetZoom();
-  document.getElementById(USER_COUNT_CHARTS[key].resetBtn)?.classList.add('d-none');
+  document.getElementById(_userChartCfg(key).resetBtn)?.classList.add('d-none');
 }
 
 // 범례에서 계정을 클릭하면 그 계정만 표시, 같은 계정을 다시 클릭하면 전체 복원.
