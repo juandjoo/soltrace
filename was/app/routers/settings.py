@@ -4,17 +4,20 @@ import re
 import subprocess
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request,
+    UploadFile, status,
+)
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app import alert_settings, disk_guard, notifier, retention
+from app import alert_settings, disk_guard, login_config, notifier, retention
 from app.config import settings as cfg
 from app.database import get_db
 from app.deps import Principal, require_admin, validate_ip_entries
 from app.gitinfo import git, git_run, repo_dir
 from app.schemas import (
-    AlertSettings, AlertSettingsInfo,
+    AlertSettings, AlertSettingsInfo, LoginConfig, LoginConfigUpdate,
     PasswordChangeRequest, UpdateTriggerResponse, VersionInfo, NotifySettings,
     StorageInfo, StoragePartition, RetentionUpdate, DiskPurgeUpdate, DiskPathUpdate,
     ChangelogEntry, ChangelogItem,
@@ -319,6 +322,61 @@ def update_allowed_ips(
     if not isinstance(ips, list):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="allowed_ips must be a list")
     set_office_ips(db, validate_ip_entries(ips))
+
+
+# ── 로그인 화면 ───────────────────────────────────────────────────────────────
+# 조회만 인증이 없다 — 로그인 화면을 그리려면 로그인 전에 읽어야 한다.
+# 그래서 login_config 에는 장식 값만 담는다(app/login_config.py 주석 참고).
+
+@router.get("/login-config", response_model=LoginConfig)
+def get_login_config(db: Session = Depends(get_db)):
+    return LoginConfig(**login_config.load(db))
+
+
+@router.put("/login-config", response_model=LoginConfig)
+def save_login_config(
+    body: LoginConfigUpdate,
+    db: Session = Depends(get_db),
+    _: Principal = Depends(require_admin),
+):
+    try:
+        login_config.save_text(db, body.title, body.subtitle, body.warning, body.bg_color)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    return LoginConfig(**login_config.load(db))
+
+
+@router.post("/login-config/image/{kind}", response_model=LoginConfig)
+async def upload_login_image(
+    kind: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: Principal = Depends(require_admin),
+):
+    """kind: 'bg'(배경) | 'logo'(로고). 이미지는 data URI 로 app_config 에 저장된다."""
+    spec = login_config.IMAGE_KINDS.get(kind)
+    if spec is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="알 수 없는 이미지 종류입니다")
+    # 한도+1 바이트만 읽는다 — 거대한 업로드를 통째로 메모리에 올리지 않기 위해서
+    data = await file.read(spec["max_bytes"] + 1)
+    try:
+        login_config.save_image(db, kind, data)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    return LoginConfig(**login_config.load(db))
+
+
+@router.delete("/login-config/image/{kind}", response_model=LoginConfig)
+def delete_login_image(
+    kind: str,
+    db: Session = Depends(get_db),
+    _: Principal = Depends(require_admin),
+):
+    try:
+        login_config.clear_image(db, kind)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return LoginConfig(**login_config.load(db))
 
 
 @router.get("/notify", response_model=NotifySettings)

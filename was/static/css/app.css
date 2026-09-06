@@ -129,6 +129,9 @@ body        { background: var(--st-bg); font-size: 14px; }
 
 .table th                { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--st-muted); }
 #loginModal .modal-dialog { max-width: 380px; margin-top: 15vh; }
+/* 로그인 화면 설정(설정 > 로그인 설정)으로 올린 로고 · 경고 문구 */
+.login-logo { height: 32px; max-width: 180px; object-fit: contain; }
+.login-warning { white-space: pre-wrap; }
 
 /* ── 대시보드 ──────────────────────────────────────────────────── */
 .dash-card       { border: 1px solid rgba(13,110,253,.15) !important; transition: box-shadow .15s ease, transform .15s ease; }

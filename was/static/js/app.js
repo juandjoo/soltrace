@@ -35,6 +35,7 @@ function settingsTab(tab) {
   if (link) link.classList.add('active');
   if (tab === 'telco') loadTelcos();
   if (tab === 'update') loadVersion();
+  if (tab === 'login') loadLoginConfig();
   if (tab === 'storage') loadStorage();
   if (tab === 'notify') loadNotify();
   if (tab === 'users') loadUsers();
@@ -102,6 +103,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     document.getElementById('appLayout').classList.remove('app-hidden');
     initApp();
   } else {
+    ensureLoginBranding();
     loginModal.show();
   }
 })();

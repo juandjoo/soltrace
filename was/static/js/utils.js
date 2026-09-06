@@ -153,6 +153,7 @@ function showLogin() {
   token = null;
   localStorage.removeItem('soltrace_token');
   document.getElementById('appLayout').classList.add('app-hidden');
+  ensureLoginBranding();
   bootstrap.Modal.getOrCreateInstance(document.getElementById('loginModal')).show();
 }
 

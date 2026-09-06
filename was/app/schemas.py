@@ -462,6 +462,20 @@ class NotifySettings(BaseModel):
     hms_url: str = ""              # HMS 메일 게이트웨이 URL
 
 
+class LoginConfigUpdate(BaseModel):
+    """로그인 화면 문구·색상. 길이/형식 검증은 app/login_config.py 가 한 곳에서 한다."""
+    title: str = ""
+    subtitle: str = ""
+    warning: str = ""
+    bg_color: str = ""
+
+
+class LoginConfig(LoginConfigUpdate):
+    """로그인 전에도 내려가는 값 — 화면에 어차피 보이는 장식만 담는다."""
+    bg_image: str = ""             # data URI (비어 있으면 색상 배경)
+    logo_image: str = ""           # data URI (비어 있으면 기본 아이콘)
+
+
 class AlertSettings(BaseModel):
     """이상 감지 임계값. 저장하면 다음 판정 주기(기본 5분)에 반영된다."""
     mad_k: Optional[float] = Field(default=None, ge=1, le=20)
