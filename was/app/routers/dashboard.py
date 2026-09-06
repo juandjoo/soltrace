@@ -298,7 +298,10 @@ def get_service_health(
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
 ):
-    """부하로 인한 서비스 영향도 — 장비별 최신 상태 + 최근 알림 + 추이."""
+    """장비 상태(지금 기준) + 기간 내 알림·추이.
+
+    상태만 기간과 무관하게 '현재'로 본다 — 알림 목록·추이·실패 건수는 선택한 기간이다.
+    """
     since, until = _time_range(start_date, end_date, hours=hours)
     params = {"since": since, "until": until, "did": device_id}
     # 장비 선택 + 고객 계정 격리: 모든 하위 쿼리에 같은 제한을 건다 (별칭만 다름)
@@ -323,13 +326,25 @@ def get_service_health(
         message=r.message, created_at=r.created_at,
     ) for r in alert_rows]
 
-    # 장비별 알림 집계 (상태 등급 + 미해결 건수)
+    # 장비 상태는 '지금 진행 중인 이상'으로 본다 (service_alert_episodes.resolved_at IS NULL).
+    # 기간 내 알림을 세면 새벽에 잠깐 났다 회복된 장비가 그 기간 내내 주의로 남아,
+    # 화면을 보는 시점의 상태를 알 수 없었다. 에피소드는 복구되면 닫히므로 지금 상태와 같다.
+    ep_f = ("AND e.device_id = :did" if device_id else "") + _scope_sql(params, scope, "e.device_id")
+    ep_rows = db.execute(text(f"""
+        SELECT e.device_id, e.metric, e.severity
+        FROM service_alert_episodes e
+        WHERE e.resolved_at IS NULL {ep_f}
+        ORDER BY e.device_id, e.last_bucket DESC
+    """), params).fetchall()
+
     sev_rank = {"warning": 1, "critical": 2}
     dev_sev: dict[int, int] = {}
     dev_open: dict[int, int] = {}
-    for r in alert_rows:
+    dev_metrics: dict[int, list] = {}
+    for r in ep_rows:
         dev_sev[r.device_id] = max(dev_sev.get(r.device_id, 0), sev_rank.get(r.severity, 1))
         dev_open[r.device_id] = dev_open.get(r.device_id, 0) + 1
+        dev_metrics.setdefault(r.device_id, []).append(r.metric)
 
     # 기준: 모든 confirmed 장비 (기간 내 활동 없어도 표시)
     dev_f_devices = "AND d.id = :did" if device_id else ""
@@ -370,12 +385,14 @@ def get_service_health(
                 throughput_mb=(tp / _MB) if tp is not None else None,
                 login_fail_rate=_ratio(snap.login_fails, snap.login_attempts),
                 open_alerts=dev_open.get(d.id, 0),
+                open_metrics=dev_metrics.get(d.id, []),
             ))
         else:
             devices.append(ServiceHealthDevice(
                 device_id=d.id, hostname=d.hostname,
                 status=rank_status[sev],
                 open_alerts=dev_open.get(d.id, 0),
+                open_metrics=dev_metrics.get(d.id, []),
             ))
     devices.sort(key=lambda d: (-sev_rank.get(d.status, 0) if d.status in sev_rank else 0,
                                 -(d.fail_rate or 0)))

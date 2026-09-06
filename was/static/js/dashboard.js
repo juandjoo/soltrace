@@ -533,12 +533,15 @@ function _dashPeriodLabel() {
 }
 
 async function loadServiceHealth() {
-  _setPeriodLabels('healthStatusPeriod', 'healthRatePeriod');
+  // 장비 상태는 기간이 아니라 '지금' 기준이라 기간 라벨을 붙이지 않는다
+  // (진행 중인 이상이 있으면 주의/심각, 복구되면 바로 정상으로 돌아온다)
+  _setPeriodLabels('healthRatePeriod');
   const data = await api('GET', `/dashboard/service-health?${_dashDateParams()}`);
   if (!data) return;
 
-  // 서비스 영향도 도넛
+  // 장비 상태 도넛 — 진행 중인 이상이 있는 장비만 주의/심각
   destroyChart('healthStatus');
+  _healthDevices = data.devices;
   const counts = {ok: 0, warning: 0, critical: 0};
   data.devices.forEach(d => { if (counts[d.status] != null) counts[d.status]++; });
   const totalDevices = counts.ok + counts.warning + counts.critical;
@@ -554,15 +557,28 @@ async function loadServiceHealth() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      // 조각(정상/주의/심각)을 누르면 오른쪽 목록이 그 상태의 장비만 남는다
+      onClick: (evt, elems) => {
+        if (!elems.length) return;
+        filterHealthDevices(HEALTH_STATUS_KEYS[elems[0].index]);
+      },
+      onHover: (evt, elems) => {
+        evt.native.target.style.cursor = elems.length ? 'pointer' : 'default';
+      },
       plugins: {
-        legend: {position: 'right', labels: {boxWidth: 12, font: {size: 11}}},
-        tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed}대`}},
+        legend: {
+          position: 'bottom', labels: {boxWidth: 12, font: {size: 11}},
+          // 범례 클릭도 같은 동작 — 조각을 숨기는 기본 동작 대신 목록을 거른다
+          onClick: (e, item) => filterHealthDevices(HEALTH_STATUS_KEYS[item.index]),
+        },
+        tooltip: {callbacks: {label: c => `${c.label}: ${c.parsed}대 — 클릭하여 장비 보기`}},
         centerText: {line1: `${totalDevices}대`, line2: '전체 장비', size: 13},
       },
     },
   });
+  _renderHealthDeviceList();
 
-  // 실패 건수 — 0건이면 이상 없음 표시
+  // 실패 건수 — 0건이면 이상 없음 표시  (아래 목록은 위 도넛과 같은 응답을 쓴다)
   destroyChart('healthRate');
   const ft = data.fail_totals || {};
   // cwd_fails 는 설정의 '제외 경로'를 뺀 값 — 숨긴 건수를 범례/툴팁에 같이 밝힌다
@@ -649,6 +665,65 @@ async function loadServiceHealth() {
       </tr>`;
     }).join('');
   }
+}
+
+// ── 장비 상태 목록 (도넛에서 상태를 고르면 그 장비만 남는다) ────────────────
+// 도넛의 조각 순서와 같은 상태 키 — 조각/범례 클릭을 상태로 옮길 때 쓴다.
+const HEALTH_STATUS_KEYS = ['ok', 'warning', 'critical'];
+const HEALTH_STATUS_META = {
+  ok:       {label: '정상', color: '#198754', badge: 'bg-success'},
+  warning:  {label: '주의', color: '#ffc107', badge: 'bg-warning text-dark'},
+  critical: {label: '심각', color: '#dc3545', badge: 'bg-danger'},
+};
+
+let _healthDevices = [];        // 마지막 응답의 장비 목록 (현재 상태 기준)
+let _healthFilter = null;       // null = 전체, 'ok' | 'warning' | 'critical'
+
+// 같은 상태를 다시 누르면 전체로 돌아온다 (차트 범례 클릭과 같은 규칙).
+function filterHealthDevices(status) {
+  _healthFilter = (_healthFilter === status) ? null : status;
+  _renderHealthDeviceList();
+}
+
+function _renderHealthDeviceList() {
+  const el = document.getElementById('healthDeviceList');
+  if (!el) return;
+  const shown = _healthFilter
+    ? _healthDevices.filter(d => d.status === _healthFilter)
+    : _healthDevices;
+
+  const head = _healthFilter
+    ? `<div class="d-flex align-items-center gap-1 mb-1">
+         <span class="badge ${HEALTH_STATUS_META[_healthFilter].badge}" style="font-size:0.65rem">${HEALTH_STATUS_META[_healthFilter].label}</span>
+         <span class="text-muted" style="font-size:0.7rem">${shown.length}대</span>
+         <button class="btn btn-xs btn-outline-secondary ms-auto" style="font-size:0.65rem;padding:0 4px"
+                 onclick="filterHealthDevices('${_healthFilter}')">전체</button>
+       </div>`
+    : `<div class="text-muted mb-1" style="font-size:0.7rem">전체 장비 ${shown.length}대 · 상태를 클릭하면 걸러집니다</div>`;
+
+  if (!shown.length) {
+    el.innerHTML = head + '<div class="text-muted" style="font-size:0.72rem">해당 장비 없음</div>';
+    return;
+  }
+
+  // 나쁜 상태부터 — 목록을 열자마자 문제 장비가 먼저 보이게
+  const rank = {critical: 0, warning: 1, ok: 2};
+  const rows = [...shown]
+    .sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3)
+                    || a.hostname.localeCompare(b.hostname))
+    .map(d => {
+      const meta = HEALTH_STATUS_META[d.status] || {color: 'var(--st-muted)', label: d.status};
+      // 진행 중인 지표를 함께 보여준다 — 어떤 장비가 '왜' 주의인지
+      const why = (d.open_metrics || []).map(m => METRIC_LABEL[m] || m).join(' · ');
+      return `<div class="d-flex align-items-center gap-1 py-1" style="border-bottom:1px solid var(--st-border)">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${meta.color};flex-shrink:0"></span>
+        <div style="min-width:0;flex:1">
+          <div class="text-truncate" style="font-size:0.75rem" title="${esc(d.hostname)}">${esc(d.hostname)}</div>
+          ${why ? `<div class="text-truncate text-muted" style="font-size:0.68rem" title="${esc(why)}">${esc(why)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  el.innerHTML = head + rows;
 }
 
 // 자동 새로고침 (60초)

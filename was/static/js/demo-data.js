@@ -205,6 +205,8 @@
         throughput_mb: d.id === 3 ? 13.4 : 40 + rnd() * 25,
         login_fail_rate: d.id === 4 ? 0.382 : rnd() * 0.04,
         open_alerts: d.id === 3 ? 2 : (d.id === 4 ? 2 : 0),
+        // 진행 중인 지표 — 장비 상태 목록에서 '왜 주의인지'를 보여준다
+        open_metrics: d.id === 3 ? ['fail_rate', 'throughput'] : (d.id === 4 ? ['login_fail_rate', 'cwd_fail_spike'] : []),
       })),
       alerts,
       trend,

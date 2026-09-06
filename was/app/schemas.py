@@ -377,7 +377,8 @@ class ServiceHealthDevice(BaseModel):
     fail_rate: Optional[float] = None
     throughput_mb: Optional[float] = None        # MB/s
     login_fail_rate: Optional[float] = None
-    open_alerts: int = 0
+    open_alerts: int = 0               # 진행 중인 이상(에피소드) 수 — 복구되면 0
+    open_metrics: List[str] = []       # 진행 중인 지표 (fail_rate 등) — 최근 이상 순
 
 class ServiceAlertItem(BaseModel):
     id: int
