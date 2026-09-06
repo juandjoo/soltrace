@@ -200,3 +200,32 @@ body        { background: var(--st-bg); font-size: 14px; }
 [data-bs-theme="dark"] .card          { box-shadow: 0 1px 3px rgba(0,0,0,.5); }
 [data-bs-theme="dark"] .btn-extend    { border-color: var(--st-border); color: var(--st-text); }
 [data-bs-theme="dark"] #page-logs table thead th:not(:last-child) { border-right-color: var(--st-border); }
+
+/* ── 구성도 페이지 ─────────────────────────────────────────────── */
+/* 색은 반드시 CSS 변수로 — 다크 모드에서 따로 덮지 않아도 같이 바뀐다. */
+.arch-flow  { display: flex; gap: .5rem; align-items: stretch; flex-wrap: wrap; }
+.arch-col   {
+  flex: 1 1 210px; min-width: 200px;
+  background: var(--st-surface);
+  border: 1px solid var(--st-border);
+  border-radius: .5rem;
+  padding: .7rem;
+}
+.arch-col-title {
+  font-size: .72rem; font-weight: 700; letter-spacing: .02em;
+  color: var(--st-brand); text-transform: none; margin-bottom: .5rem;
+}
+.arch-node {
+  border: 1px solid var(--st-border); border-radius: .375rem;
+  background: var(--st-bg); padding: .45rem .55rem; margin-bottom: .4rem;
+}
+.arch-node:last-child { margin-bottom: 0; }
+.arch-node .n-t { font-size: .78rem; font-weight: 600; }
+.arch-node .n-d { font-size: .71rem; color: var(--st-muted); line-height: 1.4; }
+.arch-node.store  { border-left: 3px solid var(--st-brand); }
+.arch-node.buffer { border-style: dashed; }
+/* 단계 사이 화살표 — 좁은 화면에서는 열이 세로로 쌓이므로 화살표도 아래로 돌린다 */
+.arch-arrow { align-self: center; flex: 0 0 auto; color: var(--st-muted); font-size: 1.05rem; }
+@media (max-width: 991.98px) {
+  .arch-arrow { width: 100%; text-align: center; transform: rotate(90deg); margin: .1rem 0; }
+}

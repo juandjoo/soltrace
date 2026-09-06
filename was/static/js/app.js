@@ -3,7 +3,7 @@ const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {k
 let currentSettingsTab = 'telco';
 
 // 관리자 전용 페이지 — 고객 계정은 서버에서도 막히지만 UI 에서도 진입을 막는다.
-const ADMIN_PAGES = ['settings', 'changelog', 'devices', 'groups'];
+const ADMIN_PAGES = ['settings', 'changelog', 'architecture', 'devices', 'groups'];
 
 function nav(page) {
   if (ADMIN_PAGES.includes(page) && getRole() !== 'admin') page = 'dashboard';

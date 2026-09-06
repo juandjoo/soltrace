@@ -88,6 +88,7 @@
     <a class="nav-link" href="#" onclick="nav('devices')" title="장비 관리" data-admin-only><i class="bi bi-hdd-stack-fill"></i><span>장비 관리</span></a>
     <a class="nav-link" href="#" onclick="nav('groups')" title="그룹 관리" data-admin-only><i class="bi bi-diagram-3-fill"></i><span>그룹 관리</span></a>
     <a class="nav-link" href="#" onclick="nav('apiguide')" title="API 가이드"><i class="bi bi-code-slash"></i><span>API 가이드</span></a>
+    <a class="nav-link" href="#" onclick="nav('architecture')" title="구성도" data-admin-only><i class="bi bi-diagram-2"></i><span>구성도</span></a>
     <a class="nav-link" href="#" onclick="nav('changelog')" title="변경 이력" data-admin-only><i class="bi bi-clock-history"></i><span>변경 이력</span></a>
     <a class="nav-link" href="#" onclick="nav('settings')" title="설정" data-admin-only><i class="bi bi-gear-fill"></i><span>설정</span></a>
   </nav>
@@ -531,6 +532,180 @@
 
     <!-- 설정 -->
     <!-- 변경 이력 -->
+    <div id="page-architecture" class="page">
+      <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-diagram-2 me-2 text-brand"></i>구성도</h5>
+        <span class="text-muted small">수집 → 저장 → 판정 → 알림·조회</span>
+      </div>
+
+      <!-- 1. 시스템 구성 -->
+      <div class="card p-3 mb-3">
+        <div class="fw-semibold small mb-1">시스템 구성</div>
+        <div class="text-muted small mb-3">
+          장비의 데몬과 WAS 의 쓰기 버퍼가 각각 버퍼를 들고 있어 <b>한쪽이 멈춰도 로그를 버리지 않는다</b> —
+          WAS 가 내려가면 데몬이 <code>buffer.jsonl</code> 에 쌓아 두고, DB 가 내려가면 쓰기 버퍼가
+          재시도 큐에 들고 있다가 다시 쓴다.
+        </div>
+        <div class="arch-flow">
+
+          <div class="arch-col">
+            <div class="arch-col-title">FTP 장비 N대 · proftpd</div>
+            <div class="arch-node">
+              <div class="n-t">xferlog · proftpd.log</div>
+              <div class="n-d">전송 · 로그인 · CWD 550</div>
+            </div>
+            <div class="arch-node">
+              <div class="n-t">soltrace_daemon.py</div>
+              <div class="n-d">10초 폴링 · 200건 배치<br>60초 하트비트</div>
+            </div>
+            <div class="arch-node buffer">
+              <div class="n-t">buffer.jsonl</div>
+              <div class="n-d">WAS 장애 시 보관 · 최대 5만 줄<br>복구되면 자동 재전송</div>
+            </div>
+            <div class="arch-node">
+              <div class="n-t">soltrace_bulk.py</div>
+              <div class="n-d">과거 로그 일괄 전송 (수동)</div>
+            </div>
+          </div>
+
+          <div class="arch-arrow"><i class="bi bi-arrow-right"></i></div>
+
+          <div class="arch-col">
+            <div class="arch-col-title">WAS 서버 · Rocky Linux 8</div>
+            <div class="arch-node">
+              <div class="n-t">Nginx 80/443</div>
+              <div class="n-d">TLS · gzip · 레이트리밋<br>수집 300r/m · 조회 60r/m · 로그인 10r/m</div>
+            </div>
+            <div class="arch-node">
+              <div class="n-t">FastAPI + Gunicorn 2 worker</div>
+              <div class="n-d">JWT · API 키 · 고객사 데이터 격리</div>
+            </div>
+            <div class="arch-node buffer">
+              <div class="n-t">write_buffer</div>
+              <div class="n-d">3초 flush · 최대 2000건<br>실패 배치는 재시도 큐로</div>
+            </div>
+            <div class="arch-node">
+              <div class="n-t">service_monitor</div>
+              <div class="n-d">5분 주기 — 롤업 · 이상 판정 · 발송<br>디스크 자동 정리</div>
+            </div>
+          </div>
+
+          <div class="arch-arrow"><i class="bi bi-arrow-right"></i></div>
+
+          <div class="arch-col">
+            <div class="arch-col-title">PostgreSQL 16</div>
+            <div class="arch-node store">
+              <div class="n-t">ftp_logs</div>
+              <div class="n-d">월별 파티션 · 기본 보존 36개월</div>
+            </div>
+            <div class="arch-node store">
+              <div class="n-t">service_metrics</div>
+              <div class="n-d">장비 × 10분 버킷 롤업<br>최근 2시간은 매 주기 재집계</div>
+            </div>
+            <div class="arch-node store">
+              <div class="n-t">service_alerts · episodes</div>
+              <div class="n-d">이상 버킷과 진행 중인 장애 상태</div>
+            </div>
+            <div class="arch-node">
+              <div class="n-t">cron · 자동 정리</div>
+              <div class="n-d">월 파티션 생성 · DB 백업(3년)<br>디스크 임계 초과 시 오래된 월 삭제</div>
+            </div>
+          </div>
+
+          <div class="arch-arrow"><i class="bi bi-arrow-right"></i></div>
+
+          <div class="arch-col">
+            <div class="arch-col-title">알림 · 조회</div>
+            <div class="arch-node">
+              <div class="n-t">웹훅 · Slack</div>
+              <div class="n-d">감지 / 복구 알림 · 음소거 가능</div>
+            </div>
+            <div class="arch-node">
+              <div class="n-t">HMS 메일</div>
+              <div class="n-d">같은 내용을 메일로</div>
+            </div>
+            <div class="arch-node">
+              <div class="n-t">웹 대시보드 (SPA)</div>
+              <div class="n-d">대시보드 · 로그 조회 · CSV/XLSX</div>
+            </div>
+            <div class="arch-node">
+              <div class="n-t">외부 시스템</div>
+              <div class="n-d">X-API-Key 조회 전용 토큰</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 2. 이상 감지 알림 흐름 -->
+      <div class="card p-3">
+        <div class="fw-semibold small mb-1">이상 감지 · 알림 흐름</div>
+        <div class="text-muted small mb-3">
+          판정은 10분 버킷마다 하지만, <b>발송은 에피소드(장비 × 지표)당 한 번</b>이다.
+          짧은 흔들림으로 메시지가 쏟아지지 않게 발송 앞단에 지속 조건을 둔다.
+        </div>
+        <div class="arch-flow">
+
+          <div class="arch-col">
+            <div class="arch-col-title">1 · 롤업</div>
+            <div class="arch-node">
+              <div class="n-t">10분 버킷 집계</div>
+              <div class="n-d">전송 실패율 · 전송 속도<br>로그인 실패율 · CWD 실패</div>
+            </div>
+          </div>
+
+          <div class="arch-arrow"><i class="bi bi-arrow-right"></i></div>
+
+          <div class="arch-col">
+            <div class="arch-col-title">2 · 판정</div>
+            <div class="arch-node">
+              <div class="n-t">baseline 이탈</div>
+              <div class="n-d">최근 7일 median + k·MAD<br>절대 하한과 최소 표본으로 오탐 차단</div>
+            </div>
+          </div>
+
+          <div class="arch-arrow"><i class="bi bi-arrow-right"></i></div>
+
+          <div class="arch-col">
+            <div class="arch-col-title">3 · 적재 (화면)</div>
+            <div class="arch-node store">
+              <div class="n-t">service_alerts</div>
+              <div class="n-d">이상 버킷은 <b>모두</b> 남는다<br>발송 여부와 무관하게 대시보드에 표시</div>
+            </div>
+          </div>
+
+          <div class="arch-arrow"><i class="bi bi-arrow-right"></i></div>
+
+          <div class="arch-col">
+            <div class="arch-col-title">4 · 발송 게이트</div>
+            <div class="arch-node">
+              <div class="n-t">보냄</div>
+              <div class="n-d">지속 버킷 수 충족(기본 2 = 20분)<br>심각 등급은 즉시<br>주의 → 심각 승격 1회</div>
+            </div>
+            <div class="arch-node buffer">
+              <div class="n-t">보내지 않음</div>
+              <div class="n-d">1버킷 반짝 · 같은 장애의 반복<br>이상 알림이 없었으면 복구도 없음</div>
+            </div>
+          </div>
+
+          <div class="arch-arrow"><i class="bi bi-arrow-right"></i></div>
+
+          <div class="arch-col">
+            <div class="arch-col-title">5 · 복구</div>
+            <div class="arch-node">
+              <div class="n-t">30분(3버킷) 조용</div>
+              <div class="n-d">에피소드 종료 → 복구 알림<br>지속 시간과 이상 건수를 함께 보낸다</div>
+            </div>
+          </div>
+
+        </div>
+        <div class="form-text mt-2">
+          지속 버킷 수 · 임계값은 <b>설정 &gt; 알림 설정 &gt; 이상 감지 임계값</b>에서 바꾼다
+          (저장하면 다음 판정 주기에 반영).
+        </div>
+      </div>
+    </div>
+
     <div id="page-changelog" class="page">
       <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
         <h5 class="mb-0 fw-bold"><i class="bi bi-clock-history me-2 text-brand"></i>변경 이력</h5>

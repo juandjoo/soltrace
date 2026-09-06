@@ -7,16 +7,62 @@ FTP 장비의 데몬이 로그를 파싱해 WAS API로 전송하고, 웹 대시�
 
 ## 아키텍처
 
+### 시스템 구성도
+
+```mermaid
+flowchart LR
+    subgraph EDGE["FTP 장비 N대 · proftpd (Rocky 8 / CentOS 7)"]
+        LOG["xferlog · proftpd.log"]
+        DAEMON["soltrace_daemon.py<br/>10초 폴링 · 200건 배치<br/>60초 하트비트"]
+        DBUF[("buffer.jsonl<br/>WAS 장애 시 보관 · 최대 5만 줄")]
+        BULK["soltrace_bulk.py<br/>과거 로그 일괄 전송"]
+        LOG --> DAEMON
+        DAEMON <--> DBUF
+    end
+
+    subgraph WASBOX["WAS 서버 · Rocky Linux 8"]
+        NGINX["Nginx 80/443<br/>TLS · 레이트리밋 · gzip"]
+        API["FastAPI + Gunicorn 2 worker<br/>JWT · API 키 · 고객사 데이터 격리"]
+        WBUF["write_buffer<br/>3초 flush · 실패 배치 재시도"]
+        MON["service_monitor<br/>5분 주기 스레드"]
+        NOTI["notifier"]
+        subgraph PG["PostgreSQL 16"]
+            TLOG[("ftp_logs<br/>월별 파티션 · 보존 36개월")]
+            TMET[("service_metrics<br/>10분 버킷 롤업")]
+            TALT[("service_alerts<br/>service_alert_episodes")]
+        end
+        OPS["cron · 자동 정리<br/>파티션 생성 · DB 백업 · disk_guard"]
+    end
+
+    UI["관리자 · 고객사<br/>브라우저 SPA"]
+    EXT["외부 시스템<br/>X-API-Key 조회"]
+    WH["웹훅 · Slack"]
+    MAIL["HMS 메일"]
+
+    DAEMON -- "HTTPS POST /ingest/logs" --> NGINX
+    BULK -- "HTTPS 일괄 전송" --> NGINX
+    UI --> NGINX
+    EXT --> NGINX
+    NGINX --> API
+    API --> WBUF --> TLOG
+    API -- "조회 · 대시보드 · 내보내기" --> PG
+    TLOG -- "2시간 트레일링 재집계" --> MON
+    MON --> TMET
+    TMET -- "최근 7일 baseline 대비 판정" --> MON
+    MON --> TALT
+    MON -- "감지 · 복구" --> NOTI
+    NOTI --> WH
+    NOTI --> MAIL
+    OPS --> PG
 ```
-FTP 서버 (proftpd, Rocky Linux 8 / CentOS 7)
-  └─ soltrace_daemon.py  ──(HTTPS API)──▶  WAS 서버 (Rocky Linux 8)
-  └─ soltrace_bulk.py    ──(일괄전송)──▶    └─ Nginx (80/443, 레이트리밋, gzip)
-                                             └─ FastAPI + Gunicorn (2 worker)
-                                             └─ PostgreSQL 16
-                                                  └─ ftp_logs (월별 파티셔닝)
-                                                  └─ service_metrics (5분 롤업)
-                                                  └─ service_alerts
-```
+
+같은 구성도를 웹 UI 왼쪽 **구성도** 탭(관리자 전용)에서도 본다 — 운영 중 화면에서 바로
+확인하려는 용도이고, 아래 설명이 그 화면의 내용이다.
+
+수집(왼쪽) → 저장 → 판정 → 알림·조회(오른쪽) 한 방향으로 흐른다. 장비의 데몬과 WAS 의
+`write_buffer` 가 각각 버퍼를 들고 있어, **한쪽이 죽어도 로그를 버리지 않는다** —
+WAS 가 내려가면 데몬이 `buffer.jsonl` 에 쌓아 두고, DB 가 내려가면 `write_buffer` 가
+재시도 큐에 들고 있다가 다시 쓴다.
 
 | 컴포넌트 | 스펙 |
 |---|---|
