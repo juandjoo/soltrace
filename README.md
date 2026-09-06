@@ -622,6 +622,15 @@ gunicorn은 `127.0.0.1`에만 바인딩된 상태를 유지한다.
 - nginx는 Rocky 8 기본 스트림(1.14, 2018년)을 쓰지 않고 설치 시 최신 스트림으로 올린다.
   **1.25.1 이상으로 올릴 경우** `listen 443 ssl http2;` 를 `listen 443 ssl;` + `http2 on;` 으로 바꿔야 한다.
 
+### 브라우저 캐시
+
+**아무것도 캐시하지 않는다.** API 응답과 화면(HTML/CSS/JS) 모두
+`Cache-Control: no-store, no-cache, must-revalidate, max-age=0` 로 내려간다
+(`SecurityHeadersMiddleware` 한 곳에서 붙이고, nginx 의 `/static/js/` 롱캐시도 없앴다).
+집계가 옛 값으로 보이거나 배포 후에도 옛 화면이 뜨는 일을 없애려는 것이고, 조회 화면이라
+캐시로 얻을 이득보다 어긋난 화면의 비용이 크다는 판단이다(2026-09-06).
+`?v=<커밋해시>` 버스팅은 그대로 두되 그것에 기대지 않는다.
+
 ### 남은 조치 (운영 판단 필요)
 
 - **데몬 등록 API는 의도적으로 개방**: `/api/v1/ingest/register` 는 어느 IP에서든 호출할 수 있으나,

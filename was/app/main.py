@@ -130,13 +130,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Content-Security-Policy"] = self._CSP
-        # API 응답은 절대 캐시하지 않는다 — 사용자·장비를 추가해도 화면이 옛 집계를
-        # 그대로 보여주던 문제(브라우저 캐시를 비워야 반영됨)를 막는다.
-        # /static/js 는 ?v=<커밋해시> 로 버스팅하므로 여기서 제외한다.
-        if request.url.path.startswith("/api/"):
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
+        # 브라우저에 아무것도 남기지 않는다 — API 응답도 화면(JS/CSS)도.
+        # 집계가 옛 값으로 보이거나, 배포 후에도 옛 화면이 뜨는 일을 없애려면
+        # 예외를 두지 않는 편이 확실하다(운영 결정 2026-09-06). ?v=<커밋해시>
+        # 버스팅은 그대로 두되 그것에 기대지 않는다.
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
         return response
 
 
@@ -170,7 +170,5 @@ def _load_index_html() -> str:
 def spa(full_path: str = ""):
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404)
-    return HTMLResponse(
-        content=_INDEX_HTML,
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
-    )
+    # 캐시 금지 헤더는 SecurityHeadersMiddleware 가 모든 응답에 붙인다 (한 곳에서만)
+    return HTMLResponse(content=_INDEX_HTML)
