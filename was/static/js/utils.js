@@ -177,6 +177,38 @@ function logout() {
   showLogin();
 }
 
+// ── 내 계정 (상단바) — 비밀번호 변경 ────────────────────────────────────────
+// 관리자·고객 계정이 같은 화면을 쓴다. 관리자가 남의 비밀번호를 바꾸는 설정 화면과 달리
+// 현재 비밀번호를 확인한다(POST /auth/password).
+function openMyAccount() {
+  const p = token ? _parseJwt(token) : null;
+  document.getElementById('myAccountName').textContent = p?.sub || '-';
+  ['myCurrentPwd', 'myNewPwd', 'myNewPwd2'].forEach(id => { document.getElementById(id).value = ''; });
+  const msg = document.getElementById('myAccountMsg');
+  msg.className = 'alert d-none py-2 small';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('myAccountModal')).show();
+}
+
+function _myAccountMsg(type, text) {
+  const el = document.getElementById('myAccountMsg');
+  el.className = `alert alert-${type} py-2 small`;
+  el.textContent = text;
+}
+
+async function saveMyPassword() {
+  const cur = document.getElementById('myCurrentPwd').value;
+  const nw  = document.getElementById('myNewPwd').value;
+  const nw2 = document.getElementById('myNewPwd2').value;
+  if (!cur) { _myAccountMsg('danger', '현재 비밀번호를 입력하세요.'); return; }
+  if (nw.length < 8) { _myAccountMsg('danger', '새 비밀번호는 8자 이상이어야 합니다.'); return; }
+  if (nw !== nw2) { _myAccountMsg('danger', '새 비밀번호가 서로 다릅니다.'); return; }
+  try {
+    await api('POST', '/auth/password', {current_password: cur, new_password: nw});
+    bootstrap.Modal.getInstance(document.getElementById('myAccountModal'))?.hide();
+    alert('비밀번호를 변경했습니다. 다음 로그인부터 새 비밀번호를 사용하세요.');
+  } catch (e) { _myAccountMsg('danger', e.message); }
+}
+
 function fmtBytes(b) {
   if (!b) return '0 B';
   if (b < 1024) return b + ' B';

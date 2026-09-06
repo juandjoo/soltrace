@@ -45,6 +45,8 @@ class User(Base):
     failed_attempts = Column(Integer, nullable=False, default=0)
     locked_until = Column(DateTime(timezone=True))
     last_login_at = Column(DateTime(timezone=True))
+    note = Column(Text)                  # 비고 — 담당자·연락처·용도 등 운영 메모
+    created_by = Column(String(64))      # 이 계정을 만든 관리자 아이디
     created_at = Column(DateTime(timezone=True), default=_now)
 
 
@@ -139,6 +141,28 @@ class DeviceGroup(Base):
 
     __table_args__ = (
         Index("idx_device_groups_group_id", "group_id"),
+    )
+
+
+class UserFtpAccount(Base):
+    """고객 계정 ↔ FTP 계정 매핑 — 그룹별로 여러 FTP 아이디를 등록한다.
+
+    고객 계정이 보는 범위를 이 표가 정한다(설정 > 고객 계정에서 관리).
+      - 조회 가능한 장비 = 여기 등록된 그룹의 장비 (deps.device_scope)
+      - 조회 가능한 로그 = 그 장비의 로그 중 등록된 FTP 아이디의 것 (deps.ftp_scope_sql)
+    매핑이 하나도 없으면 아무것도 보이지 않는다 — 그룹만으로 열어두지 않는다는
+    운영 결정(2026-09-06). 관리자(admin)는 이 표와 무관하게 전체를 본다.
+    """
+    __tablename__ = "user_ftp_accounts"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
+    # ftp_logs.username 과 정확히 일치해야 한다 (부분일치 아님) — 길이도 같게 둔다
+    ftp_username = Column(String(255), primary_key=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+    __table_args__ = (
+        Index("idx_user_ftp_accounts_user", "user_id"),
     )
 
 

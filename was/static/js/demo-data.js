@@ -270,10 +270,18 @@
   }
 
   const ACCOUNTS = [
-    { id: 1, username: 'acme_view',  customer: 'ACME',     allowed_ips: ['203.0.113.0/24'], is_active: true },
-    { id: 2, username: 'bluewave',   customer: 'BLUEWAVE', allowed_ips: [],                 is_active: true },
-    { id: 3, username: 'partner_ro', customer: 'ACME',     allowed_ips: ['198.51.100.7'],   is_active: false },
-  ].map(u => ({ ...u, role: 'customer', created_at: new Date(now - 30 * DAY).toISOString() }));
+    { id: 1, username: 'acme_view',  customer: 'ACME',     allowed_ips: ['203.0.113.0/24'], is_active: true,
+      note: '담당자 김운영 (010-0000-0000) · VOD 업로드 모니터링',
+      ftp_accounts: [
+        { group_id: 1, group_name: 'VOD-서울', usernames: ['vod_ingest', 'media_ops'] },
+        { group_id: 2, group_name: 'VOD-부산', usernames: ['vod_ingest'] },
+      ] },
+    { id: 2, username: 'bluewave',   customer: 'BLUEWAVE', allowed_ips: [],                 is_active: true,
+      note: '', ftp_accounts: [{ group_id: 3, group_name: 'CDN-원본', usernames: ['cdn_sync'] }] },
+    { id: 3, username: 'partner_ro', customer: 'ACME',     allowed_ips: ['198.51.100.7'],   is_active: false,
+      note: '협력사 조회 전용 — 2026-12 만료 예정', ftp_accounts: [] },
+  ].map(u => ({ ...u, role: 'customer', created_by: 'admin',
+                created_at: new Date(now - 30 * DAY).toISOString() }));
 
   // ── 라우팅 ─────────────────────────────────────────────────────────────────
   const ROUTES = [

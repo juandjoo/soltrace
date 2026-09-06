@@ -134,17 +134,56 @@ def device_scope(
 ) -> Optional[list[int]]:
     """조회 격리용 허용 device_id 목록.
 
-    - admin            → None (필터 없음, 전체 접근)
-    - customer         → 본인 customer 의 groups 에 속한 device_id 목록 (없으면 빈 리스트 → 아무것도 못 봄)
+    - admin    → None (필터 없음, 전체 접근)
+    - customer → **FTP 계정 매핑에 등록된 그룹**의 device_id 목록
+
+    매핑(user_ftp_accounts)이 하나도 없으면 빈 리스트 → 아무것도 보이지 않는다.
+    그룹만으로 열어두지 않는 것은 운영 결정이다(2026-09-06) — 한 그룹의 장비를 여러
+    고객사가 함께 쓰는 경우가 있어, "이 계정이 볼 FTP 아이디"를 명시해야 열린다.
+    그룹이 그 고객사의 것인지(g.customer)도 함께 확인해 매핑이 잘못 들어가도
+    다른 고객사 장비가 새지 않게 한다.
     """
     if user.is_admin:
         return None
     rows = db.execute(
         text(
             "SELECT DISTINCT dg.device_id "
-            "FROM device_groups dg JOIN groups g ON g.id = dg.group_id "
-            "WHERE g.customer = :c"
+            "FROM user_ftp_accounts ufa "
+            "JOIN users u ON u.id = ufa.user_id "
+            "JOIN groups g ON g.id = ufa.group_id AND g.customer = u.customer "
+            "JOIN device_groups dg ON dg.group_id = ufa.group_id "
+            "WHERE u.username = :u AND u.customer = :c"
         ),
-        {"c": user.customer or ""},
+        {"u": user.username, "c": user.customer or ""},
     ).scalars().all()
     return list(rows)
+
+
+def ftp_scope(
+    user: Principal = Depends(get_current_user),
+) -> Optional[str]:
+    """로그 조회를 제한할 계정명 — admin 은 None(제한 없음), 고객 계정은 본인 아이디.
+
+    device_scope 가 '어느 장비까지'라면 이쪽은 '그 장비의 어느 FTP 아이디까지'다.
+    조건 SQL 은 ftp_scope_sql() 한 곳에만 둔다(로그 조회·내보내기·대시보드가 같은 규칙).
+    """
+    return None if user.is_admin else (user.username or "")
+
+
+def ftp_scope_sql(params: dict, scope_user: Optional[str],
+                  dev_col: str, user_col: str) -> str:
+    """ftp_logs 조회에 붙일 FTP 계정 매핑 조건 (admin 이면 빈 문자열).
+
+    "이 로그의 (장비, FTP 아이디) 조합이 그 계정에 등록돼 있는가"를 EXISTS 로 묻는다.
+    매핑 표를 직접 보므로 관리자가 매핑을 고치면 다음 조회부터 바로 반영되고,
+    허용 목록을 파라미터로 실어 나르지 않아 조합이 많아도 쿼리가 커지지 않는다.
+    """
+    if scope_user is None:
+        return ""
+    params["ftp_scope_user"] = scope_user
+    return (f" AND EXISTS (SELECT 1 FROM user_ftp_accounts ufa"
+            f" JOIN users u2 ON u2.id = ufa.user_id"
+            f" JOIN groups g2 ON g2.id = ufa.group_id AND g2.customer = u2.customer"
+            f" JOIN device_groups dg2 ON dg2.group_id = ufa.group_id"
+            f" WHERE u2.username = :ftp_scope_user"
+            f" AND dg2.device_id = {dev_col} AND ufa.ftp_username = {user_col})")

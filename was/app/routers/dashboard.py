@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import alert_settings
 from app.database import get_db
-from app.deps import device_scope
+from app.deps import device_scope, ftp_scope, ftp_scope_sql
 from app.models import Device, DeviceGroup, FtpLog, Group
 from app.schemas import (
     DashboardDetail, DashboardStats, TimeSeriesPoint, TopItem,
@@ -49,6 +49,7 @@ def get_dashboard(
     device_id: Optional[int] = None,
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
+    scope_user: Optional[str] = Depends(ftp_scope),
 ):
     since, until = _time_range(start_date, end_date, days=days)
     days = max(1, (until - since).days or 1)
@@ -195,10 +196,12 @@ def get_hourly(
     end_date: Optional[datetime] = None,
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
+    scope_user: Optional[str] = Depends(ftp_scope),
 ):
     since, until = _time_range(start_date, end_date, days=days)
     params = {"since": since, "until": until}
-    scope_f = _scope_sql(params, scope, "fl.device_id")
+    scope_f = (_scope_sql(params, scope, "fl.device_id")
+               + ftp_scope_sql(params, scope_user, "fl.device_id", "fl.username"))
     rows = db.execute(text(f"""
         SELECT g.id AS group_id, g.name, g.telco,
                DATE_TRUNC('hour', fl.log_time) AS bucket,
@@ -235,6 +238,7 @@ def get_users_hourly(
     bucket: str = Query(default="hour", pattern="^(hour|day)$"),
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
+    scope_user: Optional[str] = Depends(ftp_scope),
 ):
     """bucket='day' 면 일 단위 합산 — 주/월 조회에서 시간 버킷은 점이 너무 촘촘하다.
 
@@ -243,8 +247,10 @@ def get_users_hourly(
     """
     since, until = _time_range(start_date, end_date, days=days)
     params = {"since": since, "until": until}
-    cte_f = _scope_sql(params, scope, "device_id")      # top_users CTE 내부 (별칭 없음)
-    main_f = _scope_sql(params, scope, "fl.device_id")  # 본 쿼리 (fl 별칭)
+    cte_f = (_scope_sql(params, scope, "device_id")     # top_users CTE 내부 (별칭 없음)
+             + ftp_scope_sql(params, scope_user, "device_id", "username"))
+    main_f = (_scope_sql(params, scope, "fl.device_id")  # 본 쿼리 (fl 별칭)
+              + ftp_scope_sql(params, scope_user, "fl.device_id", "fl.username"))
     rows = db.execute(text(f"""
         WITH top_users AS (
             SELECT username
@@ -297,6 +303,7 @@ def get_service_health(
     device_id: Optional[int] = None,
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
+    scope_user: Optional[str] = Depends(ftp_scope),
 ):
     """장비 상태(지금 기준) + 기간 내 알림·추이.
 
@@ -307,7 +314,9 @@ def get_service_health(
     # 장비 선택 + 고객 계정 격리: 모든 하위 쿼리에 같은 제한을 건다 (별칭만 다름)
     dev_f     = ("AND m.device_id = :did" if device_id else "")  + _scope_sql(params, scope, "m.device_id")
     adev_f    = ("AND a.device_id = :did" if device_id else "")  + _scope_sql(params, scope, "a.device_id")
-    dev_f_log = ("AND fl.device_id = :did" if device_id else "") + _scope_sql(params, scope, "fl.device_id")
+    dev_f_log = (("AND fl.device_id = :did" if device_id else "")
+                 + _scope_sql(params, scope, "fl.device_id")
+                 + ftp_scope_sql(params, scope_user, "fl.device_id", "fl.username"))
     scope_d   = _scope_sql(params, scope, "d.id")  # all_devices 쿼리(d 별칭)
 
     # 최근 알림 (장비 상태 판정에도 사용)
@@ -456,6 +465,7 @@ def get_cwd_fail_breakdown(
     limit: int = Query(default=15, ge=1, le=100),
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
+    scope_user: Optional[str] = Depends(ftp_scope),
 ):
     """CWD(디렉토리 이동) 실패가 '어디에' 몰려 있는지 — 경로/사용자 상위 집계.
 
@@ -465,7 +475,9 @@ def get_cwd_fail_breakdown(
     """
     since, until = _time_range(start_date, end_date, hours=hours)
     params = {"since": since, "until": until, "did": device_id, "limit": limit}
-    dev_f_log = ("AND fl.device_id = :did" if device_id else "") + _scope_sql(params, scope, "fl.device_id")
+    dev_f_log = (("AND fl.device_id = :did" if device_id else "")
+                 + _scope_sql(params, scope, "fl.device_id")
+                 + ftp_scope_sql(params, scope_user, "fl.device_id", "fl.username"))
 
     ignore_raw = alert_settings.load(db)["cwd_ignore_paths"]
     params["cwd_ignore"] = _like_patterns(ignore_raw)

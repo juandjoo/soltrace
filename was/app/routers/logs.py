@@ -12,7 +12,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import device_scope
+from app.deps import device_scope, ftp_scope, ftp_scope_sql
 from app.models import Device, DeviceGroup, FtpLog, Group
 from app.service_monitor import cwd_probe_sql
 from app.schemas import FtpLogResponse, LogCountResponse, LogListResponse
@@ -60,10 +60,18 @@ class LogFilters:
         self.start_time = start_time
         self.end_time = end_time
 
-    def apply(self, q, db: Session, allowed_ids: Optional[list[int]]):
-        # 테넌트 격리: 고객 계정이면 본인 device 로만 제한 (admin 은 None → 제한 없음)
+    def apply(self, q, db: Session, allowed_ids: Optional[list[int]],
+              scope_user: Optional[str] = None):
+        # 테넌트 격리 두 겹 (admin 은 둘 다 None → 제한 없음)
+        #   1. 장비 — 매핑된 그룹의 장비만
+        #   2. FTP 계정 — 그 장비의 로그 중 이 계정에 등록된 아이디만
+        # 조건 자체는 deps 한 곳에 두고 여기서는 붙이기만 한다(대시보드와 같은 규칙).
         if allowed_ids is not None:
             q = q.filter(FtpLog.device_id.in_(allowed_ids))
+        if scope_user is not None:
+            params: dict = {}
+            cond = ftp_scope_sql(params, scope_user, "ftp_logs.device_id", "ftp_logs.username")
+            q = q.filter(text(cond.replace(" AND ", "", 1)).bindparams(**params))
         if self.device_id:
             q = q.filter(FtpLog.device_id == self.device_id)
         if self.group_id:
@@ -123,9 +131,10 @@ _EXPORT_COLS = (
 )
 
 
-def _export_rows(db: Session, f: LogFilters, scope: Optional[list[int]]):
+def _export_rows(db: Session, f: LogFilters, scope: Optional[list[int]],
+                 scope_user: Optional[str] = None):
     q = db.query(*_EXPORT_COLS).join(Device, FtpLog.device_id == Device.id)
-    return f.apply(q, db, scope).order_by(FtpLog.log_time.desc()).yield_per(1000)
+    return f.apply(q, db, scope, scope_user).order_by(FtpLog.log_time.desc()).yield_per(1000)
 
 
 def _export_filename(ext: str) -> str:
@@ -139,11 +148,12 @@ def query_logs(
     f: LogFilters = Depends(),
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
+    scope_user: Optional[str] = Depends(ftp_scope),
 ):
     # 총건수는 /logs/count 가 별도로 정확히 센다. 대량 구간에서 COUNT 가 수 초 걸려도
     # 첫 페이지는 즉시 내려가도록 여기서는 세지 않는다.
     items = (
-        f.apply(db.query(FtpLog), db, scope)
+        f.apply(db.query(FtpLog), db, scope, scope_user)
         .join(Device, FtpLog.device_id == Device.id)
         .order_by(FtpLog.log_time.desc())
         .offset((page - 1) * size)
@@ -167,6 +177,7 @@ def list_usernames(
     f: LogFilters = Depends(),
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
+    scope_user: Optional[str] = Depends(ftp_scope),
 ):
     """지금 필터(고객사·그룹·기간)에서 실제로 접근한 계정 목록.
 
@@ -174,7 +185,7 @@ def list_usernames(
     목록·총건수와 같은 LogFilters 를 쓰므로 조건이 갈라지지 않는다.
     """
     rows = (
-        f.apply(db.query(FtpLog), db, scope)
+        f.apply(db.query(FtpLog), db, scope, scope_user)
         .with_entities(FtpLog.username)
         .filter(FtpLog.username.isnot(None))
         .distinct()
@@ -190,12 +201,13 @@ def count_logs(
     f: LogFilters = Depends(),
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
+    scope_user: Optional[str] = Depends(ftp_scope),
 ):
     """목록과 동일한 필터로 정확한 총건수를 센다 (상한·추정 없음).
 
     프론트가 목록 요청과 병렬로 호출하고, 같은 필터로 페이지만 바꿀 때는 재호출하지 않는다.
     """
-    total = f.apply(db.query(FtpLog), db, scope).with_entities(func.count()).scalar()
+    total = f.apply(db.query(FtpLog), db, scope, scope_user).with_entities(func.count()).scalar()
     return LogCountResponse(total=total or 0)
 
 
@@ -204,6 +216,7 @@ def export_csv(
     f: LogFilters = Depends(),
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
+    scope_user: Optional[str] = Depends(ftp_scope),
 ):
     def generate():
         buf = io.StringIO()
@@ -212,7 +225,7 @@ def export_csv(
                          "action", "file_path", "file_size", "transfer_time", "status"])
         yield buf.getvalue()
 
-        for row in _export_rows(db, f, scope):
+        for row in _export_rows(db, f, scope, scope_user):
             buf.seek(0)
             buf.truncate(0)
             writer.writerow([
@@ -241,6 +254,7 @@ def export_xlsx(
     f: LogFilters = Depends(),
     db: Session = Depends(get_db),
     scope: Optional[list[int]] = Depends(device_scope),
+    scope_user: Optional[str] = Depends(ftp_scope),
 ):
     wb = Workbook(write_only=True)
     ws = wb.create_sheet("FTP Logs")
@@ -255,7 +269,7 @@ def export_xlsx(
         cell.font = bold
     ws.append(header_row)
 
-    for row in _export_rows(db, f, scope):
+    for row in _export_rows(db, f, scope, scope_user):
         # Excel은 timezone-aware datetime을 지원하지 않으므로 UTC naive로 변환
         log_time = row.log_time.replace(tzinfo=None) if row.log_time else None
         ws.append([

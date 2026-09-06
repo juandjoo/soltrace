@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import Principal, require_admin, validate_ip_entries
-from app.models import User
-from app.schemas import UserCreate, UserResponse, UserUpdate
+from app.models import Group, User, UserFtpAccount
+from app.schemas import FtpAccountMap, UserCreate, UserResponse, UserUpdate
 from app.security import (
     get_admin_username, hash_password, lock_seconds_left, split_ips,
     strip_input as _clean, unlock_user,
@@ -29,10 +29,73 @@ def _parse_ip_list(entries: List[str]) -> str:
     return "\n".join(validate_ip_entries(entries))
 
 
-def _to_response(u: User) -> UserResponse:
+# FTP 계정 매핑은 한 계정에 이만큼까지만 — 실수로 붙여넣은 수천 줄이 들어오는 것을 막는다
+_MAX_FTP_ACCOUNTS = 500
+
+
+def _load_ftp_map(db: Session, user_id: int) -> list:
+    """이 계정의 (그룹, FTP 아이디) 매핑을 그룹 단위로 묶어 돌려준다."""
+    rows = (
+        db.query(UserFtpAccount.group_id, UserFtpAccount.ftp_username, Group.name)
+        .join(Group, Group.id == UserFtpAccount.group_id)
+        .filter(UserFtpAccount.user_id == user_id)
+        .order_by(Group.name, UserFtpAccount.ftp_username)
+        .all()
+    )
+    out: dict = {}
+    for gid, ftp_username, gname in rows:
+        item = out.setdefault(gid, FtpAccountMap(group_id=gid, group_name=gname, usernames=[]))
+        item.usernames.append(ftp_username)
+    return list(out.values())
+
+
+def _save_ftp_map(db: Session, user: User, entries: list) -> None:
+    """매핑을 통째로 교체한다 (관리자 화면이 전체 목록을 보내는 방식).
+
+    그룹이 그 계정의 고객사(users.customer ↔ groups.customer) 것인지 확인한다 —
+    조회 시에도 같은 조건을 다시 보지만, 애초에 잘못된 조합이 저장되지 않게 막는다.
+    """
+    if user.role != "customer":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="FTP 계정 매핑은 고객 계정에만 설정할 수 있습니다")
+    pairs: list[tuple[int, str]] = []
+    seen: set = set()
+    for e in entries or []:
+        group = db.query(Group).filter(Group.id == e.group_id).first()
+        if not group:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"그룹을 찾을 수 없습니다 (id={e.group_id})")
+        if (group.customer or "") != (user.customer or ""):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{group.name}' 은 이 계정의 고객사({user.customer}) 그룹이 아닙니다")
+        for raw in e.usernames or []:
+            name = _clean(raw)
+            if not name:
+                continue
+            if len(name) > 255:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail="FTP 아이디가 너무 깁니다 (255자 초과)")
+            key = (group.id, name)
+            if key in seen:
+                continue
+            seen.add(key)
+            pairs.append(key)
+    if len(pairs) > _MAX_FTP_ACCOUNTS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"FTP 계정은 최대 {_MAX_FTP_ACCOUNTS}개까지 등록할 수 있습니다")
+
+    db.query(UserFtpAccount).filter(UserFtpAccount.user_id == user.id).delete()
+    for gid, name in pairs:
+        db.add(UserFtpAccount(user_id=user.id, group_id=gid, ftp_username=name))
+
+
+def _to_response(db: Session, u: User) -> UserResponse:
     return UserResponse(
         id=u.id, username=u.username, role=u.role, customer=u.customer,
         allowed_ips=split_ips(u.allowed_ips), is_active=u.is_active,
+        ftp_accounts=_load_ftp_map(db, u.id) if u.role == "customer" else [],
+        note=u.note, created_by=u.created_by,
         locked_seconds=lock_seconds_left(u), last_login_at=u.last_login_at,
         created_at=u.created_at,
     )
@@ -67,12 +130,12 @@ def _assert_can_disable(db: Session, user: User, me: Principal) -> None:
 @router.get("", response_model=List[UserResponse])
 def list_users(db: Session = Depends(get_db), _: Principal = Depends(require_admin)):
     users = db.query(User).order_by(User.role, User.username).all()
-    return [_to_response(u) for u in users]
+    return [_to_response(db, u) for u in users]
 
 
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(body: UserCreate, db: Session = Depends(get_db),
-                _: Principal = Depends(require_admin)):
+                me: Principal = Depends(require_admin)):
     username = _clean(body.username)
     customer = _clean(body.customer or "")
     role = body.role
@@ -94,11 +157,16 @@ def create_user(body: UserCreate, db: Session = Depends(get_db),
         customer=customer if role == "customer" else None,
         allowed_ips=_parse_ip_list(body.allowed_ips),
         is_active=True,
+        note=_clean(body.note or "") or None,
+        created_by=me.username,          # 누가 만든 계정인지 목록에 그대로 보인다
     )
     db.add(user)
+    db.flush()                      # user.id 확보 (매핑이 이 id 를 참조한다)
+    if role == "customer":
+        _save_ftp_map(db, user, body.ftp_accounts)
     db.commit()
     db.refresh(user)
-    return _to_response(user)
+    return _to_response(db, user)
 
 
 @router.put("/{user_id}", response_model=UserResponse)
@@ -121,13 +189,17 @@ def update_user(
         user.customer = customer or None
     if body.allowed_ips is not None:
         user.allowed_ips = _parse_ip_list(body.allowed_ips)
+    if body.note is not None:
+        user.note = _clean(body.note) or None
     if body.is_active is not None:
         if not body.is_active:
             _assert_can_disable(db, user, me)
         user.is_active = body.is_active
+    if body.ftp_accounts is not None:
+        _save_ftp_map(db, user, body.ftp_accounts)
     db.commit()
     db.refresh(user)
-    return _to_response(user)
+    return _to_response(db, user)
 
 
 @router.post("/{user_id}/unlock", response_model=UserResponse)
@@ -136,7 +208,7 @@ def unlock(user_id: int, db: Session = Depends(get_db), _: Principal = Depends(r
     user = _get(db, user_id)
     unlock_user(db, user)
     db.refresh(user)
-    return _to_response(user)
+    return _to_response(db, user)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

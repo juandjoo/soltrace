@@ -157,18 +157,54 @@ def test_device_scope_admin_is_unrestricted():
     assert db.params is None  # 쿼리 자체를 실행하지 않음
 
 
-def test_device_scope_customer_filters_by_customer():
+def test_device_scope_customer_filters_by_account_mapping():
     db = _FakeDB([7, 9])
     scope = deps.device_scope(deps.Principal(username="c", role="customer", customer="ACME"), db)
     assert scope == [7, 9]
-    assert db.params == {"c": "ACME"}
+    # 계정(아이디)과 고객사 둘 다로 좁힌다 — 매핑이 다른 고객사 그룹을 가리켜도 새지 않게
+    assert db.params == {"u": "c", "c": "ACME"}
 
 
 def test_device_scope_customer_without_customer_sees_nothing():
     db = _FakeDB([])
     scope = deps.device_scope(deps.Principal(username="c", role="customer", customer=None), db)
     assert scope == []            # 빈 리스트 → 조회 시 IN () 로 아무것도 안 보임
-    assert db.params == {"c": ""}
+    assert db.params == {"u": "c", "c": ""}
+
+
+# ── FTP 계정 매핑 격리 (device_scope 다음 겹) ──────────────────────────────
+
+def test_ftp_scope_admin_is_unrestricted():
+    assert deps.ftp_scope(deps.Principal(username="admin", role="admin")) is None
+
+
+def test_ftp_scope_customer_is_own_username():
+    assert deps.ftp_scope(deps.Principal(username="acme_view", role="customer",
+                                         customer="ACME")) == "acme_view"
+
+
+def test_ftp_scope_sql_empty_for_admin():
+    params = {}
+    assert deps.ftp_scope_sql(params, None, "fl.device_id", "fl.username") == ""
+    assert params == {}           # 바인딩도 남기지 않는다
+
+
+def test_ftp_scope_sql_binds_account_and_pairs_device_with_username():
+    params = {}
+    sql = deps.ftp_scope_sql(params, "acme_view", "fl.device_id", "fl.username")
+    assert params == {"ftp_scope_user": "acme_view"}
+    assert sql.startswith(" AND EXISTS (")
+    # (장비, FTP 아이디) 조합으로 물어야 한다 — 둘 중 하나만 맞아도 통과하면 격리가 깨진다
+    assert "dg2.device_id = fl.device_id" in sql
+    assert "ufa.ftp_username = fl.username" in sql
+    # 매핑된 그룹이 그 계정의 고객사 것인지도 함께 확인한다
+    assert "g2.customer = u2.customer" in sql
+
+
+def test_ftp_scope_sql_accepts_unaliased_columns():
+    """CTE 안처럼 별칭 없는 컬럼에도 같은 조건을 쓴다 (대시보드 top_users)."""
+    sql = deps.ftp_scope_sql({}, "c", "device_id", "username")
+    assert "dg2.device_id = device_id" in sql and "ufa.ftp_username = username" in sql
 
 
 # ── 공용 입력 헬퍼 (settings 전역 IP / users 계정별 IP 가 같은 규칙) ────────

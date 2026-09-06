@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import Principal, create_access_token, get_current_user
-from app.schemas import LoginRequest, TokenResponse
+from app.schemas import LoginRequest, PasswordChange, TokenResponse
 from app.security import (
     LOGIN_LOCK_MINUTES, check_ip_allowed, check_user_ip_allowed, clear_failed_login,
-    client_ip_from_request, get_admin_username, get_user, lock_seconds_left,
-    register_failed_login, verify_admin_credentials, verify_password,
+    client_ip_from_request, get_admin_username, get_user, hash_password,
+    lock_seconds_left, register_failed_login, set_admin_password,
+    strip_input as _clean, verify_admin_credentials, verify_password,
     _DUMMY_HASH,
 )
 
@@ -97,3 +98,42 @@ def refresh(user: Principal = Depends(get_current_user)):
         access_token=create_access_token(user.username, user.role, user.customer),
         role=user.role, customer=user.customer,
     )
+
+
+@router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
+def change_my_password(
+    body: PasswordChange,
+    db: Session = Depends(get_db),
+    me: Principal = Depends(get_current_user),
+):
+    """로그인한 본인의 비밀번호를 바꾼다 (상단바 '내 계정').
+
+    관리자·고객 계정이 같은 경로를 쓴다 — 관리자가 대신 바꿔주는 PUT /users/{id} 와 달리
+    **현재 비밀번호를 확인**한다. API 키로 인증한 요청은 조회 전용이라 여기 닿지 않는다.
+    """
+    if me.via_api_key:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="API 키로는 비밀번호를 바꿀 수 없습니다")
+    current = _clean(body.current_password)
+    new = _clean(body.new_password)
+    if len(new) < 8:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="새 비밀번호는 8자 이상이어야 합니다")
+    if new == current:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="현재 비밀번호와 다른 값을 입력하세요")
+
+    user = get_user(db, me.username)
+    if user is None:
+        # users 로 이관되기 전의 부트스트랩 관리자 — app_config 쪽을 바꾼다
+        if not verify_admin_credentials(db, me.username, current):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="현재 비밀번호가 올바르지 않습니다")
+        set_admin_password(db, new)
+        return
+    if not verify_password(current, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="현재 비밀번호가 올바르지 않습니다")
+    user.password_hash = hash_password(new)
+    clear_failed_login(db, user)      # 실패 카운터·잠금도 함께 푼다
+    db.commit()

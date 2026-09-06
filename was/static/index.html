@@ -62,11 +62,12 @@
       <button class="btn btn-sm btn-topbar-icon" id="themeToggleBtn" onclick="toggleTheme()" title="다크 모드로">
         <i class="bi bi-moon-stars" id="themeToggleIcon" style="font-size:1.15rem"></i>
       </button>
-      <span id="currentUserBox" class="d-flex align-items-center gap-1 small me-1">
+      <button id="currentUserBox" type="button" class="btn btn-sm btn-topbar-icon d-flex align-items-center gap-1 small me-1"
+              onclick="openMyAccount()" title="내 계정 — 비밀번호 변경">
         <i class="bi bi-person-circle" style="font-size:1rem"></i>
         <span id="currentUserName" class="fw-semibold"></span>
         <span id="currentUserRole" class="badge rounded-pill"></span>
-      </span>
+      </button>
       <span class="vr" style="opacity:.2"></span>
       <span id="sessionTimerDisplay" class="session-timer d-flex align-items-center gap-1 small">
         <i class="bi bi-clock" style="font-size:.85rem"></i>
@@ -773,7 +774,7 @@
                   <tr><td class="text-muted" style="width:42%">WAS 업데이트</td><td>설정 &gt; 시스템 업데이트 버튼<br>또는 서버에서 <code>sudo bash scripts/update_rocky8.sh main</code></td></tr>
                   <tr><td class="text-muted">새 장비 붙이기</td><td>장비에 데몬 설치 → 장비 관리에서 <b>확인(Confirm)</b> → 그룹 배정</td></tr>
                   <tr><td class="text-muted">데몬 업데이트</td><td>장비 관리 &gt; 해당 장비 &gt; 원격 업데이트</td></tr>
-                  <tr><td class="text-muted">고객사 계정 · API 키</td><td>설정 &gt; 고객 계정 (계정별로 볼 수 있는 장비를 제한)</td></tr>
+                  <tr><td class="text-muted">고객사 계정 · API 키</td><td>설정 &gt; 고객 계정 — <b>FTP 계정 매핑을 반드시 등록</b>한다(그룹 + FTP 아이디). 없으면 그 계정은 아무것도 보지 못한다</td></tr>
                   <tr><td class="text-muted">알림 채널</td><td>설정 &gt; 알림 설정 (웹훅 · HMS) · 테스트 발송 버튼</td></tr>
                   <tr><td class="text-muted">알림이 잦을 때</td><td>설정 &gt; 이상 감지 임계값 — 먼저 <b>발송 전 지속 버킷 수</b>를 올리고, 그래도 잦으면 해당 지표의 하한을 올린다</td></tr>
                   <tr><td class="text-muted">작업 중 알림 끄기</td><td>설정 &gt; 알림 설정 &gt; 음소거 — <b>다시 켜는 것을 잊지 않는다</b></td></tr>
@@ -1192,7 +1193,7 @@
           </div>
 
           <!-- 고객 계정 -->
-          <div id="settings-users" class="settings-pane d-none" style="max-width:760px">
+          <div id="settings-users" class="settings-pane d-none" style="max-width:1000px">
             <div class="card mb-3">
               <div class="card-header bg-white fw-semibold"><i class="bi bi-person-plus me-1"></i>고객 계정 추가</div>
               <div class="card-body">
@@ -1208,12 +1209,26 @@
                   </div>
                   <div class="col-md-6">
                     <label class="form-label small fw-semibold">고객사 (그룹의 customer 와 일치)</label>
-                    <input class="form-control form-control-sm" id="newUserCustomer" list="customerOptions" placeholder="예: ACME">
+                    <input class="form-control form-control-sm" id="newUserCustomer" list="customerOptions" placeholder="예: ACME"
+                           oninput="ftpMapOnCustomerChange('new')">
                     <datalist id="customerOptions"></datalist>
                   </div>
                   <div class="col-md-6">
                     <label class="form-label small fw-semibold">허용 IP/CIDR (선택, 줄바꿈 구분)</label>
                     <textarea class="form-control form-control-sm" id="newUserIps" rows="2" placeholder="비우면 IP 제한 없음&#10;예: 203.0.113.0/24"></textarea>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small fw-semibold">비고 (담당자·연락처·용도)</label>
+                    <textarea class="form-control form-control-sm" id="newUserNote" rows="2" placeholder="예) 담당자 홍길동 (010-0000-0000) · VOD 업로드 계정"></textarea>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small fw-semibold">FTP 계정 매핑 <span class="text-danger">*</span></label>
+                    <div id="ftpMapNew"></div>
+                    <button class="btn btn-xs btn-outline-secondary mt-1" onclick="ftpMapAddRow('new')"><i class="bi bi-plus-lg me-1"></i>그룹 추가</button>
+                    <div class="form-text">
+                      이 계정이 볼 <b>그룹과 FTP 아이디</b>를 등록합니다. 그룹은 여러 개, 아이디도 그룹마다 여러 개 넣을 수 있습니다(쉼표 구분).
+                      <b>등록하지 않으면 로그인해도 아무 데이터가 보이지 않습니다.</b> 고객사를 먼저 입력하면 그 고객사의 그룹만 목록에 나옵니다.
+                    </div>
                   </div>
                 </div>
                 <button class="btn btn-sm btn-primary mt-3" onclick="createUser()"><i class="bi bi-plus-lg me-1"></i>계정 생성</button>
@@ -1225,9 +1240,9 @@
                 <div class="table-responsive">
                   <table class="table table-sm table-hover mb-0 align-middle">
                     <thead><tr class="small text-muted">
-                      <th class="ps-3">아이디</th><th>고객사</th><th>허용 IP</th><th>상태</th><th class="text-end pe-3">작업</th>
+                      <th class="ps-3">아이디 · 비고</th><th>고객사</th><th>FTP 계정</th><th>허용 IP</th><th>등록</th><th>상태</th><th class="text-end pe-3">작업</th>
                     </tr></thead>
-                    <tbody id="userList"><tr><td colspan="5" class="text-muted small p-3">불러오는 중…</td></tr></tbody>
+                    <tbody id="userList"><tr><td colspan="7" class="text-muted small p-3">불러오는 중…</td></tr></tbody>
                   </table>
                 </div>
               </div>
@@ -1321,9 +1336,41 @@
   </div>
 </div>
 
+<!-- 내 계정 (비밀번호 변경) — 관리자·고객 계정 공용 -->
+<div class="modal fade" id="myAccountModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-person-circle me-1"></i>내 계정 — <span id="myAccountName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="myAccountMsg" class="alert d-none py-2 small"></div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">현재 비밀번호</label>
+          <input type="password" class="form-control form-control-sm" id="myCurrentPwd" autocomplete="current-password">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">새 비밀번호 (8자 이상)</label>
+          <input type="password" class="form-control form-control-sm" id="myNewPwd" autocomplete="new-password">
+        </div>
+        <div class="mb-1">
+          <label class="form-label small fw-semibold">새 비밀번호 확인</label>
+          <input type="password" class="form-control form-control-sm" id="myNewPwd2" autocomplete="new-password">
+        </div>
+        <div class="form-text">바꾼 뒤에도 지금 세션은 그대로 유지됩니다. 다음 로그인부터 새 비밀번호를 씁니다.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="saveMyPassword()">비밀번호 변경</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 고객 계정 수정 모달 -->
 <div class="modal fade" id="userEditModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
         <h6 class="modal-title"><i class="bi bi-person-gear me-1"></i>고객 계정 수정 — <span id="editUserName"></span></h6>
@@ -1334,16 +1381,28 @@
         <div id="editUserMsg" class="alert d-none py-2 small"></div>
         <div class="mb-3">
           <label class="form-label small fw-semibold">고객사 (그룹의 customer 와 일치)</label>
-          <input class="form-control form-control-sm" id="editUserCustomer" list="customerOptions">
+          <input class="form-control form-control-sm" id="editUserCustomer" list="customerOptions"
+                 oninput="ftpMapOnCustomerChange('edit')">
         </div>
         <div class="mb-3">
           <label class="form-label small fw-semibold">허용 IP/CIDR (줄바꿈 구분, 비우면 제한 없음)</label>
           <textarea class="form-control form-control-sm" id="editUserIps" rows="3" placeholder="예) 203.0.113.0/24"></textarea>
         </div>
         <div class="mb-3">
+          <label class="form-label small fw-semibold">비고 (담당자·연락처·용도)</label>
+          <textarea class="form-control form-control-sm" id="editUserNote" rows="2"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">FTP 계정 매핑 <span class="text-danger">*</span></label>
+          <div id="ftpMapEdit"></div>
+          <button class="btn btn-xs btn-outline-secondary mt-1" onclick="ftpMapAddRow('edit')"><i class="bi bi-plus-lg me-1"></i>그룹 추가</button>
+          <div class="form-text">비우면 이 계정은 로그인해도 아무 데이터를 보지 못합니다.</div>
+        </div>
+        <div class="mb-3">
           <label class="form-label small fw-semibold">새 비밀번호 (선택, 8자 이상)</label>
           <input type="password" class="form-control form-control-sm" id="editUserPwd" placeholder="변경하지 않으려면 비워두세요" autocomplete="new-password">
         </div>
+        <div class="small text-muted mb-2" id="editUserMeta"></div>
         <div class="form-check form-switch">
           <input class="form-check-input" type="checkbox" role="switch" id="editUserActive">
           <label class="form-check-label small" for="editUserActive">계정 활성</label>

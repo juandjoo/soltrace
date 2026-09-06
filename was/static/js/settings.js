@@ -530,6 +530,99 @@ async function deleteApiKey(id, prefix) {
 
 let _users = [];          // 목록 캐시 — 수정 모달이 현재 값을 채울 때 쓴다
 
+// ── FTP 계정 매핑 편집기 ────────────────────────────────────────────────────
+// 생성 폼('new')과 수정 모달('edit')이 같은 코드를 쓴다 — 한쪽만 고쳐져 갈라지지 않게.
+// 상태는 [{group_id, usernames:[...]}] 배열이고, 다시 그릴 때는 화면의 현재 입력값을
+// 먼저 되읽어 보존한다(재렌더에 입력이 날아가던 문제를 막는다).
+let _groups = [];                       // /groups 응답 (고객사별 선택지)
+const _ftpMap = {new: [], edit: []};
+const _FTP_BOX = {new: 'ftpMapNew', edit: 'ftpMapEdit'};
+
+function _when(iso) { return iso ? fmtLocalDateTime(new Date(iso)) : '-'; }
+
+// 그 편집기가 쓸 고객사 — 생성 폼과 수정 모달의 입력칸을 각각 본다
+function _ftpCustomer(kind) {
+  const id = kind === 'new' ? 'newUserCustomer' : 'editUserCustomer';
+  return (document.getElementById(id)?.value || '').trim();
+}
+
+function _ftpTextToUsers(text) {
+  return (text || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean);
+}
+
+// 화면의 현재 입력값을 상태로 되읽는다 (행 추가·삭제·저장 전에 호출)
+function _ftpMapSync(kind) {
+  const box = document.getElementById(_FTP_BOX[kind]);
+  if (!box) return;
+  const rows = [...box.querySelectorAll('[data-ftp-row]')].map(el => ({
+    group_id: parseInt(el.querySelector('[data-ftp-group]').value, 10) || 0,
+    usernames: _ftpTextToUsers(el.querySelector('[data-ftp-users]').value),
+  }));
+  if (rows.length) _ftpMap[kind] = rows;
+}
+
+function renderFtpMap(kind) {
+  const box = document.getElementById(_FTP_BOX[kind]);
+  if (!box) return;
+  const customer = _ftpCustomer(kind);
+  const groups = _groups.filter(g => (g.customer || '') === customer);
+  if (!customer) {
+    box.innerHTML = '<div class="text-muted small">고객사를 먼저 입력하면 그 고객사의 그룹이 나옵니다.</div>';
+    return;
+  }
+  if (!groups.length) {
+    box.innerHTML = `<div class="text-warning small">'${esc(customer)}' 고객사로 지정된 그룹이 없습니다. 그룹 관리에서 먼저 그룹의 고객사를 지정하세요.</div>`;
+    return;
+  }
+  if (!_ftpMap[kind].length) _ftpMap[kind] = [{group_id: groups[0].id, usernames: []}];
+  box.innerHTML = _ftpMap[kind].map((row, i) => `
+    <div class="d-flex gap-2 mb-1 align-items-center" data-ftp-row="${i}">
+      <select class="form-select form-select-sm" style="max-width:220px" data-ftp-group>
+        ${groups.map(g => `<option value="${g.id}" ${g.id === row.group_id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}
+      </select>
+      <input class="form-control form-control-sm" data-ftp-users value="${esc((row.usernames || []).join(', '))}"
+             placeholder="FTP 아이디 (쉼표로 여러 개) 예) vod_ingest, cdn_sync">
+      <button class="btn btn-sm btn-outline-danger" title="이 줄 삭제" onclick="ftpMapRemoveRow('${kind}', ${i})"><i class="bi bi-x-lg"></i></button>
+    </div>`).join('');
+}
+
+function ftpMapAddRow(kind) {
+  const groups = _groups.filter(g => (g.customer || '') === _ftpCustomer(kind));
+  if (!groups.length) { renderFtpMap(kind); return; }
+  _ftpMapSync(kind);
+  _ftpMap[kind].push({group_id: groups[0].id, usernames: []});
+  renderFtpMap(kind);
+}
+
+function ftpMapRemoveRow(kind, idx) {
+  _ftpMapSync(kind);
+  _ftpMap[kind].splice(idx, 1);
+  renderFtpMap(kind);
+}
+
+// 고객사를 바꾸면 그룹 선택지가 달라진다 — 행을 비우고 새로 고른다
+function ftpMapOnCustomerChange(kind) {
+  _ftpMap[kind] = [];
+  renderFtpMap(kind);
+}
+
+// 저장용 payload — 아이디가 하나도 없는 줄은 빼고 보낸다
+function _collectFtpAccounts(kind) {
+  _ftpMapSync(kind);
+  return _ftpMap[kind]
+    .filter(r => r.group_id && r.usernames.length)
+    .map(r => ({group_id: r.group_id, usernames: r.usernames}));
+}
+
+// 매핑 요약 (목록 표시용)
+function _ftpSummary(u) {
+  const maps = u.ftp_accounts || [];
+  const n = maps.reduce((a, m) => a + (m.usernames || []).length, 0);
+  if (!n) return '<span class="badge bg-danger-subtle text-danger" title="매핑이 없어 이 계정은 아무것도 보지 못합니다">없음</span>';
+  const detail = maps.map(m => `${m.group_name || m.group_id}: ${(m.usernames || []).join(', ')}`).join('\n');
+  return `<span class="badge bg-primary-subtle text-primary" title="${esc(detail)}">${maps.length}그룹 · ${n}개</span>`;
+}
+
 async function loadUsers() {
   const tbody = document.getElementById('userList');
   document.getElementById('apiKeyIssued').classList.add('d-none');
@@ -540,6 +633,8 @@ async function loadUsers() {
       api('GET', '/groups').catch(() => []),
     ]);
     _renderApiKeyOwners(users);
+    _groups = groups || [];             // FTP 계정 매핑 편집기가 쓰는 그룹 목록
+    renderFtpMap('new');
     // 고객사 자동완성: 그룹의 customer 값 중복 제거
     const customers = [...new Set((groups || []).map(g => g.customer).filter(Boolean))].sort();
     document.getElementById('customerOptions').innerHTML =
@@ -547,7 +642,7 @@ async function loadUsers() {
 
     _users = users.filter(u => u.role === 'customer');
     if (!_users.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-muted small p-3">등록된 고객 계정이 없습니다.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="text-muted small p-3">등록된 고객 계정이 없습니다.</td></tr>';
       return;
     }
     tbody.innerHTML = _users.map(u => {
@@ -555,10 +650,15 @@ async function loadUsers() {
       const badge = u.is_active
         ? '<span class="badge bg-success-subtle text-success">활성</span>'
         : '<span class="badge bg-secondary-subtle text-secondary">비활성</span>';
+      const note = u.note
+        ? `<div class="text-muted" style="font-size:0.72rem;white-space:pre-wrap">${esc(u.note)}</div>` : '';
+      const made = `${u.created_by ? esc(u.created_by) + '<br>' : ''}<span class="text-muted">${_when(u.created_at)}</span>`;
       return `<tr>
-        <td class="ps-3 fw-semibold">${esc(u.username)}</td>
+        <td class="ps-3 fw-semibold">${esc(u.username)}${note}</td>
         <td>${esc(u.customer || '-')}</td>
+        <td>${_ftpSummary(u)}</td>
         <td class="small">${ips}</td>
+        <td class="small">${made}</td>
         <td>${badge}</td>
         <td class="text-end pe-3">
           <button class="btn btn-xs btn-outline-secondary" onclick="viewCustomerLogs('${esc(u.customer || '')}')" title="이 고객사의 접근 계정별 사용 내역 보기">사용 내역</button>
@@ -569,7 +669,7 @@ async function loadUsers() {
       </tr>`;
     }).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="5" class="text-danger small p-3">${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="text-danger small p-3">${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -578,15 +678,22 @@ async function createUser() {
   const password = document.getElementById('newUserPwd').value;
   const customer = document.getElementById('newUserCustomer').value.trim();
   const allowed_ips = _taLines('newUserIps');
+  const note = document.getElementById('newUserNote').value.trim();
+  const ftp_accounts = _collectFtpAccounts('new');
   if (!username || !customer) { settingsMsg('userMsg', 'danger', '아이디와 고객사는 필수입니다.'); return; }
   if (password.length < 8) { settingsMsg('userMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  if (!ftp_accounts.length &&
+      !confirm('FTP 계정 매핑이 없습니다. 이 계정은 로그인해도 아무 데이터를 보지 못합니다.\n그래도 생성할까요?')) return;
   try {
-    await api('POST', '/users', {username, password, customer, allowed_ips});
+    await api('POST', '/users', {username, password, customer, allowed_ips, note, ftp_accounts});
     settingsMsg('userMsg', 'success', `'${username}' 계정이 생성되었습니다.`);
     document.getElementById('newUserName').value = '';
     document.getElementById('newUserPwd').value = '';
     document.getElementById('newUserCustomer').value = '';
     document.getElementById('newUserIps').value = '';
+    document.getElementById('newUserNote').value = '';
+    _ftpMap.new = [];
+    renderFtpMap('new');
     loadUsers();
   } catch (e) { settingsMsg('userMsg', 'danger', e.message); }
 }
@@ -606,6 +713,12 @@ function openUserEdit(id) {
   document.getElementById('editUserName').textContent = u.username;
   document.getElementById('editUserCustomer').value = u.customer || '';
   document.getElementById('editUserIps').value = (u.allowed_ips || []).join('\n');
+  document.getElementById('editUserNote').value = u.note || '';
+  document.getElementById('editUserMeta').textContent =
+    `등록: ${u.created_by ? u.created_by + ' · ' : ''}${_when(u.created_at)}`
+    + (u.last_login_at ? ` · 마지막 로그인 ${_when(u.last_login_at)}` : '');
+  _ftpMap.edit = (u.ftp_accounts || []).map(m => ({group_id: m.group_id, usernames: [...(m.usernames || [])]}));
+  renderFtpMap('edit');
   document.getElementById('editUserPwd').value = '';
   document.getElementById('editUserActive').checked = !!u.is_active;
   document.getElementById('editUserMsg').classList.add('d-none');
@@ -618,9 +731,14 @@ async function saveUserEdit() {
   const pw = document.getElementById('editUserPwd').value;
   if (!customer) { settingsMsg('editUserMsg', 'danger', '고객사는 비울 수 없습니다.'); return; }
   if (pw && pw.length < 8) { settingsMsg('editUserMsg', 'danger', '비밀번호는 8자 이상이어야 합니다.'); return; }
+  const ftp_accounts = _collectFtpAccounts('edit');
+  if (!ftp_accounts.length &&
+      !confirm('FTP 계정 매핑이 없습니다. 이 계정은 로그인해도 아무 데이터를 보지 못합니다.\n그래도 저장할까요?')) return;
   const body = {
     customer,
     allowed_ips: _taLines('editUserIps'),
+    note: document.getElementById('editUserNote').value.trim(),
+    ftp_accounts,
     is_active: document.getElementById('editUserActive').checked,
   };
   if (pw) body.password = pw;

@@ -18,6 +18,19 @@ class TokenResponse(BaseModel):
 
 # ── 사용자(고객 계정) 관리 ──────────────────────────────────────────────────────
 
+class FtpAccountMap(BaseModel):
+    """고객 계정이 볼 수 있는 (그룹, FTP 아이디) 묶음. 그룹 여러 개 · 아이디 여러 개."""
+    group_id: int
+    group_name: Optional[str] = None       # 응답에서만 채운다 (화면 표시용)
+    usernames: List[str] = Field(default_factory=list)
+
+
+class PasswordChange(BaseModel):
+    """본인 비밀번호 변경 (상단바 '내 계정'). 현재 비밀번호를 함께 받는다."""
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class UserCreate(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=8, max_length=128)
@@ -25,12 +38,17 @@ class UserCreate(BaseModel):
     role: str = Field(default="customer", pattern="^(admin|customer)$")
     customer: Optional[str] = None
     allowed_ips: List[str] = []
+    note: Optional[str] = Field(default=None, max_length=2000)   # 비고 (담당자 등)
+    # 고객 계정이 볼 FTP 계정 매핑. 비우면 그 계정은 아무것도 보지 못한다.
+    ftp_accounts: List[FtpAccountMap] = Field(default_factory=list)
 
 class UserUpdate(BaseModel):
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     customer: Optional[str] = None
     allowed_ips: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    note: Optional[str] = Field(default=None, max_length=2000)
+    ftp_accounts: Optional[List[FtpAccountMap]] = None   # 주면 통째로 교체
 
 class UserResponse(BaseModel):
     id: int
@@ -39,6 +57,9 @@ class UserResponse(BaseModel):
     customer: Optional[str] = None
     allowed_ips: List[str] = []
     is_active: bool
+    ftp_accounts: List[FtpAccountMap] = Field(default_factory=list)
+    note: Optional[str] = None
+    created_by: Optional[str] = None       # 등록한 관리자 (예전 계정은 비어 있다)
     locked_seconds: int = 0                # 0 이면 잠기지 않음
     last_login_at: Optional[datetime] = None
     created_at: datetime

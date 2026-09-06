@@ -82,6 +82,10 @@ DO $$ BEGIN
             ADD COLUMN daemon_uptime INT;
     END IF;
 END $$;
+-- 고객 계정 비고(담당자 등)와 등록자 — 누가 언제 만든 계정인지 화면에서 본다
+ALTER TABLE users ADD COLUMN IF NOT EXISTS note TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by VARCHAR(64);
+
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS kernel_version VARCHAR(100);
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS update_requested BOOLEAN NOT NULL DEFAULT FALSE;
 
@@ -251,6 +255,17 @@ ALTER TABLE service_metrics ADD COLUMN IF NOT EXISTS xfers_big INT NOT NULL DEFA
 ALTER TABLE service_metrics ADD COLUMN IF NOT EXISTS bytes_big BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE service_metrics ADD COLUMN IF NOT EXISTS secs_big DOUBLE PRECISION NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_service_metrics_bucket ON service_metrics(bucket DESC);
+
+-- 고객 계정 ↔ FTP 계정 매핑 (그룹별로 여러 아이디). 고객 계정이 보는 범위를 이 표가 정한다.
+-- 등록이 하나도 없으면 그 계정은 아무것도 보지 못한다(관리자는 무관하게 전체 조회).
+CREATE TABLE IF NOT EXISTS user_ftp_accounts (
+    user_id      INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    group_id     INT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    ftp_username VARCHAR(255) NOT NULL,     -- ftp_logs.username 과 정확히 일치
+    created_at   TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, group_id, ftp_username)
+);
+CREATE INDEX IF NOT EXISTS idx_user_ftp_accounts_user ON user_ftp_accounts(user_id);
 
 -- baseline 이탈로 판정된 서비스 이상 이벤트.
 CREATE TABLE IF NOT EXISTS service_alerts (
