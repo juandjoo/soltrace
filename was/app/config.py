@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     alert_baseline_days: int = 7            # baseline 산출 기간
     alert_mad_k: float = 4.0               # median + k·MAD 이탈 임계
     alert_min_samples: int = 20            # 전송 지표 평가 최소 건수 (소표본 오탐 방지)
+    # 발송 전 이상이 이어져야 하는 버킷 수 — 한 버킷(10분) 반짝했다 돌아오는 흔들림은
+    # 사람이 손쓸 새도 없이 끝나므로 감지·복구 알림을 아예 내보내지 않는다.
+    # 1 = 즉시 발송(종전 동작). '심각' 등급은 이 값과 무관하게 바로 나간다.
+    alert_min_streak_buckets: int = 2
     # 전송 속도(throughput) 판정 대상 — 이 크기 이상의 전송만 집계한다.
     # 작은 파일은 연결/인증 오버헤드가 전송시간의 대부분이라 실효속도가 낮게 나오고,
     # 소량 파일 대량 업로드가 성능 저하로 오인된다. 롤업 시점에 반영되는 값이므로

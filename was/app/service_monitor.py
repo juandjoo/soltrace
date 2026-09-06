@@ -303,12 +303,12 @@ class ServiceMonitor:
         inserted = 0
         # 버킷 순서대로 처리해야 에피소드의 시작/지속 판단이 시간순과 어긋나지 않는다
         for a in sorted(alerts, key=lambda x: (x["device_id"], x["metric"], x["bucket"])):
-            if self._record_alert(db, a):
+            if self._record_alert(db, a, cfg):
                 inserted += 1
         db.commit()
         return inserted
 
-    def _record_alert(self, db, a) -> bool:
+    def _record_alert(self, db, a, cfg) -> bool:
         """알림 한 건을 적재하고 에피소드에 반영한다. 새로 적재됐으면 True.
 
         진행 중인 에피소드의 반복이면 그 자리에서 발송완료로 표시해 발송 큐에서 뺀다
@@ -326,7 +326,7 @@ class ServiceMonitor:
         """), a).fetchone()
         if row is None:
             return False    # 이미 있는 버킷(재롤업) — 에피소드 상태는 건드리지 않는다
-        if not self._track_episode(db, a):
+        if not self._track_episode(db, a, cfg["min_streak_buckets"]):
             db.execute(text("UPDATE service_alerts SET notified = TRUE WHERE id = :id"),
                        {"id": row.id})
         return True
@@ -337,20 +337,41 @@ class ServiceMonitor:
     _RECOVERY_QUIET_BUCKETS = 3
 
     @staticmethod
-    def _track_episode(db, a) -> bool:
-        """이 알림을 에피소드에 반영하고, 발송 대상인지 돌려준다.
+    def _should_notify(prev_count: int, prev_severity, severity: str, min_streak: int) -> bool:
+        """이 이상을 발송할지 — 에피소드의 직전 상태만 보고 정한다 (순수 함수).
 
-        발송하는 경우는 둘뿐이다 — 에피소드의 시작(직전이 정상이었거나 복구 뒤 재발),
-        그리고 주의 → 심각 등급 상승. 나머지 반복은 화면에만 남긴다.
+        prev_count 는 이번 것을 빼고 이 에피소드에 쌓인 이상 버킷 수(새 에피소드면 0).
+
+        발송하는 경우는 셋뿐이다.
+          1. 이상이 min_streak 버킷만큼 이어진 순간 — 에피소드당 한 번.
+          2. 등급이 '심각'인 순간 — 짧아도 기다리지 않는다.
+          3. 주의 → 심각 등급 상승 — 이미 알린 뒤라도 한 번 더.
+        같은 에피소드에서 1·2가 두 번 나가지 않도록 "직전에 이미 나갈 조건이었는가"(was)를
+        함께 본다. min_streak=1 이면 첫 버킷에서 바로 나가 종전 동작과 같다.
+
+        min_streak 를 두는 이유: 한 버킷(기본 10분) 반짝했다 스스로 돌아오는 흔들림은
+        사람이 손쓸 새도 없이 끝나는데, 감지 + 복구로 메시지는 두 건이 나간다.
+        여기서 막으면 그 흔들림은 화면(service_alerts)에만 남고 발송은 0건이 된다.
+        """
+        escalated = prev_count > 0 and severity == "critical" and prev_severity != "critical"
+        was = prev_count > 0 and (prev_severity == "critical" or prev_count >= min_streak)
+        now = severity == "critical" or prev_count + 1 >= min_streak
+        return escalated or (now and not was)
+
+    @staticmethod
+    def _track_episode(db, a, min_streak: int) -> bool:
+        """이 알림을 에피소드에 반영하고, 발송 대상인지 돌려준다(판단은 _should_notify).
+
         같은 장애가 10분 버킷마다 새 메시지로 쏟아지던 문제를 여기서 막는다.
         """
         cur = db.execute(text("""
-            SELECT severity, resolved_at FROM service_alert_episodes
+            SELECT severity, resolved_at, alert_count FROM service_alert_episodes
             WHERE device_id = :device_id AND metric = :metric
             FOR UPDATE
         """), {"device_id": a["device_id"], "metric": a["metric"]}).fetchone()
         ongoing = cur is not None and cur.resolved_at is None
-        escalated = ongoing and a["severity"] == "critical" and cur.severity != "critical"
+        prev_count = cur.alert_count if ongoing else 0
+        prev_severity = cur.severity if ongoing else None
 
         # 복구 뒤 재발이면 같은 행을 새 에피소드로 되살린다.
         # (ON CONFLICT DO NOTHING 으로 두면 한 번 닫힌 장비는 영영 다시 알리지 못한다)
@@ -377,7 +398,8 @@ class ServiceMonitor:
                 recovery_notified = FALSE
         """), {"device_id": a["device_id"], "metric": a["metric"],
                "bucket": a["bucket"], "severity": a["severity"]})
-        return (not ongoing) or escalated
+        return ServiceMonitor._should_notify(prev_count, prev_severity,
+                                             a["severity"], min_streak)
 
     def _resolve_episodes(self, db):
         """마지막 이상 버킷 이후 조용해진 에피소드를 닫는다(발송은 _notify_recovery 가 한다).

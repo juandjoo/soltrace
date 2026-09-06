@@ -301,6 +301,7 @@ async function loadNotify() {
 // 입력 id ↔ API 필드. 저장 시 같은 표를 역방향으로 사용한다.
 const ALERT_FIELDS = {
   alMadK: 'mad_k',
+  alMinStreak: 'min_streak_buckets',
   alThroughputDrop: 'throughput_drop',
   alThroughputSlowPct: 'throughput_slow_pct',
   alFailFloor: 'fail_rate_floor',

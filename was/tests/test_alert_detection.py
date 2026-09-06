@@ -244,3 +244,61 @@ def test_cwd_ignore_rule_lives_in_one_place():
         assert "cwd_not_ignored_sql(" in src
         # 실패 건수를 세는 곳은 '진짜 실패' 조건을 쓴다 (존재 확인 건이 다시 새어 들어오지 않게)
         assert "cwd_real_fail_sql(" in src
+
+
+# ── 발송 전 지속 조건 (짧은 흔들림 억제) ────────────────────────────────────
+# _should_notify 는 에피소드의 직전 상태만 보는 순수 함수라 DB 없이 검증한다.
+# prev_count = 이번 것을 빼고 그 에피소드에 쌓인 이상 버킷 수 (새 에피소드면 0).
+
+def notify(prev_count=0, prev_severity=None, severity="warning", min_streak=2):
+    return ServiceMonitor._should_notify(prev_count, prev_severity, severity, min_streak)
+
+
+def test_single_bucket_blip_is_not_sent():
+    """10분 한 버킷 반짝했다 돌아오는 흔들림 — 감지도 복구도 나가면 안 된다.
+
+    (이상 알림이 나간 적 없는 에피소드는 복구 알림도 보내지 않으므로,
+     여기서 막으면 그 흔들림의 발송은 0건이 된다.)
+    """
+    assert notify(prev_count=0) is False
+
+
+def test_sent_once_when_streak_is_reached():
+    assert notify(prev_count=1) is True          # 두 번째 버킷 = 20분 지속
+    assert notify(prev_count=2) is False         # 그 뒤 반복은 화면에만
+    assert notify(prev_count=9) is False
+
+
+def test_critical_does_not_wait_for_streak():
+    assert notify(prev_count=0, severity="critical") is True
+    # 이미 심각으로 알린 뒤에는 반복하지 않는다
+    assert notify(prev_count=1, prev_severity="critical", severity="critical") is False
+    assert notify(prev_count=1, prev_severity="critical", severity="warning") is False
+
+
+def test_escalation_still_sends_after_streak_alert():
+    """주의로 이미 알린 에피소드가 심각으로 올라가면 한 번 더 보낸다."""
+    assert notify(prev_count=3, prev_severity="warning", severity="critical") is True
+
+
+def test_escalation_before_streak_sends_only_once():
+    """주의 1버킷(미발송) 뒤 심각 — 승격과 지속 조건이 겹쳐도 한 건만 나간다."""
+    assert notify(prev_count=1, prev_severity="warning", severity="critical") is True
+    assert notify(prev_count=2, prev_severity="critical", severity="critical") is False
+
+
+def test_streak_one_keeps_immediate_send():
+    """1 = 종전 동작(에피소드 시작 즉시 발송)."""
+    assert notify(prev_count=0, min_streak=1) is True
+    assert notify(prev_count=1, prev_severity="warning", min_streak=1) is False
+
+
+def test_longer_streak_is_configurable():
+    assert notify(prev_count=2, min_streak=4) is False
+    assert notify(prev_count=3, min_streak=4) is True
+    assert notify(prev_count=4, min_streak=4) is False
+
+
+def test_streak_setting_is_exposed():
+    """설정 페이지에서 바꿀 수 있어야 한다 (알림이 잦으면 사용자가 직접 올린다)."""
+    assert alert_settings.defaults()["min_streak_buckets"] >= 1

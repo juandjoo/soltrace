@@ -446,6 +446,8 @@ class AlertSettings(BaseModel):
     cwd_fail_floor: Optional[int] = Field(default=None, ge=0)
     # CWD 실패 집계 제외 경로 (한 줄에 하나, '*' 와일드카드)
     cwd_ignore_paths: Optional[str] = Field(default=None, max_length=2000)
+    # 발송 전 이상이 이어져야 하는 버킷 수 (1 = 즉시 발송)
+    min_streak_buckets: Optional[int] = Field(default=None, ge=1, le=12)
     min_samples: Optional[int] = Field(default=None, ge=1)
     min_login_samples: Optional[int] = Field(default=None, ge=1)
     min_cwd_samples: Optional[int] = Field(default=None, ge=1)
