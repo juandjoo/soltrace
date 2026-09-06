@@ -98,6 +98,10 @@ function _renderStorage(s) {
   document.getElementById('stAutoPurgeOff').checked = !s.autopurge_enabled;
   document.getElementById('stAutoPurgePct').value = s.autopurge_percent;
 
+  const diskPath = s.disk_path || '/';
+  document.getElementById('stDiskPath').value = diskPath;
+  document.getElementById('stDiskLabel').textContent = `디스크 (${diskPath})`;
+
   const disk = document.getElementById('stDisk');
   if (s.disk_total_bytes) {
     const cls = s.disk_percent >= 90 ? 'text-danger fw-semibold'
@@ -141,6 +145,15 @@ async function saveRetention() {
     const s = await api('PUT', '/settings/storage/retention', {months});
     if (s) _renderStorage(s);
     settingsMsg('storageMsg', 'success', `보존 기간을 ${months}개월로 저장했습니다.`);
+  } catch (e) { settingsMsg('storageMsg', 'danger', e.message); }
+}
+
+async function saveDiskPath() {
+  const path = document.getElementById('stDiskPath').value.trim() || '/';
+  try {
+    const s = await api('PUT', '/settings/storage/disk-path', {path});
+    if (s) _renderStorage(s);
+    settingsMsg('storageMsg', 'success', `디스크 감시 경로를 ${path} 로 저장했습니다.`);
   } catch (e) { settingsMsg('storageMsg', 'danger', e.message); }
 }
 

@@ -1029,7 +1029,7 @@ body        { background: var(--st-bg); font-size: 14px; }
                   <tr><td class="text-muted" style="width:38%">화면이 안 뜨거나 500</td><td><code>systemctl status soltrace-was</code> → <code>/var/log/soltrace/error.log</code> 마지막 트레이스백. 배포 직후면 <code>selfupdate.log</code></td></tr>
                   <tr><td class="text-muted">로그가 안 들어옴</td><td>장비 관리에서 <b>데몬 상태</b> 확인(하트비트 120초) → 장비에서 <code>systemctl status soltrace-daemon</code>, <code>daemon.log</code>. WAS 가 살아나면 장비 버퍼가 자동 재전송한다</td></tr>
                   <tr><td class="text-muted">알림이 쏟아짐</td><td>같은 장비·지표면 대개 임계가 그 장비에 안 맞는 것 — 위 '알림이 잦을 때'. 작업 중이면 음소거</td></tr>
-                  <tr><td class="text-muted">디스크 부족</td><td>설정 &gt; DB 저장소에서 사용률·파티션 확인. 자동 정리가 켜져 있으면 오래된 월부터 <b>되돌릴 수 없이</b> 지운다 — 필요한 달은 먼저 백업 확인</td></tr>
+                  <tr><td class="text-muted">디스크 부족</td><td>설정 &gt; DB 저장소에서 사용률·파티션 확인. 자동 정리가 켜져 있으면 오래된 월부터 <b>되돌릴 수 없이</b> 지운다 — 필요한 달은 먼저 백업 확인. DB 데이터 디렉토리를 다른 볼륨으로 옮겼다면 같은 화면의 <b>디스크 감시 경로</b>도 그 마운트로 바꿔야 한다(README '디스크 확장 · DB 위치 이동')</td></tr>
                   <tr><td class="text-muted">배포가 오래 걸림</td><td>스키마 단계에서 락 대기일 수 있다(<code>lock_timeout=5s</code>·3회 재시도). 로그를 보고 기다리되, 반복 실패면 한산한 시간에 다시 시도</td></tr>
                   <tr><td class="text-muted">CWD 실패 급증</td><td>대시보드 &gt; CWD 실패 분석 — 한 경로에 몰려 있으면 침입 탐색이 아니라 <b>홈·업로드 경로 설정 오류</b>다. 원인 확인 후 그 경로를 알림에서 제외</td></tr>
                 </tbody>
@@ -1205,7 +1205,7 @@ body        { background: var(--st-bg); font-size: 14px; }
                   <dt class="col-sm-4 text-muted">데이터베이스 전체</dt><dd class="col-sm-8" id="stDbSize">-</dd>
                   <dt class="col-sm-4 text-muted">ftp_logs (전체 파티션)</dt><dd class="col-sm-8" id="stLogsSize">-</dd>
                   <dt class="col-sm-4 text-muted">데이터 보유 기간</dt><dd class="col-sm-8" id="stDataRange">-</dd>
-                  <dt class="col-sm-4 text-muted">디스크 (/)</dt><dd class="col-sm-8" id="stDisk">-</dd>
+                  <dt class="col-sm-4 text-muted" id="stDiskLabel">디스크</dt><dd class="col-sm-8" id="stDisk">-</dd>
                   <dt class="col-sm-4 text-muted">default 파티션</dt><dd class="col-sm-8" id="stDefault">-</dd>
                 </dl>
                 <div class="d-flex align-items-center gap-2 p-2 bg-light rounded mb-2">
@@ -1214,6 +1214,12 @@ body        { background: var(--st-bg); font-size: 14px; }
                   <span class="small text-muted">개월</span>
                   <button class="btn btn-sm btn-primary py-0 px-2" onclick="saveRetention()">저장</button>
                   <span class="text-muted" style="font-size:0.75rem">초과 파티션은 야간 백업 후 삭제됩니다. 기간을 줄여도 즉시 지워지지는 않습니다.</span>
+                </div>
+                <div class="d-flex align-items-center gap-2 p-2 bg-light rounded mb-2 flex-wrap">
+                  <span class="small fw-semibold">디스크 감시 경로</span>
+                  <input type="text" class="form-control form-control-sm" id="stDiskPath" placeholder="/" style="width:220px">
+                  <button class="btn btn-sm btn-primary py-0 px-2" onclick="saveDiskPath()">저장</button>
+                  <span class="text-muted" style="font-size:0.75rem">위 사용률과 아래 자동 정리가 함께 보는 경로(WAS 서버 기준). DB 데이터 디렉토리를 별도 볼륨으로 옮겼다면 그 마운트로 바꾸세요 — 그러지 않으면 여유가 남은 <code>/</code> 를 계속 보게 됩니다.</span>
                 </div>
                 <div class="d-flex align-items-center gap-2 p-2 bg-light rounded mb-2 flex-wrap">
                   <span class="small fw-semibold">디스크 자동 정리</span>
@@ -2014,6 +2020,7 @@ body        { background: var(--st-bg); font-size: 14px; }
       default_rows: 0,
       default_months: [],
       retention_months: 36,
+      disk_path: '/',
     };
   }
 
@@ -3556,6 +3563,10 @@ function _renderStorage(s) {
   document.getElementById('stAutoPurgeOff').checked = !s.autopurge_enabled;
   document.getElementById('stAutoPurgePct').value = s.autopurge_percent;
 
+  const diskPath = s.disk_path || '/';
+  document.getElementById('stDiskPath').value = diskPath;
+  document.getElementById('stDiskLabel').textContent = `디스크 (${diskPath})`;
+
   const disk = document.getElementById('stDisk');
   if (s.disk_total_bytes) {
     const cls = s.disk_percent >= 90 ? 'text-danger fw-semibold'
@@ -3599,6 +3610,15 @@ async function saveRetention() {
     const s = await api('PUT', '/settings/storage/retention', {months});
     if (s) _renderStorage(s);
     settingsMsg('storageMsg', 'success', `보존 기간을 ${months}개월로 저장했습니다.`);
+  } catch (e) { settingsMsg('storageMsg', 'danger', e.message); }
+}
+
+async function saveDiskPath() {
+  const path = document.getElementById('stDiskPath').value.trim() || '/';
+  try {
+    const s = await api('PUT', '/settings/storage/disk-path', {path});
+    if (s) _renderStorage(s);
+    settingsMsg('storageMsg', 'success', `디스크 감시 경로를 ${path} 로 저장했습니다.`);
   } catch (e) { settingsMsg('storageMsg', 'danger', e.message); }
 }
 

@@ -266,6 +266,7 @@
       default_rows: 0,
       default_months: [],
       retention_months: 36,
+      disk_path: '/',
     };
   }
 

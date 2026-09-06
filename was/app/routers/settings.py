@@ -16,7 +16,7 @@ from app.gitinfo import git, git_run, repo_dir
 from app.schemas import (
     AlertSettings, AlertSettingsInfo,
     PasswordChangeRequest, UpdateTriggerResponse, VersionInfo, NotifySettings,
-    StorageInfo, StoragePartition, RetentionUpdate, DiskPurgeUpdate,
+    StorageInfo, StoragePartition, RetentionUpdate, DiskPurgeUpdate, DiskPathUpdate,
     ChangelogEntry, ChangelogItem,
 )
 from app.security import (
@@ -188,7 +188,8 @@ def get_storage(db: Session = Depends(get_db), _: str = Depends(require_admin)):
             "SELECT DISTINCT to_char(log_time AT TIME ZONE 'UTC', 'YYYY-MM') "
             "FROM ftp_logs_default ORDER BY 1"
         )).fetchall()]
-    disk_total, disk_used, disk_pct = disk_guard.usage()
+    disk_path = disk_guard.get_path(db)
+    disk_total, disk_used, disk_pct = disk_guard.usage(disk_path)
     return StorageInfo(
         db_bytes=db_bytes,
         ftp_logs_bytes=sum(p.total_bytes for p in parts),
@@ -196,6 +197,7 @@ def get_storage(db: Session = Depends(get_db), _: str = Depends(require_admin)):
         default_rows=default_rows,
         default_months=default_months,
         retention_months=retention.get_retention_months(db),
+        disk_path=disk_path,
         disk_total_bytes=disk_total,
         disk_used_bytes=disk_used,
         disk_percent=disk_pct,
@@ -220,6 +222,25 @@ def update_autopurge(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     log.warning("디스크 자동 정리 설정 변경: enabled=%s threshold=%d%%", body.enabled, body.percent)
+    return get_storage(db)
+
+
+@router.put("/storage/disk-path", response_model=StorageInfo)
+def update_disk_path(
+    body: DiskPathUpdate,
+    db: Session = Depends(get_db),
+    _: Principal = Depends(require_admin),
+):
+    """사용률을 볼 경로 변경 (기본 `/`).
+
+    PGDATA 를 별도 볼륨으로 옮겼으면 그 마운트로 바꾼다 — 그러지 않으면 여유가 남은
+    루트를 계속 보게 되어 자동 정리가 돌지 않는다. WAS 서버 기준 경로다.
+    """
+    try:
+        disk_guard.save_path(db, body.path)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    log.warning("디스크 감시 경로 변경: %s", disk_guard.get_path(db))
     return get_storage(db)
 
 

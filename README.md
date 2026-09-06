@@ -694,6 +694,7 @@ gunicorn은 `127.0.0.1`에만 바인딩된 상태를 유지한다.
 | `GET` | `/api/v1/settings/storage` | DB 저장소 현황 (파티션별 크기·행수·데이터 기간, 디스크 사용률, default 잔존) |
 | `PUT` | `/api/v1/settings/storage/retention` | 보존 기간(개월) 저장 |
 | `PUT` | `/api/v1/settings/storage/autopurge` | 디스크 자동 정리 on/off·임계치 저장 |
+| `PUT` | `/api/v1/settings/storage/disk-path` | 디스크 사용률을 볼 경로 저장 (기본 `/`) |
 | `DELETE` | `/api/v1/settings/storage/partitions/{name}` | 월별 파티션 삭제 (되돌릴 수 없음) |
 | `GET/POST` | `/api/v1/users` | 계정 목록 / 생성 (관리자·고객) |
 | `PUT/DELETE` | `/api/v1/users/{id}` | 계정 수정 / 삭제 |
@@ -751,9 +752,11 @@ gunicorn은 `127.0.0.1`에만 바인딩된 상태를 유지한다.
 
 **보존 기간은 설정 > DB 저장소에서 바꾼다**(기본 36개월). 값은 `app_config.retention_months` 한 곳에 저장되고 파티션 자동 생성 범위(`app/main.py`)와 백업 스크립트(`scripts/backup_db.sh`)가 모두 이 값을 읽는다 — 예전처럼 세 곳의 숫자가 어긋나지 않는다.
 
-**디스크 자동 정리**: `/` 사용률이 임계치(기본 90%)를 넘으면 롤업 주기(5분)마다 가장 오래된 월 파티션을 하나씩 지운다. 운영 결정에 따라 **백업 파일 존재 여부를 보지 않으므로** 되돌릴 수 없다 — 삭제 전후로 `soltrace.disk_guard` 로그와 알림(웹훅/HMS)이 남는다. 당월 이후 파티션은 대상이 아니고, 데이터가 있는 파티션이 하나만 남으면 멈추고 경고만 보낸다. 설정 > DB 저장소에서 끄거나 임계치를 바꿀 수 있다.
+**디스크 자동 정리**: **감시 경로**의 사용률이 임계치(기본 90%)를 넘으면 롤업 주기(5분)마다 가장 오래된 월 파티션을 하나씩 지운다. 운영 결정에 따라 **백업 파일 존재 여부를 보지 않으므로** 되돌릴 수 없다 — 삭제 전후로 `soltrace.disk_guard` 로그와 알림(웹훅/HMS)이 남는다. 당월 이후 파티션은 대상이 아니고, 데이터가 있는 파티션이 하나만 남으면 멈추고 경고만 보낸다. 설정 > DB 저장소에서 끄거나 임계치를 바꿀 수 있다.
 
-같은 화면에서 파티션별 크기·행수와 **실제 데이터 기간**, `/` 디스크 사용률, default 파티션 잔존 여부를 본다. 파티션은 보존 기간만큼 미리 만들어 두므로 목록에 과거 월이 보여도 '데이터 기간'이 비어 있으면 실제 로그는 없다(기본적으로 빈 파티션은 숨겨진다). 월별 파티션은 같은 표의 삭제 버튼으로 지울 수 있다 — **되돌릴 수 없고** 당월 이후 파티션은 서버가 거부한다. default 에 행이 남아 있으면 WAS 기동 로그에도 경고가 남는다.
+**감시 경로**(설정 > DB 저장소, `app_config.disk_monitor_path`, 기본 `/`)는 사용률 표시와 자동 정리 판정이 함께 보는 한 곳이다. DB 데이터 디렉토리를 별도 볼륨으로 옮겼다면 **반드시 그 마운트로 바꾼다** — 그러지 않으면 여유가 남은 루트를 계속 보게 되어 데이터 디스크가 꽉 차도 정리가 돌지 않는다. WAS 서버 기준 경로이며, 저장 시 실제 디렉토리인지 확인한다. 경로를 읽지 못하면(볼륨 미마운트 등) 자동 정리를 건너뛰고 `soltrace.disk_guard` 에 에러를 남긴다.
+
+같은 화면에서 파티션별 크기·행수와 **실제 데이터 기간**, 감시 경로의 디스크 사용률, default 파티션 잔존 여부를 본다. 파티션은 보존 기간만큼 미리 만들어 두므로 목록에 과거 월이 보여도 '데이터 기간'이 비어 있으면 실제 로그는 없다(기본적으로 빈 파티션은 숨겨진다). 월별 파티션은 같은 표의 삭제 버튼으로 지울 수 있다 — **되돌릴 수 없고** 당월 이후 파티션은 서버가 거부한다. default 에 행이 남아 있으면 WAS 기동 로그에도 경고가 남는다.
 
 ### `ftp_logs_default` 재배치
 
@@ -763,6 +766,95 @@ default 에 데이터가 있는 월은 파티션 생성이 건너뛰어지고 �
 ```bash
 sudo -u postgres psql -d soltrace -f scripts/rebalance_default_partition.sql
 ```
+
+---
+
+## 디스크 확장 · DB 위치 이동
+
+DB 저장공간이 부족할 때. WAS 는 `127.0.0.1:5432` 로 붙으므로(`.env` 의 `DATABASE_URL`)
+**데이터 디렉토리를 옮겨도 앱 설정은 바꿀 게 없다.** 대신 설정 > DB 저장소의
+**감시 경로**를 새 마운트로 바꿔야 자동 정리가 계속 돈다.
+
+### 0. 무엇이 차는지 먼저 본다
+
+```bash
+sudo -u postgres /usr/pgsql-16/bin/psql -c "SELECT pg_size_pretty(pg_database_size('soltrace'));"
+sudo du -sh /var/lib/pgsql/16/data /var/backups/soltrace
+df -h /
+```
+
+백업 파일(`/var/backups/soltrace`)이 원인이면 디스크를 늘릴 일이 아니다. 로그 누적이면
+**설정 > DB 저장소에서 보존 기간을 줄이는 것이 가장 싸다** — 값 하나로 파티션 생성 범위와
+백업 스크립트가 함께 따라간다.
+
+### 1. 디스크만 키우기 (권장)
+
+클라우드 볼륨이나 LVM 이면 위치를 옮길 필요가 없다. PGDATA·SELinux·systemd 를 건드리지
+않으므로 감시 경로도 그대로 맞다.
+
+```bash
+sudo growpart /dev/sda 2                       # 클라우드 콘솔에서 볼륨 확장 후
+sudo xfs_growfs /                              # ext4 면 resize2fs /
+# LVM 이면
+sudo lvextend -r -l +100%FREE /dev/mapper/rl-root
+```
+
+### 2. 새 디스크로 PGDATA 이동
+
+디스크를 못 키우고 별도 볼륨을 붙일 때. WAS 를 내리는 동안 **장비 데몬이 `buffer.jsonl` 에
+쌓아두므로 로그는 유실되지 않는다**(5만 줄 한도 안에서).
+
+```bash
+# 백업 먼저
+sudo bash /opt/soltrace/scripts/backup_db.sh
+
+# 1) 새 디스크 마운트 (예: /dev/sdb1 → /data)
+sudo mkfs.xfs /dev/sdb1
+sudo mkdir -p /data
+echo "UUID=$(sudo blkid -s UUID -o value /dev/sdb1) /data xfs defaults 0 0" | sudo tee -a /etc/fstab
+sudo mount -a
+
+# 2) 정지 (WAS 먼저, DB 나중)
+sudo systemctl stop soltrace-was
+sudo systemctl stop postgresql-16
+
+# 3) 복사 — 권한·확장속성·희소파일 보존 (-aXS 를 지킨다)
+sudo mkdir -p /data/pgsql/16/data
+sudo rsync -aXS /var/lib/pgsql/16/data/ /data/pgsql/16/data/
+sudo chown -R postgres:postgres /data/pgsql
+sudo chmod 700 /data/pgsql/16/data
+
+# 4) SELinux 컨텍스트 — Rocky 8 은 enforcing 이라 빠지면 기동 실패한다
+sudo semanage fcontext -a -t postgresql_db_t "/data/pgsql(/.*)?"
+sudo restorecon -Rv /data/pgsql
+
+# 5) systemd drop-in 으로 PGDATA 변경 (유닛 파일 직접 수정 금지 — 패키지 업데이트에 덮인다)
+sudo systemctl edit postgresql-16
+#   [Service]
+#   Environment=PGDATA=/data/pgsql/16/data
+sudo systemctl daemon-reload
+
+# 6) 기동 확인
+sudo systemctl start postgresql-16
+sudo -u postgres /usr/pgsql-16/bin/psql -c "SHOW data_directory;"   # /data/pgsql/16/data
+sudo systemctl start soltrace-was
+
+# 7) 옛 디렉토리는 바로 지우지 말고 이름만 바꿔 며칠 둔다
+sudo mv /var/lib/pgsql/16/data /var/lib/pgsql/16/data.old
+```
+
+### 3. 이동 후 마무리 (빠뜨리면 자동 정리가 죽는다)
+
+1. **설정 > DB 저장소 > 디스크 감시 경로**를 새 마운트(`/data`)로 저장한다. 저장하면 화면의
+   사용률이 곧바로 새 볼륨 기준으로 바뀌므로 그 자리에서 확인된다.
+2. 백업 경로도 같은 볼륨으로 옮길지 정한다 — `scripts/backup_db.sh` 의 `BACKUP_DIR`
+   (기본 `/var/backups/soltrace`). cron 항목의 환경변수로 넘긴다.
+3. `scripts/tune_pg_rocky8.sh` 는 `PG_CONF` 기본값이 옛 경로이므로, 이후 실행할 때
+   `PG_CONF=/data/pgsql/16/data/postgresql.conf sudo -E bash scripts/tune_pg_rocky8.sh` 로 준다.
+
+> 테이블스페이스(`CREATE TABLESPACE`)로 큰 파티션만 옮기는 방법도 있으나, 백업·복구가
+> 복잡해지고 파티션 자동 생성 코드가 테이블스페이스를 지정하지 않아 **새로 만들어지는 월은
+> 다시 원래 디스크로 간다.** 권장하지 않는다.
 
 ---
 

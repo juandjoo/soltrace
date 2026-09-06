@@ -7,8 +7,12 @@
   - 당월/미래 파티션은 대상에서 제외한다 (수집 중인 데이터).
   - 데이터가 있는 파티션이 하나만 남으면 멈춘다 (전부 비우지 않는다).
   - 한 주기에 한 개만 지운다 — 지운 뒤 사용률을 다시 재고, 여전히 높으면 다음 주기에 계속.
+
+사용률을 보는 경로는 설정값(`disk_monitor_path`, 기본 `/`)이다. PGDATA 를 별도 볼륨으로
+옮겼다면 설정 > DB 저장소에서 그 마운트로 바꿔야 한다.
 """
 import logging
+import os
 import shutil
 from datetime import datetime, timezone
 
@@ -20,7 +24,8 @@ from app.security import get_config, set_config
 
 log = logging.getLogger("soltrace.disk_guard")
 
-DISK_PATH = "/"
+DEFAULT_PATH = "/"
+PATH_KEY = "disk_monitor_path"
 ENABLED_KEY = "disk_autopurge_enabled"
 THRESHOLD_KEY = "disk_autopurge_percent"
 DEFAULT_THRESHOLD = 90
@@ -30,6 +35,33 @@ MAX_THRESHOLD = 99
 
 def is_enabled(db: Session) -> bool:
     return (get_config(db, ENABLED_KEY) or "true").lower() != "false"
+
+
+def get_path(db: Session) -> str:
+    """사용률을 볼 경로. 기본은 루트(`/`).
+
+    PGDATA 를 별도 볼륨으로 옮기면(README '디스크 확장 · DB 위치 이동') 루트는 여유가
+    남아 자동 정리가 영영 돌지 않는다 — 그래서 경로를 상수가 아니라 설정값으로 둔다.
+    """
+    raw = (get_config(db, PATH_KEY) or "").strip()
+    if not raw:
+        return DEFAULT_PATH
+    if not raw.startswith("/"):
+        log.warning("%s 값이 절대경로가 아님(%r) — 기본값(%s) 사용", PATH_KEY, raw, DEFAULT_PATH)
+        return DEFAULT_PATH
+    return raw
+
+
+def save_path(db: Session, path: str) -> None:
+    """감시 경로 저장. 붙여넣기 공백·NBSP 를 떼고, 실제 디렉토리인지 확인한다."""
+    cleaned = (path or "").replace("\u00a0", " ").strip()
+    if not cleaned:
+        cleaned = DEFAULT_PATH
+    if not cleaned.startswith("/"):
+        raise ValueError("절대경로(/ 로 시작)를 입력하세요")
+    if not os.path.isdir(cleaned):
+        raise ValueError(f"{cleaned} 디렉토리를 찾을 수 없습니다 (WAS 서버 기준 경로여야 합니다)")
+    set_config(db, PATH_KEY, cleaned)
 
 
 def get_threshold(db: Session) -> int:
@@ -48,7 +80,7 @@ def save_settings(db: Session, enabled: bool, threshold: int) -> None:
     set_config(db, THRESHOLD_KEY, str(threshold))
 
 
-def usage(path: str = DISK_PATH) -> tuple[int, int, float]:
+def usage(path: str = DEFAULT_PATH) -> tuple[int, int, float]:
     """(총량, 사용량, 사용률%). 조회 실패 시 (0, 0, 0.0).
 
     자동 정리 판정과 설정 화면 표시가 같은 값을 봐야 하므로 한 번의 조회로 셋을 다 낸다
@@ -65,7 +97,7 @@ def usage(path: str = DISK_PATH) -> tuple[int, int, float]:
     return du.total, used, round(used / du.total * 100, 1)
 
 
-def disk_percent(path: str = DISK_PATH) -> float:
+def disk_percent(path: str = DEFAULT_PATH) -> float:
     return usage(path)[2]
 
 
@@ -93,7 +125,14 @@ def enforce(db: Session) -> str | None:
     if not is_enabled(db):
         return None
     threshold = get_threshold(db)
-    pct = disk_percent()
+    path = get_path(db)
+    total, _used, pct = usage(path)
+    if not total:
+        # 경로가 사라졌거나(볼륨 미마운트) 읽을 수 없다 — 0% 로 조용히 넘어가면
+        # 디스크가 꽉 차도 정리가 안 돈다. 로그에 남긴다.
+        log.error("디스크 사용률을 읽지 못해 자동 정리를 건너뜁니다 (경로: %s). "
+                  "설정 > DB 저장소의 감시 경로를 확인하세요.", path)
+        return None
     if pct < threshold:
         return None
 
@@ -109,7 +148,7 @@ def enforce(db: Session) -> str | None:
                 pct, threshold, victim)
     db.execute(text(f"DROP TABLE IF EXISTS public.{victim}"))
     db.commit()
-    after = disk_percent()
+    after = disk_percent(path)
     log.warning("파티션 %s 삭제 완료 — 디스크 %.1f%% → %.1f%%", victim, pct, after)
     _notify(db, f"디스크 {pct}% 가 임계({threshold}%)를 넘어 가장 오래된 로그 파티션 "
                 f"{victim} 을 삭제했습니다. (현재 {after}%)")

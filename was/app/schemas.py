@@ -154,7 +154,8 @@ class StorageInfo(BaseModel):
     default_rows: int                      # ftp_logs_default 정확한 행 수
     default_months: List[str]              # default 에 들어있는 월(YYYY-MM) 목록
     retention_months: int
-    disk_total_bytes: int = 0              # DB 데이터 디렉토리가 있는 디스크
+    disk_path: str = "/"                   # 사용률을 보는 경로 (PGDATA 를 옮겼으면 그 마운트)
+    disk_total_bytes: int = 0              # 위 경로가 속한 디스크
     disk_used_bytes: int = 0
     disk_percent: float = 0.0
     autopurge_enabled: bool = True         # 임계치 초과 시 오래된 월부터 자동 삭제
@@ -163,6 +164,10 @@ class StorageInfo(BaseModel):
 class DiskPurgeUpdate(BaseModel):
     enabled: bool = True
     percent: int = Field(default=90, ge=50, le=99)
+
+class DiskPathUpdate(BaseModel):
+    # 존재하는 디렉토리인지는 서버(disk_guard.save_path)가 확인한다
+    path: str = Field(default="/", max_length=255)
 
 class RetentionUpdate(BaseModel):
     # app/retention.py 의 허용 범위와 같은 값 (여기서 먼저 걸러 422 로 돌려준다)
