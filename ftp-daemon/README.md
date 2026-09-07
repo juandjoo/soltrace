@@ -344,15 +344,54 @@ sudo /opt/soltrace-daemon/venv/bin/python3 /opt/soltrace-daemon/soltrace_bulk.py
   맞는다. WAS 설정에 최신 버전을 따로 적어 두면 데몬을 올릴 때마다 두 곳을 맞춰야 하고
   한쪽만 고쳐지면 조용히 어긋난다.
 - 아직 한 번도 버전을 보고하지 않은 장비는 '모름'이라 구버전으로 세지 않는다.
+- 보고는 **등록(register)과 하트비트 양쪽**에서 한다. 등록에만 실으면 시작 시 WAS 가 잠깐
+  안 떠 있었을 때 옛 버전이 굳어 버린다. 값이 바뀔 때만 전송되므로 평소 payload 는 늘지 않는다.
+
+### 장비에 남는 VERSION 파일
+
+데몬은 **시작할 때** 설치 디렉터리에 `VERSION` 을 쓴다(쓸 수 없으면 `state_dir`).
+
+```
+$ cat /opt/soltrace-daemon/VERSION
+v1.1.1
+started: 2026-09-07T13:52:04+09:00
+```
+
+시작 시각을 같이 적는 이유 — 자가 업데이트가 파일만 바꾸고 재시작에 실패하면 `soltrace_daemon.py`
+의 버전과 실제로 도는 버전이 갈린다. 이 파일은 **시작할 때만** 쓰이므로, `soltrace_daemon.py` 의
+`DAEMON_VERSION` 은 새것인데 `VERSION` 의 시작 시각이 옛날이면 재시작이 안 된 것이다.
 
 | 버전 | 변경 |
 |------|------|
+| `1.1.1` | 시작 시 `VERSION` 파일 기록, 하트비트에도 버전 보고, 자가 업데이트 재시작 결과를 로그에 남김(`--no-block`) |
 | `1.1.0` | 전송이 시작되기 전에 거부된 RETR/STOR 을 실패로 수집 |
 | `1.0.0` | 최초 |
 
 ---
 
 ## 문제 해결
+
+### 업데이트를 눌렀는데 화면의 데몬 버전이 그대로다
+
+로그에 `Self-update complete — restarting service` 까지 찍혔다면 **파일은 바뀐 것**이고,
+남은 것은 재시작뿐이다. 재시작이 안 되면 새 파일이 디스크에만 있고 돌고 있는 프로세스는
+옛 코드라 버전이 그대로다.
+
+```bash
+# 파일 버전 / 실행 중 버전을 나눠서 본다
+grep "^DAEMON_VERSION" /opt/soltrace-daemon/soltrace_daemon.py   # 파일
+cat /opt/soltrace-daemon/VERSION                                  # 실제로 시작된 버전·시각
+grep "daemon starting" /var/log/soltrace-daemon/daemon.log | tail -3
+```
+
+`VERSION` 의 시작 시각이 업데이트 시각보다 **이전**이면 재시작이 안 된 것이다.
+
+```bash
+sudo systemctl restart soltrace-daemon
+```
+
+1.1.1 부터는 재시작 명령의 결과를 로그에 남기므로(`Restart failed (rc=...)`) 권한 문제인지
+유닛 이름 문제인지 바로 보인다. 그 이전 버전은 `check=False` 로 조용히 넘어갔다.
 
 ### `ImportError: urllib3 v2 only supports OpenSSL 1.1.1+`
 

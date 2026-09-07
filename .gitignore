@@ -15,6 +15,9 @@ venv/
 *.swp
 *.swo
 
+# 데몬이 시작할 때 설치 디렉터리에 쓰는 실행 버전 표식 (런타임 산출물)
+ftp-daemon/VERSION
+
 # OS
 .DS_Store
 Thumbs.db

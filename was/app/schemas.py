@@ -291,6 +291,8 @@ class HeartbeatRequest(BaseModel):
     device_key: str
     hostname: Optional[str] = None
     ip_address: Optional[str] = None
+    # 데몬이 시작할 때 한 번 싣는다 — 등록(register)이 실패해도 버전이 갱신되게
+    daemon_version: Optional[str] = None
     # 데몬 상태 (running / degraded / error / stopping)
     daemon_status: Optional[str] = None
     last_send_time: Optional[datetime] = None

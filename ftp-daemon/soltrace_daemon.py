@@ -32,7 +32,7 @@ import requests
 
 # 데몬 버전 — 하트비트로 WAS 에 보고하고, WAS 는 배포된 저장소의 이 값을 "최신"으로 삼아
 # 장비별 구버전 여부를 판정한다. 파싱·전송 동작이 바뀌면 올린다 (여기가 유일한 출처).
-DAEMON_VERSION = "1.1.0"
+DAEMON_VERSION = "1.1.1"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -620,6 +620,9 @@ class SolTraceDaemon:
             disk_free_gb = None
 
         current = {
+            # 등록(register)에만 실으면 시작 시 등록이 실패했을 때 옛 버전이 굳는다.
+            # 값이 바뀔 때만 전송되므로(문자열 필드) 평소 payload 는 늘지 않는다.
+            "daemon_version": DAEMON_VERSION,
             "daemon_status": self._daemon_status,
             "last_send_time": self._last_send_time.isoformat() if self._last_send_time else None,
             "buffer_lines": len(self.buffer._read_raw()) if self.buffer.exists() else 0,
@@ -670,6 +673,26 @@ class SolTraceDaemon:
         if dirty:
             self._prev_status_sent.update(dirty)
         return dirty  # 빈 dict 가능 (변화 없으면 heartbeat body 최소화)
+
+    def _write_version_file(self):
+        """돌고 있는 데몬 버전을 장비에 남긴다.
+
+        서버에 들어가 `cat VERSION` 한 번으로 확인할 수 있게 한다. 시작 시각을 같이 적는 이유 —
+        자가 업데이트가 파일만 바꾸고 재시작에 실패하면 파일 버전과 실제 도는 버전이 갈리는데,
+        이 파일은 **시작할 때** 쓰므로 시작 시각이 옛날이면 재시작이 안 된 것이다.
+        """
+        body = (f"v{DAEMON_VERSION}\n"
+                f"started: {datetime.now().astimezone().isoformat(timespec='seconds')}\n")
+        last_err = None
+        for path in (BASE_DIR / "VERSION", Path(self.cfg["state_dir"]) / "VERSION"):
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(body, encoding="utf-8")
+                log.info("Version file: %s (v%s)", path, DAEMON_VERSION)
+                return
+            except OSError as e:
+                last_err = e
+        log.warning("Version file 기록 실패: %s", last_err)
 
     def _get_local_ip(self) -> str:
         try:
@@ -746,7 +769,20 @@ class SolTraceDaemon:
                 )
 
             log.info("Self-update complete — restarting service")
-            subprocess.run(["systemctl", "restart", "soltrace-daemon"], check=False)
+            # --no-block: 자기가 속한 유닛을 재시작하는 것이라 완료를 기다리면 서로를 기다린다.
+            # 결과를 반드시 남긴다 — 조용히 실패하면 파일만 새것이고 돌고 있는 코드는 옛것이라
+            # 버전이 그대로여서 원인을 짚기 어렵다.
+            r = subprocess.run(
+                ["systemctl", "restart", "--no-block", "soltrace-daemon"],
+                capture_output=True, text=True, check=False,
+            )
+            if r.returncode == 0:
+                log.info("Restart requested — 새 버전으로 올라옵니다")
+            else:
+                log.error(
+                    "Restart failed (rc=%d): %s — 장비에서 'systemctl restart soltrace-daemon' 을 직접 실행하세요",
+                    r.returncode, (r.stderr or "").strip()[:300],
+                )
 
         except Exception as e:
             log.error("Self-update failed: %s", e)
@@ -936,7 +972,8 @@ class SolTraceDaemon:
 
     def start(self):
         self.running = True
-        log.info("SolTrace daemon starting (WAS: %s)", self.cfg["was_url"])
+        log.info("SolTrace daemon starting v%s (WAS: %s)", DAEMON_VERSION, self.cfg["was_url"])
+        self._write_version_file()
 
         # 시작 시 이전 버퍼 먼저 전송 (WAS 미응답 시에도 계속 실행)
         self._flush_startup_buffer()

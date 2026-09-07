@@ -83,6 +83,7 @@ def heartbeat(req: HeartbeatRequest, db: Session = Depends(get_db)):
 
     # 데몬 상태 저장 (전송된 필드만 반영)
     _status_fields = (
+        "daemon_version",
         "daemon_status", "last_send_time", "buffer_lines", "queue_size",
         "consecutive_failures", "error_message", "cpu_percent",
         "mem_mb", "disk_free_gb", "daemon_uptime",
