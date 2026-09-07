@@ -431,6 +431,9 @@
             <option value="confirmed">확인됨</option>
             <option value="disabled">비활성</option>
           </select>
+          <button class="btn btn-sm btn-outline-success" id="devBulkBtn" onclick="requestPickedDaemonUpdate()" disabled>
+            <i class="bi bi-arrow-repeat me-1"></i>선택 업데이트 <span id="devPickCount">0</span>
+          </button>
           <button class="btn btn-sm btn-outline-primary" onclick="loadDevices()"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
@@ -439,12 +442,13 @@
           <table class="table table-hover mb-0">
             <thead class="table-light">
               <tr>
+                <th class="text-center" style="width:38px"><input class="form-check-input" type="checkbox" id="devPickAll" onchange="togglePickAllDevices(this.checked)" title="전체 선택"></th>
                 <th class="text-center">호스트명</th><th class="text-center">IP</th><th class="text-center">장비상태</th><th class="text-center">데몬상태</th>
                 <th class="text-center">CPU / MEM / Disk</th><th class="text-center">버퍼</th>
                 <th class="text-center">마지막 연결</th><th class="text-center">그룹</th><th></th>
               </tr>
             </thead>
-            <tbody id="deviceTable"><tr><td colspan="9" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
+            <tbody id="deviceTable"><tr><td colspan="10" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -454,7 +458,10 @@
     <div id="page-groups" class="page">
       <div class="d-flex align-items-center mb-3">
         <h5 class="mb-0 fw-bold"><i class="bi bi-diagram-3-fill me-2 text-brand"></i>그룹 관리</h5>
-        <button class="btn btn-sm btn-primary ms-auto" onclick="openGroupModal()">
+        <button class="btn btn-sm btn-outline-success ms-auto" id="grpBulkBtn" onclick="requestPickedGroupDaemonUpdate()" disabled>
+          <i class="bi bi-arrow-repeat me-1"></i>선택 업데이트 <span id="grpPickCount">0</span>
+        </button>
+        <button class="btn btn-sm btn-primary ms-2" onclick="openGroupModal()">
           <i class="bi bi-plus-lg me-1"></i>그룹 추가
         </button>
       </div>
@@ -784,7 +791,7 @@
                 <tbody>
                   <tr><td class="text-muted" style="width:42%">WAS 업데이트</td><td>설정 &gt; 시스템 업데이트 버튼<br>또는 서버에서 <code>sudo bash scripts/update_rocky8.sh main</code></td></tr>
                   <tr><td class="text-muted">새 장비 붙이기</td><td>장비에 데몬 설치 → 장비 관리에서 <b>확인(Confirm)</b> → 그룹 배정</td></tr>
-                  <tr><td class="text-muted">데몬 업데이트</td><td>장비 관리 &gt; 해당 장비 &gt; 원격 업데이트</td></tr>
+                  <tr><td class="text-muted">데몬 업데이트</td><td>장비 관리 &gt; 해당 장비 ↻ · 여러 대는 체크 후 <b>선택 업데이트</b> · 그룹째는 그룹 관리 ↻ 또는 체크 후 <b>선택 업데이트</b></td></tr>
                   <tr><td class="text-muted">고객사 계정 · API 키</td><td>설정 &gt; 고객 계정 — <b>FTP 계정 매핑을 반드시 등록</b>한다(그룹 + FTP 아이디). 없으면 그 계정은 아무것도 보지 못한다</td></tr>
                   <tr><td class="text-muted">알림 채널</td><td>설정 &gt; 알림 설정 (웹훅 · HMS) · 테스트 발송 버튼</td></tr>
                   <tr><td class="text-muted">알림이 잦을 때</td><td>설정 &gt; 이상 감지 임계값 — 먼저 <b>발송 전 지속 버킷 수</b>를 올리고, 그래도 잦으면 해당 지표의 하한을 올린다</td></tr>

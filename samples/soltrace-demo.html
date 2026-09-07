@@ -683,6 +683,9 @@ body        { background: var(--st-bg); font-size: 14px; }
             <option value="confirmed">확인됨</option>
             <option value="disabled">비활성</option>
           </select>
+          <button class="btn btn-sm btn-outline-success" id="devBulkBtn" onclick="requestPickedDaemonUpdate()" disabled>
+            <i class="bi bi-arrow-repeat me-1"></i>선택 업데이트 <span id="devPickCount">0</span>
+          </button>
           <button class="btn btn-sm btn-outline-primary" onclick="loadDevices()"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
@@ -691,12 +694,13 @@ body        { background: var(--st-bg); font-size: 14px; }
           <table class="table table-hover mb-0">
             <thead class="table-light">
               <tr>
+                <th class="text-center" style="width:38px"><input class="form-check-input" type="checkbox" id="devPickAll" onchange="togglePickAllDevices(this.checked)" title="전체 선택"></th>
                 <th class="text-center">호스트명</th><th class="text-center">IP</th><th class="text-center">장비상태</th><th class="text-center">데몬상태</th>
                 <th class="text-center">CPU / MEM / Disk</th><th class="text-center">버퍼</th>
                 <th class="text-center">마지막 연결</th><th class="text-center">그룹</th><th></th>
               </tr>
             </thead>
-            <tbody id="deviceTable"><tr><td colspan="9" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
+            <tbody id="deviceTable"><tr><td colspan="10" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -706,7 +710,10 @@ body        { background: var(--st-bg); font-size: 14px; }
     <div id="page-groups" class="page">
       <div class="d-flex align-items-center mb-3">
         <h5 class="mb-0 fw-bold"><i class="bi bi-diagram-3-fill me-2 text-brand"></i>그룹 관리</h5>
-        <button class="btn btn-sm btn-primary ms-auto" onclick="openGroupModal()">
+        <button class="btn btn-sm btn-outline-success ms-auto" id="grpBulkBtn" onclick="requestPickedGroupDaemonUpdate()" disabled>
+          <i class="bi bi-arrow-repeat me-1"></i>선택 업데이트 <span id="grpPickCount">0</span>
+        </button>
+        <button class="btn btn-sm btn-primary ms-2" onclick="openGroupModal()">
           <i class="bi bi-plus-lg me-1"></i>그룹 추가
         </button>
       </div>
@@ -1036,7 +1043,7 @@ body        { background: var(--st-bg); font-size: 14px; }
                 <tbody>
                   <tr><td class="text-muted" style="width:42%">WAS 업데이트</td><td>설정 &gt; 시스템 업데이트 버튼<br>또는 서버에서 <code>sudo bash scripts/update_rocky8.sh main</code></td></tr>
                   <tr><td class="text-muted">새 장비 붙이기</td><td>장비에 데몬 설치 → 장비 관리에서 <b>확인(Confirm)</b> → 그룹 배정</td></tr>
-                  <tr><td class="text-muted">데몬 업데이트</td><td>장비 관리 &gt; 해당 장비 &gt; 원격 업데이트</td></tr>
+                  <tr><td class="text-muted">데몬 업데이트</td><td>장비 관리 &gt; 해당 장비 ↻ · 여러 대는 체크 후 <b>선택 업데이트</b> · 그룹째는 그룹 관리 ↻ 또는 체크 후 <b>선택 업데이트</b></td></tr>
                   <tr><td class="text-muted">고객사 계정 · API 키</td><td>설정 &gt; 고객 계정 — <b>FTP 계정 매핑을 반드시 등록</b>한다(그룹 + FTP 아이디). 없으면 그 계정은 아무것도 보지 못한다</td></tr>
                   <tr><td class="text-muted">알림 채널</td><td>설정 &gt; 알림 설정 (웹훅 · HMS) · 테스트 발송 버튼</td></tr>
                   <tr><td class="text-muted">알림이 잦을 때</td><td>설정 &gt; 이상 감지 임계값 — 먼저 <b>발송 전 지속 버킷 수</b>를 올리고, 그래도 잦으면 해당 지표의 하한을 올린다</td></tr>
@@ -3434,7 +3441,8 @@ async function loadDevices() {
     bootstrap.Tooltip.getInstance(el)?.dispose()
   );
   if (!devices.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">등록된 장비가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">등록된 장비가 없습니다.</td></tr>';
+    updateDevicePickCount();
     return;
   }
 
@@ -3448,6 +3456,7 @@ async function loadDevices() {
     const errMsg = d.error_message || (offline ? `마지막 하트비트: ${timeAgo(d.last_heartbeat)}` : null);
 
     return `<tr class="${dStatus==='error'?'table-danger-subtle':''}">
+      <td class="text-center"><input class="form-check-input dev-pick" type="checkbox" value="${d.id}" onchange="updateDevicePickCount()"></td>
       <td>
         <strong>${esc(d.hostname)}</strong>
         <div style="font-size:11px" class="${d.daemon_outdated ? 'text-warning fw-semibold' : 'text-muted'}">${esc(d.daemon_version||'')}${d.daemon_outdated ? ' <i class="bi bi-exclamation-triangle-fill" data-bs-toggle="tooltip" title="구버전 — 데몬 업데이트가 필요합니다"></i>' : ''}</div>
@@ -3487,6 +3496,43 @@ async function loadDevices() {
   tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
     new bootstrap.Tooltip(el, {placement:'top'})
   );
+  updateDevicePickCount();   // 다시 그리면 선택이 풀린다 — 버튼/헤더 체크도 같이 되돌린다
+}
+
+// ── 체크한 장비 일괄 업데이트 ────────────────────────────────────────────────
+// 장비 하나짜리 ↻(requestDaemonUpdate)와 같은 요청을 여러 대에 한 번에 건다.
+
+function _pickedDeviceIds() {
+  return [...document.querySelectorAll('#deviceTable .dev-pick:checked')].map(el => parseInt(el.value));
+}
+
+function updateDevicePickCount() {
+  const n = _pickedDeviceIds().length;
+  const total = document.querySelectorAll('#deviceTable .dev-pick').length;
+  const cnt = document.getElementById('devPickCount');
+  const btn = document.getElementById('devBulkBtn');
+  if (cnt) cnt.textContent = n;
+  if (btn) btn.disabled = n === 0;
+  const all = document.getElementById('devPickAll');
+  if (all) { all.checked = total > 0 && n === total; all.indeterminate = n > 0 && n < total; }
+}
+
+function togglePickAllDevices(checked) {
+  document.querySelectorAll('#deviceTable .dev-pick').forEach(el => { el.checked = checked; });
+  updateDevicePickCount();
+}
+
+async function requestPickedDaemonUpdate() {
+  const ids = _pickedDeviceIds();
+  if (!ids.length) return;
+  const names = ids.map(id => _deviceCache.find(d => d.id === id)?.hostname || `#${id}`);
+  const preview = names.slice(0, 5).join(', ') + (names.length > 5 ? ` 외 ${names.length - 5}대` : '');
+  if (!confirm(`장비 ${ids.length}대의 데몬을 업데이트하시겠습니까?\n${preview}\n\n각 장비의 다음 하트비트에서 최신 데몬을 내려받고 재시작합니다.`)) return;
+  try {
+    const r = await api('POST', '/devices/bulk-update', {device_ids: ids});
+    alert(`${r?.requested ?? ids.length}대에 업데이트 요청이 전송되었습니다.`);
+    loadDevices();
+  } catch (e) { alert('업데이트 요청 실패: ' + e.message); }
 }
 
 function showDeviceStatus(id) {
@@ -4683,7 +4729,7 @@ function previewLoginConfig() {
 
 /* === groups.js === */
 let _groupFilter = '__all__';
-const GROUP_COLS = 7;
+const GROUP_COLS = 8;   // 체크 열 포함
 
 async function loadGroups() {
   const groups = await api('GET', '/groups');
@@ -4693,6 +4739,7 @@ async function loadGroups() {
   if (!groups.length) {
     container.innerHTML = '<div class="text-center text-muted py-4">그룹이 없습니다. 추가해주세요.</div>';
     document.getElementById('groupPager').innerHTML = '';
+    updateGroupPickCount();
     return;
   }
 
@@ -4748,6 +4795,7 @@ function renderGroupPage(page) {
   const pageIds = new Set(pageItems.map(g => g.id));
 
   const groupRowHtml = g => `
+      <td class="text-center"><input class="form-check-input grp-pick" type="checkbox" value="${g.id}" onchange="updateGroupPickCount()"></td>
       <td class="fw-semibold" style="word-break:break-word">${esc(g.name)}</td>
       <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
       <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer ? esc(g.customer) : '<span class="text-muted">-</span>'}</td>
@@ -4788,11 +4836,12 @@ function renderGroupPage(page) {
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
           <colgroup>
-            <col style="width:14%"><col style="width:6%"><col style="width:14%">
-            <col style="width:19%"><col style="width:13%"><col style="width:14%"><col style="width:20%">
+            <col style="width:4%"><col style="width:14%"><col style="width:6%"><col style="width:14%">
+            <col style="width:15%"><col style="width:13%"><col style="width:14%"><col style="width:20%">
           </colgroup>
           <thead class="table-light">
-            <tr><th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
+            <tr><th class="text-center"><input class="form-check-input" type="checkbox" id="grpPickAll" onchange="togglePickAllGroups(this.checked)" title="이 페이지 전체 선택"></th>
+            <th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
             <th>업로드 도메인</th><th>서비스</th><th>비고</th><th></th></tr>
           </thead>
           <tbody>${sectionRows || `<tr><td colspan="${GROUP_COLS}" class="text-center text-muted py-3">해당 항목이 없습니다.</td></tr>`}</tbody>
@@ -4800,6 +4849,7 @@ function renderGroupPage(page) {
       </div>
       ${total > 0 ? `<div class="px-3 py-1 border-top small text-muted">${start+1}–${end} / ${total}그룹</div>` : ''}
     </div>`;
+  updateGroupPickCount();   // 다시 그리면 선택이 풀린다 — 버튼/헤더 체크도 같이 되돌린다
 
   if (totalPages <= 1) { pager.innerHTML = ''; return; }
   const pages = [];
@@ -4873,6 +4923,45 @@ async function deleteGroup(id) {
   if (!confirm('그룹을 삭제하시겠습니까?')) return;
   await api('DELETE', `/groups/${id}`);
   loadGroups();
+}
+
+// ── 체크한 그룹 일괄 업데이트 ────────────────────────────────────────────────
+// 그룹 하나짜리 ↻(requestGroupDaemonUpdate)와 같은 요청을 여러 그룹에 한 번에 건다.
+// 두 그룹에 겹쳐 속한 장비는 서버에서 한 번만 센다.
+
+function _pickedGroupIds() {
+  return [...document.querySelectorAll('.grp-pick:checked')].map(el => parseInt(el.value));
+}
+
+function updateGroupPickCount() {
+  const n = _pickedGroupIds().length;
+  const total = document.querySelectorAll('.grp-pick').length;
+  const cnt = document.getElementById('grpPickCount');
+  const btn = document.getElementById('grpBulkBtn');
+  if (cnt) cnt.textContent = n;
+  if (btn) btn.disabled = n === 0;
+  const all = document.getElementById('grpPickAll');
+  if (all) { all.checked = total > 0 && n === total; all.indeterminate = n > 0 && n < total; }
+}
+
+function togglePickAllGroups(checked) {
+  document.querySelectorAll('.grp-pick').forEach(el => { el.checked = checked; });
+  updateGroupPickCount();
+}
+
+async function requestPickedGroupDaemonUpdate() {
+  const ids = _pickedGroupIds();
+  if (!ids.length) return;
+  const picked = ids.map(id => allGroups.find(g => g.id === id)).filter(Boolean);
+  const devices = picked.reduce((s, g) => s + (g.device_count || 0), 0);
+  if (!devices) { alert('선택한 그룹에 소속 장비가 없습니다.'); return; }
+  const names = picked.map(g => g.name);
+  const preview = names.slice(0, 5).join(', ') + (names.length > 5 ? ` 외 ${names.length - 5}개` : '');
+  if (!confirm(`그룹 ${ids.length}개(장비 ${devices}대)의 데몬을 업데이트하시겠습니까?\n${preview}\n\n각 장비의 다음 하트비트에서 최신 데몬을 내려받고 재시작합니다.\n(두 그룹에 겹쳐 속한 장비는 한 번만 요청됩니다.)`)) return;
+  try {
+    const r = await api('POST', '/groups/bulk-update', {group_ids: ids});
+    alert(`${r?.requested ?? devices}대에 업데이트 요청이 전송되었습니다.`);
+  } catch (e) { alert('업데이트 요청 실패: ' + e.message); }
 }
 
 async function requestGroupDaemonUpdate(id) {

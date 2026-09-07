@@ -1,5 +1,5 @@
 let _groupFilter = '__all__';
-const GROUP_COLS = 7;
+const GROUP_COLS = 8;   // 체크 열 포함
 
 async function loadGroups() {
   const groups = await api('GET', '/groups');
@@ -9,6 +9,7 @@ async function loadGroups() {
   if (!groups.length) {
     container.innerHTML = '<div class="text-center text-muted py-4">그룹이 없습니다. 추가해주세요.</div>';
     document.getElementById('groupPager').innerHTML = '';
+    updateGroupPickCount();
     return;
   }
 
@@ -64,6 +65,7 @@ function renderGroupPage(page) {
   const pageIds = new Set(pageItems.map(g => g.id));
 
   const groupRowHtml = g => `
+      <td class="text-center"><input class="form-check-input grp-pick" type="checkbox" value="${g.id}" onchange="updateGroupPickCount()"></td>
       <td class="fw-semibold" style="word-break:break-word">${esc(g.name)}</td>
       <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
       <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer ? esc(g.customer) : '<span class="text-muted">-</span>'}</td>
@@ -104,11 +106,12 @@ function renderGroupPage(page) {
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
           <colgroup>
-            <col style="width:14%"><col style="width:6%"><col style="width:14%">
-            <col style="width:19%"><col style="width:13%"><col style="width:14%"><col style="width:20%">
+            <col style="width:4%"><col style="width:14%"><col style="width:6%"><col style="width:14%">
+            <col style="width:15%"><col style="width:13%"><col style="width:14%"><col style="width:20%">
           </colgroup>
           <thead class="table-light">
-            <tr><th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
+            <tr><th class="text-center"><input class="form-check-input" type="checkbox" id="grpPickAll" onchange="togglePickAllGroups(this.checked)" title="이 페이지 전체 선택"></th>
+            <th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
             <th>업로드 도메인</th><th>서비스</th><th>비고</th><th></th></tr>
           </thead>
           <tbody>${sectionRows || `<tr><td colspan="${GROUP_COLS}" class="text-center text-muted py-3">해당 항목이 없습니다.</td></tr>`}</tbody>
@@ -116,6 +119,7 @@ function renderGroupPage(page) {
       </div>
       ${total > 0 ? `<div class="px-3 py-1 border-top small text-muted">${start+1}–${end} / ${total}그룹</div>` : ''}
     </div>`;
+  updateGroupPickCount();   // 다시 그리면 선택이 풀린다 — 버튼/헤더 체크도 같이 되돌린다
 
   if (totalPages <= 1) { pager.innerHTML = ''; return; }
   const pages = [];
@@ -189,6 +193,45 @@ async function deleteGroup(id) {
   if (!confirm('그룹을 삭제하시겠습니까?')) return;
   await api('DELETE', `/groups/${id}`);
   loadGroups();
+}
+
+// ── 체크한 그룹 일괄 업데이트 ────────────────────────────────────────────────
+// 그룹 하나짜리 ↻(requestGroupDaemonUpdate)와 같은 요청을 여러 그룹에 한 번에 건다.
+// 두 그룹에 겹쳐 속한 장비는 서버에서 한 번만 센다.
+
+function _pickedGroupIds() {
+  return [...document.querySelectorAll('.grp-pick:checked')].map(el => parseInt(el.value));
+}
+
+function updateGroupPickCount() {
+  const n = _pickedGroupIds().length;
+  const total = document.querySelectorAll('.grp-pick').length;
+  const cnt = document.getElementById('grpPickCount');
+  const btn = document.getElementById('grpBulkBtn');
+  if (cnt) cnt.textContent = n;
+  if (btn) btn.disabled = n === 0;
+  const all = document.getElementById('grpPickAll');
+  if (all) { all.checked = total > 0 && n === total; all.indeterminate = n > 0 && n < total; }
+}
+
+function togglePickAllGroups(checked) {
+  document.querySelectorAll('.grp-pick').forEach(el => { el.checked = checked; });
+  updateGroupPickCount();
+}
+
+async function requestPickedGroupDaemonUpdate() {
+  const ids = _pickedGroupIds();
+  if (!ids.length) return;
+  const picked = ids.map(id => allGroups.find(g => g.id === id)).filter(Boolean);
+  const devices = picked.reduce((s, g) => s + (g.device_count || 0), 0);
+  if (!devices) { alert('선택한 그룹에 소속 장비가 없습니다.'); return; }
+  const names = picked.map(g => g.name);
+  const preview = names.slice(0, 5).join(', ') + (names.length > 5 ? ` 외 ${names.length - 5}개` : '');
+  if (!confirm(`그룹 ${ids.length}개(장비 ${devices}대)의 데몬을 업데이트하시겠습니까?\n${preview}\n\n각 장비의 다음 하트비트에서 최신 데몬을 내려받고 재시작합니다.\n(두 그룹에 겹쳐 속한 장비는 한 번만 요청됩니다.)`)) return;
+  try {
+    const r = await api('POST', '/groups/bulk-update', {group_ids: ids});
+    alert(`${r?.requested ?? devices}대에 업데이트 요청이 전송되었습니다.`);
+  } catch (e) { alert('업데이트 요청 실패: ' + e.message); }
 }
 
 async function requestGroupDaemonUpdate(id) {

@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import device_scope, require_admin
 from app.models import Device, DeviceGroup, Group
-from app.schemas import DeviceConfirm, DeviceGroupAssign, DeviceResponse
+from app import daemon_update
+from app.schemas import (
+    DaemonUpdateDevices, DaemonUpdateResult, DeviceConfirm, DeviceGroupAssign, DeviceResponse,
+)
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
@@ -74,6 +77,20 @@ def assign_groups(
     return device
 
 
+@router.post("/bulk-update", response_model=DaemonUpdateResult)
+def request_daemon_update_bulk(
+    body: DaemonUpdateDevices,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """체크한 장비들에 한꺼번에 업데이트를 요청한다.
+
+    없는 id 는 조용히 빠지고 응답의 requested 로 실제 건수가 돌아온다 — 목록을 띄워 둔 사이
+    삭제된 장비 하나 때문에 나머지 전부가 취소되면 곤란하다.
+    """
+    return DaemonUpdateResult(requested=daemon_update.for_devices(db, body.device_ids))
+
+
 @router.post("/{device_id}/update", status_code=status.HTTP_204_NO_CONTENT)
 def request_daemon_update(
     device_id: int,
@@ -84,8 +101,7 @@ def request_daemon_update(
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
-    device.update_requested = True
-    db.commit()
+    daemon_update.for_devices(db, [device_id])
 
 
 @router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)

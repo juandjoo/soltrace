@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import Principal, get_current_user, require_admin
 from app.models import Device, DeviceGroup, Group
+from app import daemon_update
 from app.schemas import (
-    DaemonUpdateResult, GroupCreate, GroupDeviceAssign, GroupResponse, GroupUpdate,
+    DaemonUpdateGroups, DaemonUpdateResult, GroupCreate, GroupDeviceAssign, GroupResponse,
+    GroupUpdate,
 )
 
 router = APIRouter(prefix="/api/v1/groups", tags=["groups"])
@@ -104,14 +106,20 @@ def request_group_daemon_update(
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
 
-    member_ids = db.query(DeviceGroup.device_id).filter(DeviceGroup.group_id == group_id)
-    requested = (
-        db.query(Device)
-        .filter(Device.id.in_(member_ids))
-        .update({Device.update_requested: True}, synchronize_session=False)
-    )
-    db.commit()
-    return DaemonUpdateResult(requested=requested)
+    return DaemonUpdateResult(requested=daemon_update.for_groups(db, [group_id]))
+
+
+@router.post("/bulk-update", response_model=DaemonUpdateResult)
+def request_group_daemon_update_bulk(
+    body: DaemonUpdateGroups,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """체크한 그룹들의 장비 전부에 한꺼번에 업데이트를 요청한다.
+
+    두 그룹에 겹쳐 속한 장비는 한 번만 센다.
+    """
+    return DaemonUpdateResult(requested=daemon_update.for_groups(db, body.group_ids))
 
 
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)

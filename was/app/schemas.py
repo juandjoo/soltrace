@@ -238,8 +238,18 @@ class DeviceResponse(BaseModel):
         from_attributes = True
 
 class DaemonUpdateResult(BaseModel):
-    """그룹 단위 데몬 업데이트 요청 결과."""
+    """데몬 업데이트 요청 결과 — 장비 단건·다건·그룹이 같은 응답을 쓴다."""
     requested: int = 0            # 플래그를 세운 장비 수
+
+
+class DaemonUpdateDevices(BaseModel):
+    """체크한 장비들을 한꺼번에 업데이트."""
+    device_ids: List[int] = []
+
+
+class DaemonUpdateGroups(BaseModel):
+    """체크한 그룹들의 장비를 한꺼번에 업데이트."""
+    group_ids: List[int] = []
 
 
 class DeviceConfirm(BaseModel):

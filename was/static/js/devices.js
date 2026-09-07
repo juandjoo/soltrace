@@ -58,7 +58,8 @@ async function loadDevices() {
     bootstrap.Tooltip.getInstance(el)?.dispose()
   );
   if (!devices.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">등록된 장비가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">등록된 장비가 없습니다.</td></tr>';
+    updateDevicePickCount();
     return;
   }
 
@@ -72,6 +73,7 @@ async function loadDevices() {
     const errMsg = d.error_message || (offline ? `마지막 하트비트: ${timeAgo(d.last_heartbeat)}` : null);
 
     return `<tr class="${dStatus==='error'?'table-danger-subtle':''}">
+      <td class="text-center"><input class="form-check-input dev-pick" type="checkbox" value="${d.id}" onchange="updateDevicePickCount()"></td>
       <td>
         <strong>${esc(d.hostname)}</strong>
         <div style="font-size:11px" class="${d.daemon_outdated ? 'text-warning fw-semibold' : 'text-muted'}">${esc(d.daemon_version||'')}${d.daemon_outdated ? ' <i class="bi bi-exclamation-triangle-fill" data-bs-toggle="tooltip" title="구버전 — 데몬 업데이트가 필요합니다"></i>' : ''}</div>
@@ -111,6 +113,43 @@ async function loadDevices() {
   tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
     new bootstrap.Tooltip(el, {placement:'top'})
   );
+  updateDevicePickCount();   // 다시 그리면 선택이 풀린다 — 버튼/헤더 체크도 같이 되돌린다
+}
+
+// ── 체크한 장비 일괄 업데이트 ────────────────────────────────────────────────
+// 장비 하나짜리 ↻(requestDaemonUpdate)와 같은 요청을 여러 대에 한 번에 건다.
+
+function _pickedDeviceIds() {
+  return [...document.querySelectorAll('#deviceTable .dev-pick:checked')].map(el => parseInt(el.value));
+}
+
+function updateDevicePickCount() {
+  const n = _pickedDeviceIds().length;
+  const total = document.querySelectorAll('#deviceTable .dev-pick').length;
+  const cnt = document.getElementById('devPickCount');
+  const btn = document.getElementById('devBulkBtn');
+  if (cnt) cnt.textContent = n;
+  if (btn) btn.disabled = n === 0;
+  const all = document.getElementById('devPickAll');
+  if (all) { all.checked = total > 0 && n === total; all.indeterminate = n > 0 && n < total; }
+}
+
+function togglePickAllDevices(checked) {
+  document.querySelectorAll('#deviceTable .dev-pick').forEach(el => { el.checked = checked; });
+  updateDevicePickCount();
+}
+
+async function requestPickedDaemonUpdate() {
+  const ids = _pickedDeviceIds();
+  if (!ids.length) return;
+  const names = ids.map(id => _deviceCache.find(d => d.id === id)?.hostname || `#${id}`);
+  const preview = names.slice(0, 5).join(', ') + (names.length > 5 ? ` 외 ${names.length - 5}대` : '');
+  if (!confirm(`장비 ${ids.length}대의 데몬을 업데이트하시겠습니까?\n${preview}\n\n각 장비의 다음 하트비트에서 최신 데몬을 내려받고 재시작합니다.`)) return;
+  try {
+    const r = await api('POST', '/devices/bulk-update', {device_ids: ids});
+    alert(`${r?.requested ?? ids.length}대에 업데이트 요청이 전송되었습니다.`);
+    loadDevices();
+  } catch (e) { alert('업데이트 요청 실패: ' + e.message); }
 }
 
 function showDeviceStatus(id) {
