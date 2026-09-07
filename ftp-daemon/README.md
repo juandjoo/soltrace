@@ -191,7 +191,7 @@ grep -i "TransferLog\|ExtendedLog" /etc/proftpd.conf /etc/proftpd/*.conf 2>/dev/
 |------|--------|------|
 | `was_url` | — | WAS 서버 주소 (설치 시 입력 / `SOLTRACE_WAS_URL`) |
 | `transfer_log` | — | xferlog 경로 (업로드/다운로드/삭제) |
-| `extended_log` | — | ExtendedLog 경로 (로그인/로그아웃/이름변경/CWD) |
+| `extended_log` | — | ExtendedLog 경로 (로그인/로그아웃/이름변경/CWD/전송 거부) |
 | `batch_size` | `200` | 1회 전송 최대 건수 |
 | `poll_interval` | `10` | 로그 파일 폴링 주기 (초) |
 | `heartbeat_interval` | `60` | WAS 생존 신호 주기 (초) |
@@ -246,9 +246,17 @@ WAS 웹 UI → **장비 관리** → 해당 장비 **확인** 처리 후 로그 
 | 파일 | 파싱 항목 |
 |------|-----------|
 | `TransferLog` | 업로드(i), 다운로드(o), 삭제(d) — 완료 여부(completion) 포함 |
-| `ExtendedAllLog` | 로그인 성공(PASS 230), 로그인 실패(PASS 530, 식별된 계정 한정), 로그아웃(QUIT), 이름변경(RNTO 250), 폴더생성(MKD 257), 폴더삭제(RMD 250), 디렉토리 이동 실패(CWD 550) |
+| `ExtendedAllLog` | 로그인 성공(PASS 230), 로그인 실패(PASS 530, 식별된 계정 한정), 로그아웃(QUIT), 이름변경(RNTO 250), 폴더생성(MKD 257), 폴더삭제(RMD 250), 디렉토리 이동 실패(CWD 550), 전송 거부(RETR·STOR 4xx·5xx) |
 
 - 로그인 실패: username이 `-`(익명·미확인)인 경우는 스캔성 노이즈로 판단해 제외
+- 전송 거부: **데이터 전송이 시작되기 전에 거절된** RETR/STOR. 스토리지 I/O 오류(451), 권한
+  없음(550), 용량 부족(452), 데이터 연결 실패(425) 등이 여기 해당하며, 전송이 시작되지 않았으므로
+  `TransferLog` 에는 행 자체가 남지 않는다. `download`/`upload` + `status=fail` 로 기록되어
+  전송 실패율 지표에 그대로 반영된다. 아래 세 가지는 제외한다.
+  - **426**(전송 중 연결 끊김) — 전송이 시작된 뒤라 `TransferLog` 에 incomplete 로 이미 남는다(이중 집계 방지)
+  - username이 `-` 인 건 — 로그인 실패와 같은 기준(스캔성 노이즈)
+  - RETR 의 `No such file or directory` — 없는 파일 조회는 클라이언트 탐색 노이즈.
+    STOR 의 같은 오류는 상위 디렉토리가 없다는 뜻이라 진짜 업로드 실패이므로 기록한다
 - 이름변경: RNFR(원본 경로)과 RNTO(대상 경로)를 세션별로 매칭하여 `from_path -> to_path` 형태로 기록
 - 중복 방지: `row_hash`(MD5, 8개 필드 기반) 기반 `ON CONFLICT DO NOTHING`
 

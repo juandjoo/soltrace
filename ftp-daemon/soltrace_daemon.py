@@ -4,7 +4,8 @@ SolTrace FTP Daemon
 proftpd 로그를 파싱하여 WAS(soltrace.mbone.net)에 전송한다.
 
 TransferLog  : 업로드(i) / 다운로드(o) / 삭제(d) 이벤트
-ExtendedAllLog: 로그인(230/PASS) / 로그아웃(QUIT) / 이름변경(RNTO) 이벤트
+ExtendedAllLog: 로그인(230/PASS) / 로그아웃(QUIT) / 이름변경(RNTO) / 폴더 생성·삭제 /
+                디렉터리 이동 실패(CWD 550) / 전송 거부(RETR·STOR 4xx·5xx) 이벤트
 """
 import ast
 import configparser
@@ -236,7 +237,7 @@ def parse_extended_log(line: str) -> Optional[dict]:
     if not m:
         return None
 
-    dt_str, client_ip, username, pid, status_code, command, path, _, _, _, _ = m.groups()
+    dt_str, client_ip, username, pid, status_code, command, path, _, _, _, err_msg = m.groups()
     status_code = int(status_code)
     username = None if username == "-" else username
     path = path.strip('"')  # proftpd가 경로를 따옴표로 감싸는 경우 제거
@@ -291,6 +292,27 @@ def parse_extended_log(line: str) -> Optional[dict]:
         entry["action"] = "cwd_fail"
         entry["status"] = "fail"
         entry["file_path"] = path
+        return entry
+
+    # 전송 거부 — 데이터 전송이 시작되기 전에 서버가 거절한 RETR/STOR.
+    # 이런 건은 TransferLog(xferlog)에 행 자체가 남지 않아 지금까지 어디에도 집계되지 않았다
+    # (스토리지 I/O 오류 451, 권한 550, 용량 부족 452, 데이터 연결 실패 425 등).
+    # 성공(2xx)과 진행 안내(1xx)는 xferlog 가 이미 세므로 4xx 이상만 본다.
+    if command in ("RETR", "STOR") and status_code >= 400:
+        # 426(전송 중 연결 끊김)은 데이터 전송이 시작된 뒤라 xferlog 에 incomplete 로 남는다.
+        # 여기서 또 세면 같은 실패가 두 번 잡힌다.
+        if status_code == 426:
+            return None
+        # 로그인 전 시도는 PASS 실패와 같은 기준으로 버린다 (익명 스캔 노이즈).
+        if username is None:
+            return None
+        # 없는 파일 조회는 클라이언트 탐색 노이즈 — 서비스 장애가 아니다.
+        # (STOR 의 "No such file" 은 상위 디렉터리가 없다는 뜻이라 진짜 업로드 실패이므로 남긴다.)
+        if command == "RETR" and "No such file" in err_msg:
+            return None
+        entry["action"] = "download" if command == "RETR" else "upload"
+        entry["status"] = "fail"
+        entry["file_path"] = None if path == "-" else path
         return entry
 
     return None

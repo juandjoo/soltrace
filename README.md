@@ -433,6 +433,10 @@ curl -H "Authorization: Bearer slt_..." "https://<주소>/api/v1/dashboard?days=
 FTP 서버 부하가 실제 서비스에 영향을 주는지를 로그에서 직접 판정한다.
 
 - **지표**: 전송 실패율(upload/download), 실효 전송속도(Σsize/Σtime), 로그인 실패율(식별된 계정 한정), CWD 실패 급증
+- **전송 실패에는 '거부된 전송'도 들어간다**: 전송이 시작되기 전에 서버가 거절한 RETR/STOR
+  (스토리지 I/O 오류·권한·용량 부족·데이터 연결 실패)은 `TransferLog` 에 행이 남지 않아 예전에는
+  어디에도 잡히지 않았다. 지금은 확장로그에서 `download`/`upload` + `fail` 로 수집한다
+  (제외 규칙은 [ftp-daemon/README.md](ftp-daemon/README.md#로그-파싱) 참고).
 - **집계**: WAS가 5분 주기로 `ftp_logs`를 10분 버킷(`service_metrics`)으로 롤업
 - **판정**: 장비별 최근 7일 **median+MAD** baseline 대비 이탈을 `service_alerts`에 적재
 - **알림**: 웹 UI 노출 + (설정 시) 웹훅 / HMS 발송 — 같은 장애는 **한 번만** 보내고 복구 시 한 번 더
