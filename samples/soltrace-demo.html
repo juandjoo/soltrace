@@ -1796,7 +1796,7 @@ body        { background: var(--st-bg); font-size: 14px; }
       <div class="modal-body">
         <input type="hidden" id="gdGroupId">
         <div class="d-flex align-items-center gap-2 mb-2">
-          <input class="form-control form-control-sm" id="gdSearch" placeholder="호스트명 / IP 검색" oninput="filterGroupDevices()" style="max-width:260px">
+          <input class="form-control form-control-sm" id="gdSearch" placeholder="호스트명 / IP / 버전 — 미등록 장비도 검색" oninput="filterGroupDevices()" style="max-width:300px">
           <button class="btn btn-xs btn-outline-secondary" onclick="toggleGroupDevices(true)">전체 선택</button>
           <button class="btn btn-xs btn-outline-secondary" onclick="toggleGroupDevices(false)">전체 해제</button>
           <span class="ms-auto small text-muted"><span id="gdCount">0</span>대 선택됨</span>
@@ -4916,21 +4916,24 @@ async function openGroupDevices(groupId) {
   list.innerHTML = targets.map(d => {
     const checked = d.groups.some(x => x.id === groupId);
     const others = d.groups.filter(x => x.id !== groupId);
-    const key = `${d.hostname} ${d.ip_address || ''}`.toLowerCase();
+    // 검색은 등록 여부와 무관하게 전체를 훑는다 — 데몬 버전으로도 찾을 수 있게 키에 넣는다
+    const key = `${d.hostname} ${d.ip_address || ''} ${d.daemon_version || ''}`.toLowerCase();
     return `
-    <div class="form-check border rounded px-2 py-1 gd-item" data-key="${esc(key)}">
+    <div class="form-check border rounded px-2 py-1 gd-item" data-key="${esc(key)}" data-member="${checked ? '1' : ''}">
       <input class="form-check-input" type="checkbox" id="gdd${d.id}" value="${d.id}"
         ${checked ? 'checked' : ''} onchange="updateGroupDeviceCount()">
       <label class="form-check-label d-flex align-items-center gap-2 flex-wrap w-100" for="gdd${d.id}">
         <span class="fw-semibold">${esc(d.hostname)}</span>
         <span class="text-muted small">${esc(d.ip_address || '-')}</span>
         ${statusBadge(d.status)}
+        <span class="small ${d.daemon_outdated ? 'text-warning fw-semibold' : 'text-muted'}" ${d.daemon_outdated ? 'title="구버전 — 데몬 업데이트가 필요합니다"' : ''}>v${esc(d.daemon_version || '-')}${d.daemon_outdated ? ' <i class="bi bi-exclamation-triangle-fill"></i>' : ''}</span>
         ${others.length ? `<span class="small text-muted">기존 그룹: ${others.map(x => esc(x.name)).join(', ')}</span>` : ''}
       </label>
     </div>`;
-  }).join('');
+  }).join('') + '<div id="gdNoVisible" class="text-center text-muted py-4 d-none"></div>';
 
   updateGroupDeviceCount();
+  filterGroupDevices();   // 처음엔 이 그룹 장비만 — 나머지는 검색해야 나온다
   bootstrap.Modal.getOrCreateInstance(document.getElementById('groupDeviceModal')).show();
 }
 
@@ -4939,11 +4942,27 @@ function updateGroupDeviceCount() {
   document.getElementById('gdCount').textContent = n;
 }
 
+// 평소에는 이 그룹에 등록된 장비만 보인다 — 그룹 구성을 확인하러 여는 창이라
+// 전체 장비를 늘어놓으면 정작 소속이 무엇인지 읽기 어렵다.
+// 검색어를 넣으면 미등록 장비까지 전체에서 찾는다(등록 대상을 넓게 훑는 경우는 검색뿐).
+// 검색으로 찾아 방금 체크한 장비는 검색어를 지워도 남는다 — 방금 한 일이 눈앞에서
+// 사라지면 저장 전에 확인할 방법이 없다.
 function filterGroupDevices() {
   const q = document.getElementById('gdSearch').value.trim().toLowerCase();
+  let shown = 0;
   document.querySelectorAll('#gdDeviceList .gd-item').forEach(el => {
-    el.classList.toggle('d-none', !!q && !el.dataset.key.includes(q));
+    const show = q
+      ? el.dataset.key.includes(q)
+      : (el.dataset.member === '1' || el.querySelector('input').checked);
+    el.classList.toggle('d-none', !show);
+    if (show) shown++;
   });
+  const empty = document.getElementById('gdNoVisible');
+  if (!empty) return;
+  empty.classList.toggle('d-none', shown > 0);
+  empty.innerHTML = q
+    ? '검색 결과가 없습니다.'
+    : '이 그룹에 등록된 장비가 없습니다.<br><span class="small">위 검색창에서 장비를 찾아 추가하세요.</span>';
 }
 
 // 검색으로 걸러진(보이는) 항목만 일괄 선택/해제한다.
