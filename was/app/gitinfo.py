@@ -43,6 +43,34 @@ _DAEMON_VER_RE = re.compile(r"""^DAEMON_VERSION\s*=\s*['"]([^'"]+)['"]""", re.M)
 _daemon_ver_cache: tuple[float, str | None] = (0.0, None)
 
 
+def _version_tuple(v: str | None) -> tuple[int, ...] | None:
+    """'1.1.2' -> (1, 1, 2). 숫자를 못 찾으면 None (판정 불가)."""
+    nums = re.findall(r"\d+", v or "")
+    if not nums:
+        return None
+    parts = [int(x) for x in nums[:3]]
+    return tuple(parts + [0] * (3 - len(parts)))     # 1.1 과 1.1.0 을 같게 본다
+
+
+def daemon_outdated(reported: str | None) -> bool:
+    """장비가 보고한 버전이 배포본보다 **낮은가**.
+
+    '다르면 구버전' 으로 두면, WAS 배포가 데몬보다 뒤처졌을 때(장비가 먼저 자가 업데이트로
+    올라간 경우) 더 새 버전이 구버전으로 표시된다. 실제로 그랬다 — 데몬 1.1.2 가 저장소
+    1.1.1 을 기준으로 ⚠︎ 를 달았다. 비교는 낮은 쪽만 본다.
+
+    한쪽이라도 모르면(미보고, 파일 없음, 형식 불명) 판정하지 않는다 — 모르는 것을 구버전이라
+    표시하면 진짜 구버전이 묻힌다.
+    """
+    latest = latest_daemon_version()
+    if not latest or not reported or reported == latest:
+        return False
+    a, b = _version_tuple(reported), _version_tuple(latest)
+    if a is None or b is None:
+        return False
+    return a < b
+
+
 def latest_daemon_version() -> str | None:
     """배포된 저장소가 담고 있는 데몬 버전. 파일이 없거나 못 읽으면 None."""
     global _daemon_ver_cache
