@@ -32,7 +32,7 @@ import requests
 
 # 데몬 버전 — 하트비트로 WAS 에 보고하고, WAS 는 배포된 저장소의 이 값을 "최신"으로 삼아
 # 장비별 구버전 여부를 판정한다. 파싱·전송 동작이 바뀌면 올린다 (여기가 유일한 출처).
-DAEMON_VERSION = "1.1.2"
+DAEMON_VERSION = "1.1.3"
 
 # 자가 업데이트 후 스스로 종료해 재시작될 때 쓰는 종료 코드.
 # 유닛이 Restart=on-failure + RestartPreventExitStatus=1 이므로 0 도 1 도 아니어야 한다.
@@ -245,10 +245,18 @@ def parse_extended_log(line: str) -> Optional[dict]:
     if not m:
         return None
 
-    dt_str, client_ip, username, pid, status_code, command, path, _, _, _, err_msg = m.groups()
+    dt_str, client_ip, username, pid, status_code, command, path, _, _, cmd_str, err_msg = m.groups()
     status_code = int(status_code)
     username = None if username == "-" else username
     path = path.strip('"')  # proftpd가 경로를 따옴표로 감싸는 경우 제거
+
+    # 경로를 해석하기 전에 실패하면(데이터 연결 실패, 권한, 상위 디렉터리 없음 등)
+    # proftpd 가 경로 필드에 "-" 만 남긴다. 그럴 때는 클라이언트가 보낸 명령 문자열
+    # ("STOR /up/a.mp4")에서 인자를 꺼내 쓴다 — 경로 없는 실패 행은 화면에서 무엇이
+    # 실패했는지 알 수 없어 쓸모가 없다. 해석된 절대경로가 있으면 그쪽을 그대로 둔다.
+    if path == "-":
+        arg = cmd_str.split(" ", 1)
+        path = arg[1].strip() if len(arg) > 1 and arg[1].strip() else None
 
     try:
         log_time = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc)
@@ -320,7 +328,7 @@ def parse_extended_log(line: str) -> Optional[dict]:
             return None
         entry["action"] = "download" if command == "RETR" else "upload"
         entry["status"] = "fail"
-        entry["file_path"] = None if path == "-" else path
+        entry["file_path"] = path
         return entry
 
     return None
