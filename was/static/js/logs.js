@@ -1,4 +1,4 @@
-const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제', cwd_fail:'디렉토리 이동 실패'};
+const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제', cwd_fail:'디렉토리 이동 실패', client_error:'클라이언트 오류'};
 // 작업 아이콘 — ACTION_KO 의 모든 action 을 덮는다(빠지면 라벨 앞이 비어 보인다).
 const ACTION_ICON = {
   upload:   '<i class="bi bi-upload action-upload"></i>',
@@ -10,6 +10,7 @@ const ACTION_ICON = {
   mkdir:    '<i class="bi bi-folder-plus action-mkdir"></i>',
   rmdir:    '<i class="bi bi-folder-minus action-rmdir"></i>',
   cwd_fail: '<i class="bi bi-folder-x action-cwd_fail"></i>',
+  client_error: '<i class="bi bi-person-exclamation action-client_error"></i>',
 };
 
 let _logGroupMap = {};   // id → group object
@@ -341,7 +342,7 @@ function _logParams({skipUsernames = false} = {}) {
   if (ip) params.set('client_ip', ip);
   if (filePath) params.set('file_path', filePath);
   if (action === '__exclude_login_logout__') params.set('exclude_actions', 'login,logout');
-  else if (action === '__transfer_only__') params.set('exclude_actions', 'login,logout,cwd_fail,rename,mkdir,rmdir,delete');
+  else if (action === '__transfer_only__') params.set('exclude_actions', 'login,logout,cwd_fail,client_error,rename,mkdir,rmdir,delete');
   else if (action) params.set('action', action);
   if (status) params.set('status', status);
   // 날짜 단위 입력 — 시작일은 00:00:00, 종료일은 23:59:59.999 로 그 날 전체를 덮는다

@@ -32,7 +32,7 @@ const API_PARAMS = [
   ['usernames', 'vod_a,vod_b', 'FTP 계정 여러 개를 <b>정확히</b> 지정(쉼표 구분). <code>username</code> 과 함께 쓰면 둘 다 적용된다.'],
   ['client_ip', '192.168.', '클라이언트 IP 부분 일치.'],
   ['file_path', '.mp4', '파일 경로/이름 부분 일치.'],
-  ['action', 'upload', 'upload, download, delete, rename, login, logout, mkdir, rmdir, cwd_fail'],
+  ['action', 'upload', 'upload, download, delete, rename, login, logout, mkdir, rmdir, cwd_fail, client_error'],
   ['exclude_actions', 'login,logout', '제외할 작업(쉼표 구분). <code>action</code> 과 함께 쓰면 무시된다.'],
   ['status', 'fail', 'success 또는 fail.'],
   ['page / size', '1 / 50', '페이지 번호와 크기(최대 500). 목록 조회에만 해당.'],

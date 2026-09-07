@@ -13,7 +13,8 @@ from app import write_buffer as wb
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 
-VALID_ACTIONS = {"upload", "download", "delete", "rename", "login", "logout", "mkdir", "rmdir", "cwd_fail"}
+VALID_ACTIONS = {"upload", "download", "delete", "rename", "login", "logout", "mkdir", "rmdir",
+                 "cwd_fail", "client_error"}
 
 
 def _row_hash(entry: FtpLog) -> str:

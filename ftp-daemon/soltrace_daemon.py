@@ -32,7 +32,7 @@ import requests
 
 # 데몬 버전 — 하트비트로 WAS 에 보고하고, WAS 는 배포된 저장소의 이 값을 "최신"으로 삼아
 # 장비별 구버전 여부를 판정한다. 파싱·전송 동작이 바뀌면 올린다 (여기가 유일한 출처).
-DAEMON_VERSION = "1.1.5"
+DAEMON_VERSION = "1.1.6"
 
 # 자가 업데이트 후 스스로 종료해 재시작될 때 쓰는 종료 코드.
 # 유닛이 Restart=on-failure + RestartPreventExitStatus=1 이므로 0 도 1 도 아니어야 한다.
@@ -229,6 +229,24 @@ _EXT_RE = re.compile(
 
 _MULTI_SLASH = re.compile(r"/{2,}")
 
+# 명령 문법·인자 자체가 잘못된 응답 코드. 서버가 무엇을 하기도 전에 거절한다.
+_CLIENT_ERROR_CODES = (500, 501, 502, 504)
+
+
+def _is_client_error(status_code, path):
+    """클라이언트가 잘못 보낸 요청인가 — 서버 상태와 무관하게 그 요청으로는 성공할 수 없다.
+
+    - 파일명 없는 전송: `STOR /vod//` 처럼 디렉터리와 파일명을 이어 붙이다 파일명이 비어
+      나간 요청(정규화 후 '/' 로 끝난다). 디렉터리에는 저장할 수 없으니 늘 실패한다.
+    - 명령 문법 오류(500/501/502/504).
+
+    전송 실패율에 섞이면 스토리지나 장비를 의심하며 쫓게 된다. `cwd_fail` 과 같은 취지로
+    따로 세어 로그에서는 보이되 지표·알림에는 들어가지 않게 한다.
+    """
+    if status_code in _CLIENT_ERROR_CODES:
+        return True
+    return bool(path) and path.endswith("/")
+
 
 def _norm_path(path):
     """겹친 슬래시를 하나로 줄인다.
@@ -344,6 +362,11 @@ def parse_extended_log(line: str) -> Optional[dict]:
         # (STOR 의 "No such file" 은 상위 디렉터리가 없다는 뜻이라 진짜 업로드 실패이므로 남긴다.)
         if command == "RETR" and "No such file" in err_msg:
             return None
+        if _is_client_error(status_code, path):
+            entry["action"] = "client_error"
+            entry["status"] = "fail"
+            entry["file_path"] = path
+            return entry
         entry["action"] = "download" if command == "RETR" else "upload"
         entry["status"] = "fail"
         entry["file_path"] = path

@@ -171,6 +171,7 @@ body        { background: var(--st-bg); font-size: 14px; }
 .action-mkdir             { color: #0dcaf0; }
 .action-rmdir             { color: #6f42c1; }
 .action-cwd_fail          { color: #b02a37; }
+.action-client_error      { color: #8a6d3b; }
 .size-val                 { font-family: monospace; }
 
 /* ── API 가이드 ────────────────────────────────────────────────── */

@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS ftp_logs (
     log_time TIMESTAMPTZ NOT NULL,
     client_ip VARCHAR(45),
     username VARCHAR(255),
-    action VARCHAR(20) NOT NULL CHECK (action IN ('upload', 'download', 'delete', 'rename', 'login', 'logout', 'mkdir', 'rmdir', 'cwd_fail')),
+    action VARCHAR(20) NOT NULL CHECK (action IN ('upload', 'download', 'delete', 'rename', 'login', 'logout', 'mkdir', 'rmdir', 'cwd_fail', 'client_error')),
     file_path TEXT,
     file_size BIGINT DEFAULT 0,
     transfer_time FLOAT DEFAULT 0,
@@ -305,7 +305,7 @@ CREATE TABLE IF NOT EXISTS service_alert_episodes (
 CREATE INDEX IF NOT EXISTS idx_alert_episodes_recovery ON service_alert_episodes(recovery_notified)
     WHERE resolved_at IS NOT NULL AND recovery_notified = FALSE;
 
--- ftp_logs action CHECK constraint 마이그레이션 (cwd_fail 추가)
+-- ftp_logs action CHECK constraint 마이그레이션 (cwd_fail, client_error 추가)
 -- pg_constraint 사용 (파티션 테이블 포함 신뢰성 높음)
 DO $$ BEGIN
     IF EXISTS (
@@ -318,7 +318,7 @@ DO $$ BEGIN
 END $$;
 -- NOT VALID: 기존 행 재검증 스킵 → 락 최소화 (기존 action 값은 모두 새 제약 충족)
 ALTER TABLE ftp_logs ADD CONSTRAINT ftp_logs_action_check
-    CHECK (action IN ('upload','download','delete','rename','login','logout','mkdir','rmdir','cwd_fail'))
+    CHECK (action IN ('upload','download','delete','rename','login','logout','mkdir','rmdir','cwd_fail','client_error'))
     NOT VALID;
 
 -- ────────────────────────────────────────────────────────────────────────────

@@ -184,6 +184,7 @@ body        { background: var(--st-bg); font-size: 14px; }
 .action-mkdir             { color: #0dcaf0; }
 .action-rmdir             { color: #6f42c1; }
 .action-cwd_fail          { color: #b02a37; }
+.action-client_error      { color: #8a6d3b; }
 .size-val                 { font-family: monospace; }
 
 /* ── API 가이드 ────────────────────────────────────────────────── */
@@ -602,6 +603,7 @@ body        { background: var(--st-bg); font-size: 14px; }
             <option value="mkdir">폴더생성</option>
             <option value="rmdir">폴더삭제</option>
             <option value="cwd_fail">디렉토리 이동 실패</option>
+            <option value="client_error">클라이언트 오류</option>
           </select>
           <select class="form-select form-select-sm" style="flex:0.7;min-width:80px" id="logStatusFilter" onchange="searchLogs(1)">
             <option value="">전체 상태</option>
@@ -1965,7 +1967,7 @@ body        { background: var(--st-bg); font-size: 14px; }
   const LOG_TOTAL = 12483;
   function makeLog(i) {
     const dev = ACTIVE_DEVICES[i % ACTIVE_DEVICES.length];
-    const action = pick(['upload', 'upload', 'download', 'download', 'delete', 'login', 'logout', 'mkdir', 'cwd_fail']);
+    const action = pick(['upload', 'upload', 'download', 'download', 'delete', 'login', 'logout', 'mkdir', 'cwd_fail', 'client_error']);
     const failed = rnd() < 0.06;
     const isTransfer = action === 'upload' || action === 'download';
     const size = isTransfer ? between(120 * 1024, 4 * 1024 * 1024 * 1024) : 0;
@@ -1980,11 +1982,11 @@ body        { background: var(--st-bg); font-size: 14px; }
       action,
       file_path: isTransfer || action === 'delete' || action === 'mkdir'
         ? pick(PATHS).replace(/\{n\}/g, () => String(between(1, 9999)))
-        : (action === 'cwd_fail' ? '/upload/vod/2026/08' : null),
+        : (action === 'cwd_fail' ? '/upload/vod/2026/08' : (action === 'client_error' ? '/upload/vod/2026/09/' : null)),
       file_size: size,
       transfer_time: isTransfer ? Number((size / (1024 * 1024) / between(8, 90) + 0.2).toFixed(2)) : 0,
       transfer_type: isTransfer ? 'b' : null,
-      status: action === 'cwd_fail' ? 'fail' : (failed ? 'fail' : 'success'),
+      status: (action === 'cwd_fail' || action === 'client_error') ? 'fail' : (failed ? 'fail' : 'success'),
     };
   }
 
@@ -2015,7 +2017,7 @@ body        { background: var(--st-bg); font-size: 14px; }
         .sort((a, b) => b.count - a.count),
       top_groups: GROUPS.map(g => ({ label: g.name, customer: g.customer, count: between(500, 3500), bytes: between(40, 1000) * 1024 * 1024 * 1024 }))
         .sort((a, b) => b.bytes - a.bytes),
-      by_action: { upload: sum('uploads'), download: sum('downloads'), delete: sum('deletes'), login: between(400, 900), logout: between(380, 880), mkdir: between(30, 120), cwd_fail: between(10, 90) },
+      by_action: { upload: sum('uploads'), download: sum('downloads'), delete: sum('deletes'), login: between(400, 900), logout: between(380, 880), mkdir: between(30, 120), cwd_fail: between(10, 90), client_error: between(5, 40) },
     };
   }
 
@@ -5073,7 +5075,7 @@ async function saveGroupDevices() {
 }
 
 /* === logs.js === */
-const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제', cwd_fail:'디렉토리 이동 실패'};
+const ACTION_KO = {upload:'업로드', download:'다운로드', delete:'삭제', rename:'이름변경', login:'로그인', logout:'로그아웃', mkdir:'폴더생성', rmdir:'폴더삭제', cwd_fail:'디렉토리 이동 실패', client_error:'클라이언트 오류'};
 // 작업 아이콘 — ACTION_KO 의 모든 action 을 덮는다(빠지면 라벨 앞이 비어 보인다).
 const ACTION_ICON = {
   upload:   '<i class="bi bi-upload action-upload"></i>',
@@ -5085,6 +5087,7 @@ const ACTION_ICON = {
   mkdir:    '<i class="bi bi-folder-plus action-mkdir"></i>',
   rmdir:    '<i class="bi bi-folder-minus action-rmdir"></i>',
   cwd_fail: '<i class="bi bi-folder-x action-cwd_fail"></i>',
+  client_error: '<i class="bi bi-person-exclamation action-client_error"></i>',
 };
 
 let _logGroupMap = {};   // id → group object
@@ -5416,7 +5419,7 @@ function _logParams({skipUsernames = false} = {}) {
   if (ip) params.set('client_ip', ip);
   if (filePath) params.set('file_path', filePath);
   if (action === '__exclude_login_logout__') params.set('exclude_actions', 'login,logout');
-  else if (action === '__transfer_only__') params.set('exclude_actions', 'login,logout,cwd_fail,rename,mkdir,rmdir,delete');
+  else if (action === '__transfer_only__') params.set('exclude_actions', 'login,logout,cwd_fail,client_error,rename,mkdir,rmdir,delete');
   else if (action) params.set('action', action);
   if (status) params.set('status', status);
   // 날짜 단위 입력 — 시작일은 00:00:00, 종료일은 23:59:59.999 로 그 날 전체를 덮는다
@@ -5712,7 +5715,7 @@ const API_PARAMS = [
   ['usernames', 'vod_a,vod_b', 'FTP 계정 여러 개를 <b>정확히</b> 지정(쉼표 구분). <code>username</code> 과 함께 쓰면 둘 다 적용된다.'],
   ['client_ip', '192.168.', '클라이언트 IP 부분 일치.'],
   ['file_path', '.mp4', '파일 경로/이름 부분 일치.'],
-  ['action', 'upload', 'upload, download, delete, rename, login, logout, mkdir, rmdir, cwd_fail'],
+  ['action', 'upload', 'upload, download, delete, rename, login, logout, mkdir, rmdir, cwd_fail, client_error'],
   ['exclude_actions', 'login,logout', '제외할 작업(쉼표 구분). <code>action</code> 과 함께 쓰면 무시된다.'],
   ['status', 'fail', 'success 또는 fail.'],
   ['page / size', '1 / 50', '페이지 번호와 크기(최대 500). 목록 조회에만 해당.'],

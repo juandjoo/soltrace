@@ -93,7 +93,7 @@
   const LOG_TOTAL = 12483;
   function makeLog(i) {
     const dev = ACTIVE_DEVICES[i % ACTIVE_DEVICES.length];
-    const action = pick(['upload', 'upload', 'download', 'download', 'delete', 'login', 'logout', 'mkdir', 'cwd_fail']);
+    const action = pick(['upload', 'upload', 'download', 'download', 'delete', 'login', 'logout', 'mkdir', 'cwd_fail', 'client_error']);
     const failed = rnd() < 0.06;
     const isTransfer = action === 'upload' || action === 'download';
     const size = isTransfer ? between(120 * 1024, 4 * 1024 * 1024 * 1024) : 0;
@@ -108,11 +108,11 @@
       action,
       file_path: isTransfer || action === 'delete' || action === 'mkdir'
         ? pick(PATHS).replace(/\{n\}/g, () => String(between(1, 9999)))
-        : (action === 'cwd_fail' ? '/upload/vod/2026/08' : null),
+        : (action === 'cwd_fail' ? '/upload/vod/2026/08' : (action === 'client_error' ? '/upload/vod/2026/09/' : null)),
       file_size: size,
       transfer_time: isTransfer ? Number((size / (1024 * 1024) / between(8, 90) + 0.2).toFixed(2)) : 0,
       transfer_type: isTransfer ? 'b' : null,
-      status: action === 'cwd_fail' ? 'fail' : (failed ? 'fail' : 'success'),
+      status: (action === 'cwd_fail' || action === 'client_error') ? 'fail' : (failed ? 'fail' : 'success'),
     };
   }
 
@@ -143,7 +143,7 @@
         .sort((a, b) => b.count - a.count),
       top_groups: GROUPS.map(g => ({ label: g.name, customer: g.customer, count: between(500, 3500), bytes: between(40, 1000) * 1024 * 1024 * 1024 }))
         .sort((a, b) => b.bytes - a.bytes),
-      by_action: { upload: sum('uploads'), download: sum('downloads'), delete: sum('deletes'), login: between(400, 900), logout: between(380, 880), mkdir: between(30, 120), cwd_fail: between(10, 90) },
+      by_action: { upload: sum('uploads'), download: sum('downloads'), delete: sum('deletes'), login: between(400, 900), logout: between(380, 880), mkdir: between(30, 120), cwd_fail: between(10, 90), client_error: between(5, 40) },
     };
   }
 
