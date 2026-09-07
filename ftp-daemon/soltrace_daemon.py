@@ -32,7 +32,7 @@ import requests
 
 # 데몬 버전 — 하트비트로 WAS 에 보고하고, WAS 는 배포된 저장소의 이 값을 "최신"으로 삼아
 # 장비별 구버전 여부를 판정한다. 파싱·전송 동작이 바뀌면 올린다 (여기가 유일한 출처).
-DAEMON_VERSION = "1.1.4"
+DAEMON_VERSION = "1.1.5"
 
 # 자가 업데이트 후 스스로 종료해 재시작될 때 쓰는 종료 코드.
 # 유닛이 Restart=on-failure + RestartPreventExitStatus=1 이므로 0 도 1 도 아니어야 한다.
@@ -191,7 +191,7 @@ def parse_transfer_log(line: str) -> Optional[dict]:
         transfer_time = float(parts[5])
         client_ip = parts[6]
         file_size = int(parts[7])
-        filename = parts[8].strip('"')
+        filename = _norm_path(parts[8].strip('"'))
         transfer_type_code = parts[9]
         direction = parts[11]   # i=upload, o=download, d=delete
         username = parts[13]
@@ -216,11 +216,28 @@ def parse_transfer_log(line: str) -> Optional[dict]:
         return None
 
 
+# 경로 자리는 proftpd 가 따옴표로 감싸므로 "..." 를 통째로 받는다.
+# \S+ 로만 받던 때는 공백이 든 파일명("/vod/my file.mp4")에서 매치가 통째로 실패해
+# 그 줄이 조용히 버려졌다 — 전송 실패·CWD 실패·폴더 생성이 다 같이 사라졌다.
+_QUOTED_OR_BARE = r'("[^"]*"|\S+)'
 _EXT_RE = re.compile(
     r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+'
-    r'(\S+)\s+(\S+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+'
-    r'"([^"]+)"\s+"([^"]*)"'
+    r'(\S+)\s+(\S+)\s+(\d+)\s+(\d+)\s+(\S+)\s+'
+    + _QUOTED_OR_BARE + r'\s+' + _QUOTED_OR_BARE + r'\s+' + _QUOTED_OR_BARE + r'\s+'
+    + r'"([^"]+)"\s+"([^"]*)"'
 )
+
+_MULTI_SLASH = re.compile(r"/{2,}")
+
+
+def _norm_path(path):
+    """겹친 슬래시를 하나로 줄인다.
+
+    클라이언트가 디렉터리와 파일명을 이어 붙이면서 '/vod//a.mp4' 처럼 보내는 경우가 있다.
+    POSIX 에서 같은 파일이므로 집계도 한 줄로 모여야 한다. 파일명이 비어 '/vod//' 로 오는
+    (그래서 실패하는) 요청은 '/vod/' 로 남아 '파일명이 없다'는 것이 그대로 보인다.
+    """
+    return _MULTI_SLASH.sub("/", path) if path else path
 _rnfr_sessions: dict = {}   # pid -> (path, monotonic_time)
 _RNFR_TTL = 300.0           # RNFR 미완료 세션 만료 시간 (초)
 
@@ -257,6 +274,7 @@ def parse_extended_log(line: str) -> Optional[dict]:
     if path == "-":
         arg = cmd_str.split(" ", 1)
         path = arg[1].strip() if len(arg) > 1 and arg[1].strip() else None
+    path = _norm_path(path)
 
     try:
         log_time = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc)
