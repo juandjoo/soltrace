@@ -32,7 +32,11 @@ import requests
 
 # 데몬 버전 — 하트비트로 WAS 에 보고하고, WAS 는 배포된 저장소의 이 값을 "최신"으로 삼아
 # 장비별 구버전 여부를 판정한다. 파싱·전송 동작이 바뀌면 올린다 (여기가 유일한 출처).
-DAEMON_VERSION = "1.1.1"
+DAEMON_VERSION = "1.1.2"
+
+# 자가 업데이트 후 스스로 종료해 재시작될 때 쓰는 종료 코드.
+# 유닛이 Restart=on-failure + RestartPreventExitStatus=1 이므로 0 도 1 도 아니어야 한다.
+RESTART_EXIT_CODE = 42
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -674,6 +678,42 @@ class SolTraceDaemon:
             self._prev_status_sent.update(dirty)
         return dirty  # 빈 dict 가능 (변화 없으면 heartbeat body 최소화)
 
+    def _restart_service(self):
+        """내려받은 새 코드로 다시 뜬다.
+
+        데몬은 유닛이 `User=soltrace` 로 지정한 **비특권 프로세스**라 `systemctl restart` 가
+        폴리킷에 막힌다. 1.1.1 이전에는 이 호출이 `check=False` 라 실패가 어디에도 남지 않아,
+        파일만 새것이고 돌고 있는 코드는 옛것인 상태가 조용히 이어졌다. 그래서 두 단계로 한다.
+
+          1) systemctl 을 시도한다 — root 로 도는 설치에서는 이게 즉시 먹는다.
+          2) 막히면 **스스로 종료**한다. 유닛의 `Restart=on-failure` 가 `RestartSec` 뒤에 다시
+             띄우므로 아무 권한도 필요 없다. 종료 코드는 1 이면 안 된다 —
+             `RestartPreventExitStatus=1` 이 붙어 있어 systemd 가 다시 띄우지 않는다.
+
+        곧바로 프로세스를 죽이지 않고 정상 종료 경로를 탄다 — 스레드가 끝나기를 기다렸다 내려간다.
+        아직 전송하지 못한 구간은 tailer 위치가 확정되지 않았으므로 다시 뜰 때 그 자리부터 읽는다.
+        """
+        try:
+            r = subprocess.run(
+                # --no-block: 자기가 속한 유닛이라 완료를 기다리면 서로를 기다리게 된다
+                ["systemctl", "restart", "--no-block", "soltrace-daemon"],
+                capture_output=True, text=True, check=False,
+            )
+        except OSError as e:
+            log.warning("systemctl 실행 불가: %s — 스스로 종료해 systemd 가 다시 띄우게 한다", e)
+        else:
+            if r.returncode == 0:
+                log.info("Restart requested via systemctl — 새 버전으로 올라옵니다")
+                return
+            log.warning(
+                "systemctl restart 거부됨 (rc=%d): %s — 스스로 종료해 systemd 가 다시 띄우게 한다",
+                r.returncode, (r.stderr or "").strip()[:200],
+            )
+        log.info("Exiting with code %d for restart (Restart=on-failure, RestartSec)",
+                 RESTART_EXIT_CODE)
+        self._exit_code = RESTART_EXIT_CODE
+        self.running = False
+
     def _write_version_file(self):
         """돌고 있는 데몬 버전을 장비에 남긴다.
 
@@ -751,7 +791,13 @@ class SolTraceDaemon:
                         ast.parse(content.decode("utf-8"))
                     except SyntaxError as e:
                         raise RuntimeError(f"{fname} 구문 오류: {e}")
-                log.info("Downloaded: %s (%d bytes) sha256=%s", fname, len(content), sha256)
+                ver = ""
+                if fname == "soltrace_daemon.py":
+                    m = re.search(r'''^DAEMON_VERSION\s*=\s*['"]([^'"]+)['"]''',
+                                  content.decode("utf-8", "replace"), re.M)
+                    # 재시작 전에도 '무엇을 받았는지'는 로그로 확인할 수 있어야 한다.
+                    ver = f" v{m.group(1)} (실행 중: v{DAEMON_VERSION})" if m else ""
+                log.info("Downloaded: %s%s (%d bytes) sha256=%s", fname, ver, len(content), sha256)
                 tmp.write_bytes(content)
                 tmps.append((tmp, BASE_DIR / fname))
 
@@ -769,20 +815,7 @@ class SolTraceDaemon:
                 )
 
             log.info("Self-update complete — restarting service")
-            # --no-block: 자기가 속한 유닛을 재시작하는 것이라 완료를 기다리면 서로를 기다린다.
-            # 결과를 반드시 남긴다 — 조용히 실패하면 파일만 새것이고 돌고 있는 코드는 옛것이라
-            # 버전이 그대로여서 원인을 짚기 어렵다.
-            r = subprocess.run(
-                ["systemctl", "restart", "--no-block", "soltrace-daemon"],
-                capture_output=True, text=True, check=False,
-            )
-            if r.returncode == 0:
-                log.info("Restart requested — 새 버전으로 올라옵니다")
-            else:
-                log.error(
-                    "Restart failed (rc=%d): %s — 장비에서 'systemctl restart soltrace-daemon' 을 직접 실행하세요",
-                    r.returncode, (r.stderr or "").strip()[:300],
-                )
+            self._restart_service()
 
         except Exception as e:
             log.error("Self-update failed: %s", e)

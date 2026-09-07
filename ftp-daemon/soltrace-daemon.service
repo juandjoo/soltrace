@@ -13,6 +13,10 @@ Group=soltrace
 WorkingDirectory=/opt/soltrace-daemon
 ExecStart=/opt/soltrace-daemon/venv/bin/python3 soltrace_daemon.py
 
+# 자가 업데이트 후 데몬이 스스로 종료(exit 42)해 여기서 다시 뜬다.
+# 데몬은 User=soltrace 비특권 프로세스라 systemctl restart 를 스스로 호출할 수 없다.
+# 그래서 on-failure 를 없애거나 42 를 SuccessExitStatus 에 넣으면 자가 업데이트가 멈춘다.
+# exit 1 은 복구 불가 상황(안전 종료)이라 RestartPreventExitStatus 로 재시작을 막는다.
 Restart=on-failure
 RestartSec=10
 RestartPreventExitStatus=1

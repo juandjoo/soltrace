@@ -356,6 +356,9 @@ sudo /opt/soltrace-daemon/venv/bin/python3 /opt/soltrace-daemon/soltrace_bulk.py
 ### 장비에 남는 VERSION 파일
 
 데몬은 **시작할 때** 설치 디렉터리에 `VERSION` 을 쓴다(쓸 수 없으면 `state_dir`).
+자가 업데이트 직후가 아니라 **다시 뜬 뒤에** 생긴다 — 이 파일이 가리키는 것은 디스크에 있는
+파일의 버전이 아니라 지금 메모리에서 도는 버전이기 때문이다. 그래서 1.1.1 로 처음 올라갈 때는
+파일이 아직 없고, 재시작이 한 번 일어난 뒤부터 보인다.
 
 ```
 $ cat /opt/soltrace-daemon/VERSION
@@ -369,7 +372,8 @@ started: 2026-09-07T13:52:04+09:00
 
 | 버전 | 변경 |
 |------|------|
-| `1.1.1` | 시작 시 `VERSION` 파일 기록, 하트비트에도 버전 보고, 자가 업데이트 재시작 결과를 로그에 남김(`--no-block`) |
+| `1.1.2` | 비특권 계정에서도 자가 업데이트가 재시작되게 — systemctl 이 막히면 스스로 종료(exit 42)하고 systemd 가 다시 띄운다. 내려받은 파일의 버전도 로그에 남김 |
+| `1.1.1` | 시작 시 `VERSION` 파일 기록, 하트비트에도 버전 보고, 자가 업데이트 재시작 결과를 로그에 남김 |
 | `1.1.0` | 전송이 시작되기 전에 거부된 RETR/STOR 을 실패로 수집 |
 | `1.0.0` | 최초 |
 
@@ -379,25 +383,36 @@ started: 2026-09-07T13:52:04+09:00
 
 ### 업데이트를 눌렀는데 화면의 데몬 버전이 그대로다
 
-로그에 `Self-update complete — restarting service` 까지 찍혔다면 **파일은 바뀐 것**이고,
-남은 것은 재시작뿐이다. 재시작이 안 되면 새 파일이 디스크에만 있고 돌고 있는 프로세스는
-옛 코드라 버전이 그대로다.
+**1.1.2 미만에서 알려진 문제다.** 파일은 바뀌었는데 프로세스가 재시작되지 않은 것이다.
+
+원인 — 데몬은 유닛이 `User=soltrace` 로 지정한 **비특권 프로세스**인데 자가 업데이트 코드가
+`systemctl restart` 를 직접 호출했다. 폴리킷이 이를 막고, 호출이 `check=False` 라 실패가
+어디에도 남지 않았다. 그래서 디스크는 새 코드, 도는 프로세스는 옛 코드인 상태가 조용히 이어졌다.
 
 ```bash
-# 파일 버전 / 실행 중 버전을 나눠서 본다
-grep "^DAEMON_VERSION" /opt/soltrace-daemon/soltrace_daemon.py   # 파일
-cat /opt/soltrace-daemon/VERSION                                  # 실제로 시작된 버전·시각
+# 파일 버전(내려받은 것) / 실행 중 버전을 나눠서 본다
+grep "^DAEMON_VERSION" /opt/soltrace-daemon/soltrace_daemon.py   # 파일 — 여기가 새것이면 다운로드는 성공
+cat /opt/soltrace-daemon/VERSION                                  # 실제로 시작된 버전·시각 (1.1.1+)
 grep "daemon starting" /var/log/soltrace-daemon/daemon.log | tail -3
 ```
 
-`VERSION` 의 시작 시각이 업데이트 시각보다 **이전**이면 재시작이 안 된 것이다.
+파일은 새것인데 `daemon starting` 이 업데이트 시각보다 이전이면 재시작이 안 된 것이다.
+**한 번만 수동으로 올리면 된다.**
 
 ```bash
 sudo systemctl restart soltrace-daemon
 ```
 
-1.1.1 부터는 재시작 명령의 결과를 로그에 남기므로(`Restart failed (rc=...)`) 권한 문제인지
-유닛 이름 문제인지 바로 보인다. 그 이전 버전은 `check=False` 로 조용히 넘어갔다.
+1.1.2 부터는 권한이 필요 없다. `systemctl` 을 먼저 시도하고, 막히면 **스스로 종료(exit 42)**
+해 유닛의 `Restart=on-failure` 가 `RestartSec=10` 뒤에 다시 띄운다. 어느 경로를 탔는지는
+로그에 남는다(`Restart requested via systemctl` / `systemctl restart 거부됨 (rc=...)`).
+
+> 1.1.2 자체를 적용하려면 그 한 번의 수동 재시작이 필요하다 — 재시작을 고치는 코드가
+> 재시작되어야 도는 구조라 어쩔 수 없다. 그 뒤로는 자동이다.
+
+> 유닛의 `StartLimitBurst=3` / `StartLimitIntervalSec=300` 때문에 5분 안에 세 번 넘게
+> 재시작하면 systemd 가 더 띄우지 않는다. 업데이트 버튼을 연타하지 않는다.
+> 막혔다면 `systemctl reset-failed soltrace-daemon && systemctl start soltrace-daemon`.
 
 ### `ImportError: urllib3 v2 only supports OpenSSL 1.1.1+`
 
