@@ -142,6 +142,9 @@ body        { background: var(--st-bg); font-size: 14px; }
 
 .table th                { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--st-muted); }
 #loginModal .modal-dialog { max-width: 380px; margin-top: 15vh; }
+/* 로그인 화면 설정(설정 > 로그인 설정)으로 올린 로고 · 경고 문구 */
+.login-logo { height: 32px; max-width: 180px; object-fit: contain; }
+.login-warning { white-space: pre-wrap; }
 
 /* ── 대시보드 ──────────────────────────────────────────────────── */
 .dash-card       { border: 1px solid rgba(13,110,253,.15) !important; transition: box-shadow .15s ease, transform .15s ease; }
@@ -155,6 +158,19 @@ body        { background: var(--st-bg); font-size: 14px; }
 /* ── 로그 테이블 ───────────────────────────────────────────────── */
 #page-logs table td, #page-logs table th { padding: 5px 10px; }
 #page-logs table thead th:not(:last-child) { border-right: 2px solid #ced4da; }
+/* 열 너비 조절 손잡이 — 열 경계선 위에 겹쳐 둔다(보이지 않지만 잡히는 폭 10px).
+   경계선 자체는 2px 라 그냥은 잡기 어렵고, 손잡이가 없으면 조절이 가능한지도 알 수 없다. */
+#page-logs table thead th          { position: relative; }
+#page-logs table thead th .col-grip {
+  position: absolute; top: 0; right: -5px; width: 10px; height: 100%;
+  cursor: col-resize; z-index: 3; user-select: none;
+}
+#page-logs table thead th .col-grip::after {
+  content: ''; position: absolute; top: 12%; bottom: 12%; left: 4px; width: 2px;
+  background: var(--st-brand); border-radius: 1px; opacity: 0; transition: opacity .12s ease;
+}
+#page-logs table thead th .col-grip:hover::after,
+#page-logs table thead th .col-grip:active::after { opacity: 1; }
 /* table-layout:fixed + nowrap 조합은 열보다 긴 글자가 다음 칸 위로 그려진다.
    (예: '작업' 열의 '디렉토리 이동 실패'가 파일 경로를 침범) 넘치면 잘라내고 …로 표시한다.
    파일 경로처럼 줄바꿈되는 칸은 ellipsis 가 적용되지 않으므로 영향이 없다. */
@@ -261,10 +277,14 @@ body        { background: var(--st-bg); font-size: 14px; }
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header border-0 pb-0">
-        <h5 class="modal-title"><i class="bi bi-hdd-network me-2 text-primary"></i>SolTrace</h5>
+        <h5 class="modal-title d-flex align-items-center">
+          <img id="loginLogo" class="login-logo d-none me-2" alt="">
+          <i id="loginLogoIcon" class="bi bi-hdd-network me-2 text-primary"></i><span id="loginTitle">SolTrace</span>
+        </h5>
       </div>
       <div class="modal-body">
-        <p class="text-muted small mb-3">FTP Log Analyzer에 로그인하세요.</p>
+        <p class="text-muted small mb-3" id="loginSubtitle">FTP Log Analyzer에 로그인하세요.</p>
+        <div id="loginWarning" class="alert alert-warning d-none small py-2 login-warning"></div>
         <div id="loginError" class="alert alert-danger d-none small py-2"></div>
         <div id="loginIpBlocked" class="alert alert-warning d-none small py-2">
           <i class="bi bi-shield-x me-1"></i>이 IP에서는 접속이 차단되어 있습니다.<br>
@@ -548,6 +568,10 @@ body        { background: var(--st-bg); font-size: 14px; }
           <button class="btn btn-sm btn-outline-primary" onclick="exportXlsx()">
             <i class="bi bi-file-earmark-excel me-1"></i>Excel
           </button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="resetLogColWidths()"
+                  title="열 너비 초기화 — 표 머리글의 열 경계를 끌면 너비가 바뀌고, 두 번 누르면 내용에 맞춰집니다">
+            <i class="bi bi-layout-three-columns"></i>
+          </button>
         </div>
       </div>
       <!-- 검색 필터 -->
@@ -610,16 +634,19 @@ body        { background: var(--st-bg); font-size: 14px; }
       <div class="card">
         <div class="table-responsive">
           <table class="table table-hover mb-0 table-sm" style="table-layout:fixed;min-width:1260px">
+            <!-- 기본 폭. 폭이 없는 열(파일 경로)이 남는 자리를 모두 가져가므로 파일 경로만 비워 둔다.
+                 한글 라벨은 OS/폰트에 따라 10~15% 넓게 그려지므로 실측값에 그만큼 여유를 얹었다.
+                 (macOS 실측: 작업 129px → 윈도우 기준 여유 포함 155px) -->
             <colgroup id="logColGroup">
-              <col data-idx="0" style="width:168px"> <!-- 시간 (YYYY/MM/DD HH:MM:SS 전체가 보이는 폭) -->
-              <col data-idx="1" style="width:140px"> <!-- 장비 -->
+              <col data-idx="0" style="width:160px"> <!-- 시간 (YYYY/MM/DD HH:MM:SS 전체가 보이는 폭) -->
+              <col data-idx="1" style="width:120px"> <!-- 장비 -->
               <col data-idx="2" style="width:120px"> <!-- 사용자 -->
-              <col data-idx="3" style="width:130px"> <!-- IP -->
-              <col data-idx="4" style="width:132px"> <!-- 작업 (아이콘 + '디렉토리 이동 실패' 기준) -->
+              <col data-idx="3" style="width:125px"> <!-- IP -->
+              <col data-idx="4" style="width:155px"> <!-- 작업 (아이콘 + '디렉토리 이동 실패' 기준) -->
               <col data-idx="5">                     <!-- 파일 경로 -->
-              <col data-idx="6" style="width:90px">  <!-- 크기 -->
-              <col data-idx="7" style="width:90px">  <!-- 전송시간 -->
-              <col data-idx="8" style="width:70px">  <!-- 상태 -->
+              <col data-idx="6" style="width:92px">  <!-- 크기 -->
+              <col data-idx="7" style="width:82px">  <!-- 전송시간 -->
+              <col data-idx="8" style="width:68px">  <!-- 상태 -->
             </colgroup>
             <thead class="table-light">
               <tr style="white-space:nowrap">
@@ -1103,6 +1130,7 @@ body        { background: var(--st-bg); font-size: 14px; }
             <li class="nav-item"><a class="nav-link active" href="#" onclick="settingsTab('telco')"><i class="bi bi-telephone-fill me-2"></i>텔코 정보</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('security')"><i class="bi bi-shield-lock-fill me-2"></i>계정 보안</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('admins')"><i class="bi bi-person-badge-fill me-2"></i>관리자 계정</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('login')"><i class="bi bi-box-arrow-in-right me-2"></i>로그인 설정</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('update')"><i class="bi bi-arrow-repeat me-2"></i>시스템 업데이트</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('storage')"><i class="bi bi-database-fill me-2"></i>DB 저장소</a></li>
             <li class="nav-item"><a class="nav-link" href="#" onclick="settingsTab('notify')"><i class="bi bi-bell-fill me-2"></i>알림 설정</a></li>
@@ -1168,6 +1196,54 @@ body        { background: var(--st-bg); font-size: 14px; }
                   <div class="form-text mt-2 text-warning-emphasis"><i class="bi bi-exclamation-triangle me-1"></i>저장 전 현재 IP 포함 여부를 확인하세요.</div>
                   <button class="btn btn-sm btn-primary mt-3" onclick="saveAllowedIps()">저장</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 로그인 설정 -->
+          <div id="settings-login" class="settings-pane d-none" style="max-width:620px">
+            <div class="card">
+              <div class="card-header bg-white fw-semibold"><i class="bi bi-box-arrow-in-right me-1"></i>로그인 화면</div>
+              <div class="card-body">
+                <div id="lcMsg" class="alert d-none py-2 small"></div>
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">제목</label>
+                  <input type="text" class="form-control form-control-sm" id="lcTitle" maxlength="40" placeholder="SolTrace">
+                  <div class="form-text">로그인 창 상단에 표시됩니다. 비우면 <code>SolTrace</code>.</div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">안내 문구</label>
+                  <input type="text" class="form-control form-control-sm" id="lcSubtitle" maxlength="120" placeholder="FTP Log Analyzer에 로그인하세요.">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">접근 경고 메시지</label>
+                  <textarea class="form-control form-control-sm" id="lcWarning" rows="4" maxlength="2000" placeholder="이 시스템은 내부망 전용입니다.&#10;인가되지 않은 접근을 금지합니다."></textarea>
+                  <div class="form-text">최대 2000자. 줄바꿈이 그대로 보입니다. 비우면 표시하지 않습니다.</div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">배경 색상</label>
+                  <div class="d-flex align-items-center gap-2">
+                    <input type="color" class="form-control form-control-color form-control-sm" id="lcBgColorPicker" value="#0d1b2a" title="배경 색상 선택" oninput="syncLoginBgColor('picker')">
+                    <input type="text" class="form-control form-control-sm font-monospace" id="lcBgColor" style="width:120px" maxlength="7" placeholder="#0d1b2a" oninput="syncLoginBgColor('text')">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="clearLoginBgColor()">색상 없음</button>
+                  </div>
+                  <div class="form-text">배경 이미지를 등록하면 이미지가 우선합니다. 비우면 기본(어두운 반투명) 배경.</div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">배경 이미지</label>
+                  <div id="lcBgBox" class="mb-2"></div>
+                  <input type="file" class="form-control form-control-sm" id="lcBgFile" accept="image/jpeg,image/png,image/gif,image/webp" onchange="uploadLoginImage('bg', this)">
+                  <div class="form-text">jpg · png · gif · webp · 최대 2MB. 화면을 꽉 채우도록 잘려서 표시됩니다.</div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">로고 이미지</label>
+                  <div id="lcLogoBox" class="mb-2"></div>
+                  <input type="file" class="form-control form-control-sm" id="lcLogoFile" accept="image/jpeg,image/png,image/gif,image/webp" onchange="uploadLoginImage('logo', this)">
+                  <div class="form-text">jpg · png · gif · webp · 최대 512KB. 제목 왼쪽에 높이 32px로 표시됩니다. 비우면 기본 아이콘.</div>
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="saveLoginConfig()">저장</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="previewLoginConfig()"><i class="bi bi-eye me-1"></i>미리보기</button>
+                <div class="form-text mt-2">이미지는 고른 즉시 저장됩니다. 문구·색상은 <b>저장</b>을 눌러야 반영됩니다.</div>
               </div>
             </div>
           </div>
@@ -1749,6 +1825,35 @@ body        { background: var(--st-bg); font-size: 14px; }
   </div>
 </div>
 
+<!-- 로그인 화면 미리보기 -->
+<div class="modal fade" id="loginPreviewModal" tabindex="-1">
+  <div class="modal-dialog" style="max-width:380px;margin-top:15vh">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title d-flex align-items-center">
+          <img id="lpLogo" class="login-logo d-none me-2" alt="">
+          <i id="lpLogoIcon" class="bi bi-hdd-network me-2 text-primary"></i><span id="lpTitle">SolTrace</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3" id="lpSubtitle"></p>
+        <div id="lpWarning" class="alert alert-warning d-none small py-2 login-warning"></div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">아이디</label>
+          <input type="text" class="form-control" placeholder="아이디 입력" disabled>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">비밀번호</label>
+          <input type="password" class="form-control" placeholder="비밀번호 입력" disabled>
+        </div>
+        <button class="btn btn-primary w-100" disabled>로그인</button>
+        <div class="form-text text-center mt-2">미리보기 — 저장하지 않으면 반영되지 않습니다.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 /* === demo-data.js === */
@@ -2308,6 +2413,7 @@ function showLogin() {
   token = null;
   localStorage.removeItem('soltrace_token');
   document.getElementById('appLayout').classList.add('app-hidden');
+  ensureLoginBranding();
   bootstrap.Modal.getOrCreateInstance(document.getElementById('loginModal')).show();
 }
 
@@ -4325,6 +4431,186 @@ async function deleteAdmin(id, username) {
   } catch (e) { settingsMsg('adminMsg', 'danger', e.message); }
 }
 
+/* === settings-login.js === */
+// ── 로그인 화면 설정 (설정 > 로그인 설정) ──────────────────────────────────
+// 실제 로그인 창과 미리보기가 **같은 함수**로 그려진다(applyLoginScreen). 두 벌로 두면
+// 한쪽만 고쳐져 "미리보기와 실제가 다른" 버그가 조용히 생긴다.
+
+const LOGIN_DEFAULT_TITLE    = 'SolTrace';
+const LOGIN_DEFAULT_SUBTITLE = 'FTP Log Analyzer에 로그인하세요.';
+
+// 업로드 이미지 종류 — 서버(app/login_config.py IMAGE_KINDS)와 같은 키를 쓴다
+const LC_IMAGES = {
+  bg:   {label: '배경 이미지', box: 'lcBgBox',   preview: 'width:100%;height:120px;object-fit:cover'},
+  logo: {label: '로고 이미지', box: 'lcLogoBox', preview: 'height:32px;max-width:180px;object-fit:contain'},
+};
+
+let _loginCfg = null;   // 마지막으로 읽은 서버 값 — 로그인 창·미리보기·설정 화면이 공유
+
+// cfg 를 el(요소 묶음)에 반영한다. el 은 로그인 창 또는 미리보기 창의 요소들.
+function applyLoginScreen(cfg, el) {
+  cfg = cfg || {};
+  if (el.root) {
+    // 이미지가 있으면 색상보다 이미지가 우선. 둘 다 없으면 기본(투명 → 부트스트랩 백드롭).
+    el.root.style.backgroundColor = cfg.bg_image ? '' : (cfg.bg_color || '');
+    el.root.style.backgroundImage = cfg.bg_image ? `url("${cfg.bg_image}")` : '';
+    el.root.style.backgroundSize = 'cover';
+    el.root.style.backgroundPosition = 'center';
+  }
+  if (el.title) el.title.textContent = cfg.title || LOGIN_DEFAULT_TITLE;
+  if (el.subtitle) {
+    const sub = cfg.subtitle || LOGIN_DEFAULT_SUBTITLE;
+    el.subtitle.textContent = sub;
+    el.subtitle.classList.toggle('d-none', !sub);
+  }
+  if (el.warning) {
+    el.warning.textContent = cfg.warning || '';
+    el.warning.classList.toggle('d-none', !cfg.warning);
+  }
+  if (el.logo) {
+    // src 를 빈 문자열로 두면 브라우저가 현재 페이지를 다시 받으러 간다 → 속성을 지운다
+    if (cfg.logo_image) el.logo.src = cfg.logo_image;
+    else el.logo.removeAttribute('src');
+    el.logo.classList.toggle('d-none', !cfg.logo_image);
+  }
+  if (el.icon) el.icon.classList.toggle('d-none', !!cfg.logo_image);
+}
+
+function _loginScreenEls() {
+  return {
+    root:     document.getElementById('loginModal'),
+    logo:     document.getElementById('loginLogo'),
+    icon:     document.getElementById('loginLogoIcon'),
+    title:    document.getElementById('loginTitle'),
+    subtitle: document.getElementById('loginSubtitle'),
+    warning:  document.getElementById('loginWarning'),
+  };
+}
+
+// 로그인 창을 띄우기 직전에 부른다. 로그인 전이라 인증 없이 읽는 공개 엔드포인트다.
+// 설정을 못 읽어도 기본 화면으로 로그인은 되어야 하므로 실패는 조용히 넘긴다.
+function ensureLoginBranding() {
+  if (_loginCfg) { applyLoginScreen(_loginCfg, _loginScreenEls()); return; }
+  fetch(API + '/settings/login-config', {cache: 'no-store'})
+    .then(r => r.ok ? r.json() : null)
+    .then(cfg => { if (cfg) { _loginCfg = cfg; applyLoginScreen(cfg, _loginScreenEls()); } })
+    .catch(() => { /* 기본 화면 그대로 */ });
+}
+
+// ── 설정 화면 ───────────────────────────────────────────────────────────────
+
+function _renderCfgImage(kind, url) {
+  const spec = LC_IMAGES[kind];
+  document.getElementById(spec.box).innerHTML = url
+    ? `<div class="border rounded p-2 d-inline-block bg-light mb-2">
+         <img src="${esc(url)}" alt="" style="${spec.preview};display:block">
+       </div>
+       <div><button class="btn btn-sm btn-outline-danger" onclick="removeLoginImage('${kind}')">
+         <i class="bi bi-trash me-1"></i>${spec.label} 제거</button></div>`
+    : `<div class="form-text mb-0">등록된 ${spec.label}가 없습니다.</div>`;
+}
+
+function _renderLoginConfig(c) {
+  _loginCfg = c;
+  document.getElementById('lcTitle').value    = c.title || '';
+  document.getElementById('lcSubtitle').value = c.subtitle || '';
+  document.getElementById('lcWarning').value  = c.warning || '';
+  document.getElementById('lcBgColor').value  = c.bg_color || '';
+  if (/^#[0-9A-Fa-f]{6}$/.test(c.bg_color || '')) {
+    document.getElementById('lcBgColorPicker').value = c.bg_color;
+  }
+  _renderCfgImage('bg', c.bg_image);
+  _renderCfgImage('logo', c.logo_image);
+}
+
+async function loadLoginConfig() {
+  document.getElementById('lcMsg').className = 'alert d-none py-2 small';
+  try {
+    _renderLoginConfig(await api('GET', '/settings/login-config'));
+  } catch (e) { settingsMsg('lcMsg', 'danger', e.message); }
+}
+
+// 색상 선택기와 hex 입력칸을 서로 맞춘다 (어느 쪽을 고쳐도 같은 값이 되게)
+function syncLoginBgColor(from) {
+  const picker = document.getElementById('lcBgColorPicker');
+  const text   = document.getElementById('lcBgColor');
+  if (from === 'picker') text.value = picker.value;
+  else if (/^#[0-9A-Fa-f]{6}$/.test(text.value)) picker.value = text.value;
+}
+
+function clearLoginBgColor() {
+  document.getElementById('lcBgColor').value = '';
+}
+
+async function saveLoginConfig() {
+  const body = {
+    title:    document.getElementById('lcTitle').value,
+    subtitle: document.getElementById('lcSubtitle').value,
+    warning:  document.getElementById('lcWarning').value,
+    bg_color: document.getElementById('lcBgColor').value,
+  };
+  try {
+    _renderLoginConfig(await api('PUT', '/settings/login-config', body));
+    settingsMsg('lcMsg', 'success', '로그인 화면 설정을 저장했습니다. 다음 로그인 화면부터 보입니다.');
+  } catch (e) { settingsMsg('lcMsg', 'danger', e.message); }
+}
+
+// 이미지는 multipart 라 api() 헬퍼(JSON)를 쓰지 않고 직접 보낸다.
+// 크기·형식 판정은 서버(app/login_config.py) 한 곳에서만 한다 — 규칙이 갈라지지 않게.
+async function uploadLoginImage(kind, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch(`${API}/settings/login-config/image/${kind}`, {
+      method: 'POST',
+      headers: {'Authorization': `Bearer ${token}`},
+      body: fd,
+      cache: 'no-store',
+    });
+    if (r.status === 401) { showLogin(); return; }
+    if (r.status === 413) throw new Error('파일이 너무 큽니다.');
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+    _renderLoginConfig(data);
+    settingsMsg('lcMsg', 'success', `${LC_IMAGES[kind].label}를 저장했습니다.`);
+  } catch (e) {
+    settingsMsg('lcMsg', 'danger', e.message);
+  } finally {
+    input.value = '';   // 같은 파일을 다시 골라도 change 가 오도록
+  }
+}
+
+async function removeLoginImage(kind) {
+  if (!confirm(`${LC_IMAGES[kind].label}를 제거할까요?`)) return;
+  try {
+    _renderLoginConfig(await api('DELETE', `/settings/login-config/image/${kind}`));
+    settingsMsg('lcMsg', 'success', `${LC_IMAGES[kind].label}를 제거했습니다.`);
+  } catch (e) { settingsMsg('lcMsg', 'danger', e.message); }
+}
+
+// 저장하지 않은 입력값 그대로 보여준다 — 이미지는 이미 저장된 것을 쓴다
+function previewLoginConfig() {
+  const cfg = {
+    title:      document.getElementById('lcTitle').value,
+    subtitle:   document.getElementById('lcSubtitle').value,
+    warning:    document.getElementById('lcWarning').value,
+    bg_color:   document.getElementById('lcBgColor').value,
+    bg_image:   (_loginCfg || {}).bg_image || '',
+    logo_image: (_loginCfg || {}).logo_image || '',
+  };
+  applyLoginScreen(cfg, {
+    root:     document.getElementById('loginPreviewModal'),
+    logo:     document.getElementById('lpLogo'),
+    icon:     document.getElementById('lpLogoIcon'),
+    title:    document.getElementById('lpTitle'),
+    subtitle: document.getElementById('lpSubtitle'),
+    warning:  document.getElementById('lpWarning'),
+  });
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('loginPreviewModal')).show();
+}
+
 /* === groups.js === */
 let _groupFilter = '__all__';
 const GROUP_COLS = 7;
@@ -4800,69 +5086,123 @@ function _initGroupTooltip() {
   sel.addEventListener('mouseleave', () => tip.classList.add('d-none'));
 }
 
-function _initLogColResize() {
+// ── 로그 표 열 너비 ────────────────────────────────────────────────────────
+// 기본 폭은 index.html 의 colgroup 에 있고, 여기서는 사용자가 조절한 열만 덮어쓴다.
+// 기본값을 바꾸면 VER 을 올려 이전에 저장된 폭을 무효화한다.
+const LOG_COL_WIDTHS_VER = 'v5';   // 작업 열 확장(132 → 155px) + 저장 형식 변경(배열 → 인덱스맵)
+const LOG_COL_MIN = 48;            // 이보다 좁아지면 머리글도 안 보인다
+const LOG_COL_MAX = 700;
+let _logColDefaults = [];          // colgroup 에 적힌 기본 폭 ('' = 남는 자리를 갖는 가변 열)
+
+function _logCols() {
   const table = document.querySelector('#page-logs table');
-  if (!table || table.dataset.resizeReady) return;
-  table.dataset.resizeReady = '1';
+  if (!table) return null;
+  return {
+    table,
+    cols: Array.from(table.querySelectorAll('colgroup col')),
+    ths:  Array.from(table.querySelectorAll('thead th')),
+  };
+}
 
-  const cols = Array.from(table.querySelectorAll('colgroup col'));
-  const ths  = Array.from(table.querySelectorAll('thead th'));
-  const row  = table.querySelector('thead tr');
-
-  // 저장된 폭 복원 (v2: 컬럼 기본값 변경 시 이전 저장값 무효화)
-  const WIDTHS_VER = 'v4';   // 작업 열 기본 폭 변경(90 → 118px)
-  const savedRaw = localStorage.getItem('logColWidths');
-  const savedMeta = localStorage.getItem('logColWidthsVer');
-  const saved = (savedMeta === WIDTHS_VER && savedRaw) ? JSON.parse(savedRaw) : null;
-  if (!saved) localStorage.removeItem('logColWidths');
-  if (saved) cols.forEach((col, i) => { if (saved[i]) col.style.width = saved[i] + 'px'; });
-
-  const ZONE = 6; // 각 th 우측 경계에서 ±px 이내를 드래그 존으로 인식
-
-  function hitCol(clientX) {
-    // 마지막 컬럼 경계는 제외 (last-child는 경계 없음)
-    for (let i = 0; i < ths.length - 1; i++) {
-      if (Math.abs(clientX - ths[i].getBoundingClientRect().right) <= ZONE) return i;
-    }
-    return -1;
+function _loadLogColWidths() {
+  if (localStorage.getItem('logColWidthsVer') !== LOG_COL_WIDTHS_VER) {
+    localStorage.removeItem('logColWidths');   // 기본값이 바뀌었으면 예전 폭은 버린다
+    return {};
   }
+  try { return JSON.parse(localStorage.getItem('logColWidths')) || {}; }
+  catch { return {}; }
+}
 
-  row.addEventListener('mousemove', e => {
-    row.style.cursor = hitCol(e.clientX) >= 0 ? 'col-resize' : '';
+function _saveLogColWidth(i, w) {
+  const saved = _loadLogColWidths();
+  saved[i] = Math.round(w);
+  localStorage.setItem('logColWidths', JSON.stringify(saved));
+  localStorage.setItem('logColWidthsVer', LOG_COL_WIDTHS_VER);
+}
+
+// 툴바의 '열 너비 초기화' 버튼
+function resetLogColWidths() {
+  const el = _logCols();
+  if (!el) return;
+  localStorage.removeItem('logColWidths');
+  localStorage.removeItem('logColWidthsVer');
+  el.cols.forEach((col, i) => { col.style.width = _logColDefaults[i] || ''; });
+}
+
+// 열 경계를 두 번 누르면 그 열을 지금 보이는 내용에 맞춘다.
+// (줄바꿈되는 파일 경로 열은 Range 폭이 곧 열 폭이라 사실상 그대로 남는다)
+function _autoFitLogCol(i) {
+  const el = _logCols();
+  if (!el) return;
+  const th = el.ths[i];
+  const cs = getComputedStyle(th);
+  const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  const range = document.createRange();
+  // 손잡이(.col-grip)는 th 밖으로 5px 삐져나온 절대배치 요소라 selectNodeContents 에 딸려 들어온다.
+  // 마지막 자식이 손잡이면 범위에서 빼야 머리글의 실제 글자 폭이 나온다.
+  const natural = node => {
+    const last = node.lastElementChild;
+    range.setStart(node, 0);
+    range.setEnd(node, node.childNodes.length - (last && last.classList.contains('col-grip') ? 1 : 0));
+    return range.getBoundingClientRect().width;
+  };
+  let need = natural(th);
+  el.table.querySelectorAll('tbody tr').forEach(tr => {
+    const td = tr.children[i];
+    if (td && !td.hasAttribute('colspan')) need = Math.max(need, natural(td));
   });
-  row.addEventListener('mouseleave', () => { row.style.cursor = ''; });
+  const w = Math.min(LOG_COL_MAX, Math.max(LOG_COL_MIN, Math.ceil(need + pad) + 4));
+  el.cols[i].style.width = w + 'px';
+  _saveLogColWidth(i, w);
+}
 
-  row.addEventListener('mousedown', e => {
-    const i = hitCol(e.clientX);
-    if (i < 0) return;
-    e.preventDefault();
-    const startX    = e.clientX;
-    const startW    = ths[i].getBoundingClientRect().width;
-    const nextStartW = i + 1 < ths.length ? ths[i + 1].getBoundingClientRect().width : 0;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
+// 끈 열만 바꾼다 — 남거나 모자란 폭은 가변 열(파일 경로)이 흡수하고,
+// 그래도 넘치면 .table-responsive 가 가로로 스크롤한다.
+// (예전에는 옆 열을 반대로 줄여 표 폭을 고정했는데, 그러면 파일 경로가 고정 폭이 되어
+//  창을 넓혀도 더는 늘어나지 않았다.)
+function _startLogColDrag(e, i) {
+  const el = _logCols();
+  if (!el) return;
+  e.preventDefault();
+  const startX = e.clientX;
+  const startW = el.ths[i].getBoundingClientRect().width;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+  let lastW = startW;
 
-    const onMove = e => {
-      const delta  = e.clientX - startX;
-      const w      = Math.max(40, startW + delta);
-      const actual = w - startW; // min 클램핑 후 실제 변화량
-      cols[i].style.width = w + 'px';
-      // 인접 컬럼을 반대 방향으로 조정 → 테이블 전체 폭 유지
-      if (cols[i + 1] && nextStartW > 0) {
-        cols[i + 1].style.width = Math.max(40, nextStartW - actual) + 'px';
-      }
-    };
-    const onUp = () => {
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      localStorage.setItem('logColWidths',
-        JSON.stringify(ths.map(t => Math.round(t.getBoundingClientRect().width))));
-      localStorage.setItem('logColWidthsVer', WIDTHS_VER);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+  const onMove = ev => {
+    lastW = Math.min(LOG_COL_MAX, Math.max(LOG_COL_MIN, startW + ev.clientX - startX));
+    el.cols[i].style.width = lastW + 'px';
+  };
+  const onUp = () => {
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    _saveLogColWidth(i, lastW);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function _initLogColResize() {
+  const el = _logCols();
+  // initLogsPage 는 탭에 들어올 때마다 불린다 — 가드가 없으면 손잡이가 계속 쌓인다.
+  if (!el || el.table.dataset.resizeReady) return;
+  el.table.dataset.resizeReady = '1';
+  _logColDefaults = el.cols.map(c => c.style.width || '');
+
+  const saved = _loadLogColWidths();
+  Object.keys(saved).forEach(i => { if (el.cols[i]) el.cols[i].style.width = saved[i] + 'px'; });
+
+  // 마지막 열은 오른쪽 경계가 없으므로 손잡이도 붙이지 않는다.
+  el.ths.slice(0, -1).forEach((th, i) => {
+    const grip = document.createElement('span');
+    grip.className = 'col-grip';
+    grip.title = '끌어서 너비 조절 · 두 번 누르면 내용에 맞춤';
+    grip.addEventListener('mousedown', e => _startLogColDrag(e, i));
+    grip.addEventListener('dblclick', e => { e.preventDefault(); _autoFitLogCol(i); });
+    th.appendChild(grip);
   });
 }
 
@@ -5362,6 +5702,7 @@ function settingsTab(tab) {
   if (link) link.classList.add('active');
   if (tab === 'telco') loadTelcos();
   if (tab === 'update') loadVersion();
+  if (tab === 'login') loadLoginConfig();
   if (tab === 'storage') loadStorage();
   if (tab === 'notify') loadNotify();
   if (tab === 'users') loadUsers();
@@ -5429,11 +5770,13 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     document.getElementById('appLayout').classList.remove('app-hidden');
     initApp();
   } else {
+    ensureLoginBranding();
     loginModal.show();
   }
 })();
 
 </script>
+
 
 
 

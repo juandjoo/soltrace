@@ -316,6 +316,10 @@
           <button class="btn btn-sm btn-outline-primary" onclick="exportXlsx()">
             <i class="bi bi-file-earmark-excel me-1"></i>Excel
           </button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="resetLogColWidths()"
+                  title="열 너비 초기화 — 표 머리글의 열 경계를 끌면 너비가 바뀌고, 두 번 누르면 내용에 맞춰집니다">
+            <i class="bi bi-layout-three-columns"></i>
+          </button>
         </div>
       </div>
       <!-- 검색 필터 -->
@@ -378,16 +382,19 @@
       <div class="card">
         <div class="table-responsive">
           <table class="table table-hover mb-0 table-sm" style="table-layout:fixed;min-width:1260px">
+            <!-- 기본 폭. 폭이 없는 열(파일 경로)이 남는 자리를 모두 가져가므로 파일 경로만 비워 둔다.
+                 한글 라벨은 OS/폰트에 따라 10~15% 넓게 그려지므로 실측값에 그만큼 여유를 얹었다.
+                 (macOS 실측: 작업 129px → 윈도우 기준 여유 포함 155px) -->
             <colgroup id="logColGroup">
-              <col data-idx="0" style="width:168px"> <!-- 시간 (YYYY/MM/DD HH:MM:SS 전체가 보이는 폭) -->
-              <col data-idx="1" style="width:140px"> <!-- 장비 -->
+              <col data-idx="0" style="width:160px"> <!-- 시간 (YYYY/MM/DD HH:MM:SS 전체가 보이는 폭) -->
+              <col data-idx="1" style="width:120px"> <!-- 장비 -->
               <col data-idx="2" style="width:120px"> <!-- 사용자 -->
-              <col data-idx="3" style="width:130px"> <!-- IP -->
-              <col data-idx="4" style="width:132px"> <!-- 작업 (아이콘 + '디렉토리 이동 실패' 기준) -->
+              <col data-idx="3" style="width:125px"> <!-- IP -->
+              <col data-idx="4" style="width:155px"> <!-- 작업 (아이콘 + '디렉토리 이동 실패' 기준) -->
               <col data-idx="5">                     <!-- 파일 경로 -->
-              <col data-idx="6" style="width:90px">  <!-- 크기 -->
-              <col data-idx="7" style="width:90px">  <!-- 전송시간 -->
-              <col data-idx="8" style="width:70px">  <!-- 상태 -->
+              <col data-idx="6" style="width:92px">  <!-- 크기 -->
+              <col data-idx="7" style="width:82px">  <!-- 전송시간 -->
+              <col data-idx="8" style="width:68px">  <!-- 상태 -->
             </colgroup>
             <thead class="table-light">
               <tr style="white-space:nowrap">

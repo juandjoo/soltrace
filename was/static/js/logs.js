@@ -201,69 +201,123 @@ function _initGroupTooltip() {
   sel.addEventListener('mouseleave', () => tip.classList.add('d-none'));
 }
 
-function _initLogColResize() {
+// ── 로그 표 열 너비 ────────────────────────────────────────────────────────
+// 기본 폭은 index.html 의 colgroup 에 있고, 여기서는 사용자가 조절한 열만 덮어쓴다.
+// 기본값을 바꾸면 VER 을 올려 이전에 저장된 폭을 무효화한다.
+const LOG_COL_WIDTHS_VER = 'v5';   // 작업 열 확장(132 → 155px) + 저장 형식 변경(배열 → 인덱스맵)
+const LOG_COL_MIN = 48;            // 이보다 좁아지면 머리글도 안 보인다
+const LOG_COL_MAX = 700;
+let _logColDefaults = [];          // colgroup 에 적힌 기본 폭 ('' = 남는 자리를 갖는 가변 열)
+
+function _logCols() {
   const table = document.querySelector('#page-logs table');
-  if (!table || table.dataset.resizeReady) return;
-  table.dataset.resizeReady = '1';
+  if (!table) return null;
+  return {
+    table,
+    cols: Array.from(table.querySelectorAll('colgroup col')),
+    ths:  Array.from(table.querySelectorAll('thead th')),
+  };
+}
 
-  const cols = Array.from(table.querySelectorAll('colgroup col'));
-  const ths  = Array.from(table.querySelectorAll('thead th'));
-  const row  = table.querySelector('thead tr');
-
-  // 저장된 폭 복원 (v2: 컬럼 기본값 변경 시 이전 저장값 무효화)
-  const WIDTHS_VER = 'v4';   // 작업 열 기본 폭 변경(90 → 118px)
-  const savedRaw = localStorage.getItem('logColWidths');
-  const savedMeta = localStorage.getItem('logColWidthsVer');
-  const saved = (savedMeta === WIDTHS_VER && savedRaw) ? JSON.parse(savedRaw) : null;
-  if (!saved) localStorage.removeItem('logColWidths');
-  if (saved) cols.forEach((col, i) => { if (saved[i]) col.style.width = saved[i] + 'px'; });
-
-  const ZONE = 6; // 각 th 우측 경계에서 ±px 이내를 드래그 존으로 인식
-
-  function hitCol(clientX) {
-    // 마지막 컬럼 경계는 제외 (last-child는 경계 없음)
-    for (let i = 0; i < ths.length - 1; i++) {
-      if (Math.abs(clientX - ths[i].getBoundingClientRect().right) <= ZONE) return i;
-    }
-    return -1;
+function _loadLogColWidths() {
+  if (localStorage.getItem('logColWidthsVer') !== LOG_COL_WIDTHS_VER) {
+    localStorage.removeItem('logColWidths');   // 기본값이 바뀌었으면 예전 폭은 버린다
+    return {};
   }
+  try { return JSON.parse(localStorage.getItem('logColWidths')) || {}; }
+  catch { return {}; }
+}
 
-  row.addEventListener('mousemove', e => {
-    row.style.cursor = hitCol(e.clientX) >= 0 ? 'col-resize' : '';
+function _saveLogColWidth(i, w) {
+  const saved = _loadLogColWidths();
+  saved[i] = Math.round(w);
+  localStorage.setItem('logColWidths', JSON.stringify(saved));
+  localStorage.setItem('logColWidthsVer', LOG_COL_WIDTHS_VER);
+}
+
+// 툴바의 '열 너비 초기화' 버튼
+function resetLogColWidths() {
+  const el = _logCols();
+  if (!el) return;
+  localStorage.removeItem('logColWidths');
+  localStorage.removeItem('logColWidthsVer');
+  el.cols.forEach((col, i) => { col.style.width = _logColDefaults[i] || ''; });
+}
+
+// 열 경계를 두 번 누르면 그 열을 지금 보이는 내용에 맞춘다.
+// (줄바꿈되는 파일 경로 열은 Range 폭이 곧 열 폭이라 사실상 그대로 남는다)
+function _autoFitLogCol(i) {
+  const el = _logCols();
+  if (!el) return;
+  const th = el.ths[i];
+  const cs = getComputedStyle(th);
+  const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  const range = document.createRange();
+  // 손잡이(.col-grip)는 th 밖으로 5px 삐져나온 절대배치 요소라 selectNodeContents 에 딸려 들어온다.
+  // 마지막 자식이 손잡이면 범위에서 빼야 머리글의 실제 글자 폭이 나온다.
+  const natural = node => {
+    const last = node.lastElementChild;
+    range.setStart(node, 0);
+    range.setEnd(node, node.childNodes.length - (last && last.classList.contains('col-grip') ? 1 : 0));
+    return range.getBoundingClientRect().width;
+  };
+  let need = natural(th);
+  el.table.querySelectorAll('tbody tr').forEach(tr => {
+    const td = tr.children[i];
+    if (td && !td.hasAttribute('colspan')) need = Math.max(need, natural(td));
   });
-  row.addEventListener('mouseleave', () => { row.style.cursor = ''; });
+  const w = Math.min(LOG_COL_MAX, Math.max(LOG_COL_MIN, Math.ceil(need + pad) + 4));
+  el.cols[i].style.width = w + 'px';
+  _saveLogColWidth(i, w);
+}
 
-  row.addEventListener('mousedown', e => {
-    const i = hitCol(e.clientX);
-    if (i < 0) return;
-    e.preventDefault();
-    const startX    = e.clientX;
-    const startW    = ths[i].getBoundingClientRect().width;
-    const nextStartW = i + 1 < ths.length ? ths[i + 1].getBoundingClientRect().width : 0;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
+// 끈 열만 바꾼다 — 남거나 모자란 폭은 가변 열(파일 경로)이 흡수하고,
+// 그래도 넘치면 .table-responsive 가 가로로 스크롤한다.
+// (예전에는 옆 열을 반대로 줄여 표 폭을 고정했는데, 그러면 파일 경로가 고정 폭이 되어
+//  창을 넓혀도 더는 늘어나지 않았다.)
+function _startLogColDrag(e, i) {
+  const el = _logCols();
+  if (!el) return;
+  e.preventDefault();
+  const startX = e.clientX;
+  const startW = el.ths[i].getBoundingClientRect().width;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+  let lastW = startW;
 
-    const onMove = e => {
-      const delta  = e.clientX - startX;
-      const w      = Math.max(40, startW + delta);
-      const actual = w - startW; // min 클램핑 후 실제 변화량
-      cols[i].style.width = w + 'px';
-      // 인접 컬럼을 반대 방향으로 조정 → 테이블 전체 폭 유지
-      if (cols[i + 1] && nextStartW > 0) {
-        cols[i + 1].style.width = Math.max(40, nextStartW - actual) + 'px';
-      }
-    };
-    const onUp = () => {
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      localStorage.setItem('logColWidths',
-        JSON.stringify(ths.map(t => Math.round(t.getBoundingClientRect().width))));
-      localStorage.setItem('logColWidthsVer', WIDTHS_VER);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+  const onMove = ev => {
+    lastW = Math.min(LOG_COL_MAX, Math.max(LOG_COL_MIN, startW + ev.clientX - startX));
+    el.cols[i].style.width = lastW + 'px';
+  };
+  const onUp = () => {
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    _saveLogColWidth(i, lastW);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function _initLogColResize() {
+  const el = _logCols();
+  // initLogsPage 는 탭에 들어올 때마다 불린다 — 가드가 없으면 손잡이가 계속 쌓인다.
+  if (!el || el.table.dataset.resizeReady) return;
+  el.table.dataset.resizeReady = '1';
+  _logColDefaults = el.cols.map(c => c.style.width || '');
+
+  const saved = _loadLogColWidths();
+  Object.keys(saved).forEach(i => { if (el.cols[i]) el.cols[i].style.width = saved[i] + 'px'; });
+
+  // 마지막 열은 오른쪽 경계가 없으므로 손잡이도 붙이지 않는다.
+  el.ths.slice(0, -1).forEach((th, i) => {
+    const grip = document.createElement('span');
+    grip.className = 'col-grip';
+    grip.title = '끌어서 너비 조절 · 두 번 누르면 내용에 맞춤';
+    grip.addEventListener('mousedown', e => _startLogColDrag(e, i));
+    grip.addEventListener('dblclick', e => { e.preventDefault(); _autoFitLogCol(i); });
+    th.appendChild(grip);
   });
 }
 
