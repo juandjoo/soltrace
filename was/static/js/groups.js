@@ -72,6 +72,7 @@ function renderGroupPage(page) {
       <td class="small text-muted" style="word-break:break-word;white-space:pre-wrap">${g.description ? esc(g.description) : '-'}</td>
       <td><div class="d-flex gap-1 justify-content-end">
         <button class="btn btn-xs btn-outline-secondary" onclick="openGroupDevices(${g.id})" title="이 그룹에 장비 등록"><i class="bi bi-hdd-network me-1"></i>장비</button>
+        <button class="btn btn-xs btn-outline-success" onclick="requestGroupDaemonUpdate(${g.id})" title="이 그룹 장비의 데몬을 한 번에 업데이트" ${g.device_count ? '' : 'disabled'}><i class="bi bi-arrow-repeat"></i></button>
         <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
         <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
       </div></td>`;
@@ -104,7 +105,7 @@ function renderGroupPage(page) {
         <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
           <colgroup>
             <col style="width:14%"><col style="width:6%"><col style="width:14%">
-            <col style="width:22%"><col style="width:13%"><col style="width:14%"><col style="width:17%">
+            <col style="width:19%"><col style="width:13%"><col style="width:14%"><col style="width:20%">
           </colgroup>
           <thead class="table-light">
             <tr><th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
@@ -190,6 +191,17 @@ async function deleteGroup(id) {
   loadGroups();
 }
 
+async function requestGroupDaemonUpdate(id) {
+  const g = allGroups.find(x => x.id === id);
+  const name = g?.name || `#${id}`;
+  const cnt = g?.device_count || 0;
+  if (!cnt) { alert(`${name}: 소속 장비가 없습니다.`); return; }
+  if (!confirm(`${name} 그룹의 장비 ${cnt}대를 모두 업데이트하시겠습니까?\n각 장비의 다음 하트비트에서 최신 데몬을 내려받고 재시작합니다.`)) return;
+  try {
+    const r = await api('POST', `/groups/${id}/update`);
+    alert(`${name}: ${r?.requested ?? cnt}대에 업데이트 요청이 전송되었습니다.\n각 장비의 다음 하트비트에서 데몬이 재시작됩니다.`);
+  } catch (e) { alert('업데이트 요청 실패: ' + e.message); }
+}
 
 // ── 그룹 → 장비 등록 ─────────────────────────────────────────────────────────
 // 장비관리의 "그룹 배정"(saveDeviceGroups)과 같은 매핑을 그룹 쪽에서 편집한다.

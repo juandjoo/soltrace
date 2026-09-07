@@ -217,6 +217,7 @@ class DeviceResponse(BaseModel):
     kernel_version: Optional[str] = None
     proftpd_version: Optional[str]
     daemon_version: Optional[str]
+    daemon_outdated: bool = False   # 배포된 저장소의 DAEMON_VERSION 과 다른가
     last_heartbeat: Optional[datetime]
     # 데몬 상태
     daemon_status: Optional[str] = "unknown"
@@ -235,6 +236,11 @@ class DeviceResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class DaemonUpdateResult(BaseModel):
+    """그룹 단위 데몬 업데이트 요청 결과."""
+    requested: int = 0            # 플래그를 세운 장비 수
+
 
 class DeviceConfirm(BaseModel):
     status: str = Field(default="confirmed", pattern="^(confirmed|disabled|pending)$")

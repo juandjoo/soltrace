@@ -74,7 +74,7 @@ async function loadDevices() {
     return `<tr class="${dStatus==='error'?'table-danger-subtle':''}">
       <td>
         <strong>${esc(d.hostname)}</strong>
-        <div class="text-muted" style="font-size:11px">${esc(d.daemon_version||'')}</div>
+        <div style="font-size:11px" class="${d.daemon_outdated ? 'text-warning fw-semibold' : 'text-muted'}">${esc(d.daemon_version||'')}${d.daemon_outdated ? ' <i class="bi bi-exclamation-triangle-fill" data-bs-toggle="tooltip" title="구버전 — 데몬 업데이트가 필요합니다"></i>' : ''}</div>
       </td>
       <td class="text-center text-muted small">${esc(d.ip_address||'-')}</td>
       <td class="text-center">${statusBadge(d.status)}</td>
@@ -132,7 +132,7 @@ function showDeviceStatus(id) {
     ['OS',              esc(d.os_info || '-')],
     ['커널',            esc(d.kernel_version || '-')],
     ['proftpd',         esc(d.proftpd_version || '-')],
-    ['데몬 버전',       esc(d.daemon_version || '-')],
+    ['데몬 버전',       esc(d.daemon_version || '-') + (d.daemon_outdated ? ' <span class="badge bg-warning text-dark ms-1">구버전</span>' : '')],
   ];
   document.getElementById('dsBody').innerHTML = `
     <table class="table table-sm">

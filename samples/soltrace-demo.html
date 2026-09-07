@@ -1927,7 +1927,9 @@ body        { background: var(--st-bg); font-size: 14px; }
     os_info: 'Rocky Linux 8.9 (Green Obsidian)',
     kernel_version: '4.18.0-513.el8.x86_64',
     proftpd_version: '1.3.6',
-    daemon_version: '1.0.0',
+    // 데모에서도 구버전 장비를 하나 보여준다 — 최신은 1.1.0
+    daemon_version: d.id === 3 ? '1.0.0' : '1.1.0',
+    daemon_outdated: d.id === 3,
     last_heartbeat: new Date(now - (d.daemon_status === 'unknown' ? 6 * HOUR : between(5, 90) * 1000)).toISOString(),
     daemon_status: d.daemon_status,
     last_send_time: new Date(now - between(10, 120) * 1000).toISOString(),
@@ -3448,7 +3450,7 @@ async function loadDevices() {
     return `<tr class="${dStatus==='error'?'table-danger-subtle':''}">
       <td>
         <strong>${esc(d.hostname)}</strong>
-        <div class="text-muted" style="font-size:11px">${esc(d.daemon_version||'')}</div>
+        <div style="font-size:11px" class="${d.daemon_outdated ? 'text-warning fw-semibold' : 'text-muted'}">${esc(d.daemon_version||'')}${d.daemon_outdated ? ' <i class="bi bi-exclamation-triangle-fill" data-bs-toggle="tooltip" title="구버전 — 데몬 업데이트가 필요합니다"></i>' : ''}</div>
       </td>
       <td class="text-center text-muted small">${esc(d.ip_address||'-')}</td>
       <td class="text-center">${statusBadge(d.status)}</td>
@@ -3506,7 +3508,7 @@ function showDeviceStatus(id) {
     ['OS',              esc(d.os_info || '-')],
     ['커널',            esc(d.kernel_version || '-')],
     ['proftpd',         esc(d.proftpd_version || '-')],
-    ['데몬 버전',       esc(d.daemon_version || '-')],
+    ['데몬 버전',       esc(d.daemon_version || '-') + (d.daemon_outdated ? ' <span class="badge bg-warning text-dark ms-1">구버전</span>' : '')],
   ];
   document.getElementById('dsBody').innerHTML = `
     <table class="table table-sm">
@@ -4754,6 +4756,7 @@ function renderGroupPage(page) {
       <td class="small text-muted" style="word-break:break-word;white-space:pre-wrap">${g.description ? esc(g.description) : '-'}</td>
       <td><div class="d-flex gap-1 justify-content-end">
         <button class="btn btn-xs btn-outline-secondary" onclick="openGroupDevices(${g.id})" title="이 그룹에 장비 등록"><i class="bi bi-hdd-network me-1"></i>장비</button>
+        <button class="btn btn-xs btn-outline-success" onclick="requestGroupDaemonUpdate(${g.id})" title="이 그룹 장비의 데몬을 한 번에 업데이트" ${g.device_count ? '' : 'disabled'}><i class="bi bi-arrow-repeat"></i></button>
         <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
         <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
       </div></td>`;
@@ -4786,7 +4789,7 @@ function renderGroupPage(page) {
         <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
           <colgroup>
             <col style="width:14%"><col style="width:6%"><col style="width:14%">
-            <col style="width:22%"><col style="width:13%"><col style="width:14%"><col style="width:17%">
+            <col style="width:19%"><col style="width:13%"><col style="width:14%"><col style="width:20%">
           </colgroup>
           <thead class="table-light">
             <tr><th>그룹명</th><th class="text-center">장비</th><th>고객사</th>
@@ -4872,6 +4875,17 @@ async function deleteGroup(id) {
   loadGroups();
 }
 
+async function requestGroupDaemonUpdate(id) {
+  const g = allGroups.find(x => x.id === id);
+  const name = g?.name || `#${id}`;
+  const cnt = g?.device_count || 0;
+  if (!cnt) { alert(`${name}: 소속 장비가 없습니다.`); return; }
+  if (!confirm(`${name} 그룹의 장비 ${cnt}대를 모두 업데이트하시겠습니까?\n각 장비의 다음 하트비트에서 최신 데몬을 내려받고 재시작합니다.`)) return;
+  try {
+    const r = await api('POST', `/groups/${id}/update`);
+    alert(`${name}: ${r?.requested ?? cnt}대에 업데이트 요청이 전송되었습니다.\n각 장비의 다음 하트비트에서 데몬이 재시작됩니다.`);
+  } catch (e) { alert('업데이트 요청 실패: ' + e.message); }
+}
 
 // ── 그룹 → 장비 등록 ─────────────────────────────────────────────────────────
 // 장비관리의 "그룹 배정"(saveDeviceGroups)과 같은 매핑을 그룹 쪽에서 편집한다.

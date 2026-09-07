@@ -30,6 +30,10 @@ from urllib.parse import urlparse
 import psutil
 import requests
 
+# 데몬 버전 — 하트비트로 WAS 에 보고하고, WAS 는 배포된 저장소의 이 값을 "최신"으로 삼아
+# 장비별 구버전 여부를 판정한다. 파싱·전송 동작이 바뀌면 올린다 (여기가 유일한 출처).
+DAEMON_VERSION = "1.1.0"
+
 # ── Config ────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
 CONFIG_FILE = BASE_DIR / "config.ini"
@@ -495,7 +499,7 @@ class WasClient:
             "os_info": os_info,
             "kernel_version": kernel_version,
             "proftpd_version": proftpd_ver,
-            "daemon_version": "1.0.0",
+            "daemon_version": DAEMON_VERSION,
         })
 
     def heartbeat(self, hostname: str, ip: str, status_payload: Optional[dict] = None) -> Optional[dict]:

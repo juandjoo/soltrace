@@ -62,7 +62,9 @@
     os_info: 'Rocky Linux 8.9 (Green Obsidian)',
     kernel_version: '4.18.0-513.el8.x86_64',
     proftpd_version: '1.3.6',
-    daemon_version: '1.0.0',
+    // 데모에서도 구버전 장비를 하나 보여준다 — 최신은 1.1.0
+    daemon_version: d.id === 3 ? '1.0.0' : '1.1.0',
+    daemon_outdated: d.id === 3,
     last_heartbeat: new Date(now - (d.daemon_status === 'unknown' ? 6 * HOUR : between(5, 90) * 1000)).toISOString(),
     daemon_status: d.daemon_status,
     last_send_time: new Date(now - between(10, 120) * 1000).toISOString(),

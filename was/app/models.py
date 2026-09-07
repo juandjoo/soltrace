@@ -7,6 +7,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.gitinfo import latest_daemon_version
 
 
 def _now():
@@ -109,6 +110,18 @@ class Device(Base):
     update_requested = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    @property
+    def daemon_outdated(self) -> bool:
+        """배포된 저장소의 데몬 버전과 다른가.
+
+        판정을 모델에 두는 이유 — DeviceResponse 를 돌려주는 곳이 목록·단건·상태변경·그룹배정
+        네 군데라, 라우터마다 계산하면 한 곳만 고쳐져 화면끼리 어긋난다.
+        아직 버전을 보고한 적이 없는 장비(하트비트 전)는 '모름'이라 구버전으로 세지 않는다 —
+        모르는 것까지 표시하면 진짜 구버전이 묻힌다.
+        """
+        latest = latest_daemon_version()
+        return bool(latest and self.daemon_version and self.daemon_version != latest)
 
     groups = relationship("Group", secondary="device_groups", back_populates="devices")
     # passive_deletes=True: 장비 삭제 시 자식 로그를 ORM이 로드/UPDATE하지 않고

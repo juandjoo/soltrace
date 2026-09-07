@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import Principal, get_current_user, require_admin
 from app.models import Device, DeviceGroup, Group
-from app.schemas import GroupCreate, GroupDeviceAssign, GroupResponse, GroupUpdate
+from app.schemas import (
+    DaemonUpdateResult, GroupCreate, GroupDeviceAssign, GroupResponse, GroupUpdate,
+)
 
 router = APIRouter(prefix="/api/v1/groups", tags=["groups"])
 
@@ -85,6 +87,31 @@ def assign_devices(
     db.commit()
     db.refresh(group)
     return _to_response(group, db)
+
+
+@router.post("/{group_id}/update", response_model=DaemonUpdateResult)
+def request_group_daemon_update(
+    group_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """그룹에 속한 장비의 데몬 자가 업데이트를 한 번에 요청한다.
+
+    장비를 하나씩 누르는 것(POST /devices/{id}/update)과 **같은 플래그**를 세울 뿐이다.
+    적용은 각 장비의 다음 하트비트에서 데몬이 스스로 한다.
+    """
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+    member_ids = db.query(DeviceGroup.device_id).filter(DeviceGroup.group_id == group_id)
+    requested = (
+        db.query(Device)
+        .filter(Device.id.in_(member_ids))
+        .update({Device.update_requested: True}, synchronize_session=False)
+    )
+    db.commit()
+    return DaemonUpdateResult(requested=requested)
 
 
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
