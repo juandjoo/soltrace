@@ -101,10 +101,10 @@ async function loadDevices() {
         ${d.status === 'pending' ? `<button class="btn btn-xs btn-success me-1" onclick="confirmDevice(${d.id})">확인</button>` : ''}
         ${d.status === 'confirmed' ? `<button class="btn btn-xs btn-warning me-1" onclick="disableDevice(${d.id})">비활성</button>` : ''}
         ${d.status === 'disabled' ? `<button class="btn btn-xs btn-success me-1" onclick="enableDevice(${d.id})">활성화</button>` : ''}
-        <button class="btn btn-xs btn-outline-info me-1" onclick="showDeviceStatus(${d.id})"><i class="bi bi-activity"></i></button>
+        <button class="btn btn-xs btn-outline-info me-1" onclick="showDeviceStatus(${d.id})">상태</button>
         <button class="btn btn-xs btn-outline-secondary me-1" onclick="openDeviceGroups(${d.id})">그룹</button>
-        <button class="btn btn-xs ${d.update_requested ? 'btn-warning' : 'btn-outline-success'} me-1" onclick="requestDaemonUpdate(${d.id})" title="데몬 업데이트"><i class="bi bi-arrow-repeat"></i></button>
-        <button class="btn btn-xs btn-outline-danger" onclick="deleteDevice(${d.id})"><i class="bi bi-trash"></i></button>
+        <button class="btn btn-xs ${d.update_requested ? 'btn-warning' : 'btn-outline-success'} me-1" onclick="requestDaemonUpdate(${d.id})" title="이 장비의 데몬을 최신 버전으로 업데이트">업데이트</button>
+        <button class="btn btn-xs btn-outline-danger" onclick="deleteDevice(${d.id})">삭제</button>
       </td>
     </tr>`;
   }).join('');

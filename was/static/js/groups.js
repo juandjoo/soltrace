@@ -73,10 +73,10 @@ function renderGroupPage(page) {
       <td class="small" style="word-break:break-word;white-space:pre-wrap">${g.application ? esc(g.application) : '<span class="text-muted">-</span>'}</td>
       <td class="small text-muted" style="word-break:break-word;white-space:pre-wrap">${g.description ? esc(g.description) : '-'}</td>
       <td><div class="d-flex gap-1 justify-content-end">
-        <button class="btn btn-xs btn-outline-secondary" onclick="openGroupDevices(${g.id})" title="이 그룹에 장비 등록"><i class="bi bi-hdd-network me-1"></i>장비</button>
-        <button class="btn btn-xs btn-outline-success" onclick="requestGroupDaemonUpdate(${g.id})" title="이 그룹 장비의 데몬을 한 번에 업데이트" ${g.device_count ? '' : 'disabled'}><i class="bi bi-arrow-repeat"></i></button>
+        <button class="btn btn-xs btn-outline-secondary" onclick="openGroupDevices(${g.id})" title="이 그룹에 장비 등록">장비</button>
+        <button class="btn btn-xs btn-outline-success" onclick="requestGroupDaemonUpdate(${g.id})" title="이 그룹 장비의 데몬을 한 번에 업데이트" ${g.device_count ? '' : 'disabled'}>업데이트</button>
         <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
-        <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})"><i class="bi bi-trash"></i></button>
+        <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})">삭제</button>
       </div></td>`;
 
   let isFirst = true;
