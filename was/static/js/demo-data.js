@@ -320,6 +320,7 @@
       subject: '대량 데이터 보관 개선 + 죽은 코드/중복 정리',
       behind: 0, update_available: false, checked: false, error: null,
     })],
+    [/^\/settings\/storage\/rebalance$/, () => ({ running: false, ok: null, message: '', notices: [] })],
     [/^\/settings\/storage$/, storage],
     [/^\/settings\/security$/, () => ({ username: 'admin', allowed_ips: ['10.0.0.0/8', '203.0.113.0/24'], my_ip: '203.0.113.42' })],
     [/^\/settings\/alerts$/, () => ({

@@ -11,7 +11,7 @@ from fastapi import (
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app import alert_settings, disk_guard, login_config, notifier, retention
+from app import alert_settings, disk_guard, login_config, notifier, rebalance, retention
 from app.config import settings as cfg
 from app.database import get_db
 from app.deps import Principal, require_admin, validate_ip_entries
@@ -20,6 +20,7 @@ from app.schemas import (
     AlertSettings, AlertSettingsInfo, LoginConfig, LoginConfigUpdate,
     PasswordChangeRequest, UpdateTriggerResponse, VersionInfo, NotifySettings,
     StorageInfo, StoragePartition, RetentionUpdate, DiskPurgeUpdate, DiskPathUpdate,
+    RebalanceStatus,
     ChangelogEntry, ChangelogItem,
 )
 from app.security import (
@@ -264,6 +265,26 @@ def update_retention(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     log.info("보존 기간 변경: %s개월", body.months)
     return get_storage(db)
+
+
+@router.post("/storage/rebalance", response_model=RebalanceStatus)
+def start_rebalance(_: str = Depends(require_admin)):
+    """default 파티션에 남은 과거 데이터를 월 파티션으로 옮긴다 (백그라운드 실행).
+
+    서버에서 psql 로 돌리는 것과 **같은 스크립트**를 돌린다
+    (scripts/rebalance_default_partition.sql). 데이터를 옮기는 동안 부모 테이블에 락을
+    걸지 않으므로 수집은 계속된다. 진행 상황은 GET 으로 확인한다.
+    """
+    if not rebalance.start():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="재배치가 이미 진행 중입니다")
+    log.warning("default 파티션 재배치 시작 (관리자 요청)")
+    return RebalanceStatus(**rebalance.status())
+
+
+@router.get("/storage/rebalance", response_model=RebalanceStatus)
+def get_rebalance(_: str = Depends(require_admin)):
+    return RebalanceStatus(**rebalance.status())
 
 
 @router.delete("/storage/partitions/{name}", response_model=StorageInfo)

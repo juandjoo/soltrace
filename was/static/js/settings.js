@@ -113,12 +113,16 @@ function _renderStorage(s) {
   }
 
   const def = document.getElementById('stDefault');
+  const rebalBtn = document.getElementById('stRebalanceBtn');
   if (s.default_rows > 0) {
     def.innerHTML = `<span class="text-danger fw-semibold">${s.default_rows.toLocaleString()}행 잔존</span>`
       + ` <span class="text-muted">(${s.default_months.map(esc).join(', ')})</span>`;
-    settingsMsg('storageMsg', 'warning', 'default 파티션에 데이터가 남아 있습니다. 재배치가 필요합니다.');
+    rebalBtn.classList.remove('d-none');
+    settingsMsg('storageMsg', 'warning',
+      'default 파티션에 데이터가 남아 있습니다. 재배치가 필요합니다 (오른쪽 재배치 버튼).');
   } else {
     def.innerHTML = '<span class="text-success">비어 있음</span>';
+    rebalBtn.classList.add('d-none');
   }
   renderStorageTable();
 }
@@ -132,6 +136,63 @@ async function loadStorage() {
   } catch (e) {
     settingsMsg('storageMsg', 'danger', e.message);
     document.getElementById('storageTable').innerHTML = '';
+    return;
+  }
+  // 다른 창에서 돌리고 있거나 새로고침으로 돌아왔을 수 있다 — 돌고 있으면 이어서 지켜본다.
+  _pollRebalance(false);
+}
+
+// ── default 파티션 재배치 ─────────────────────────────────────────────────────
+// 서버가 scripts/rebalance_default_partition.sql 을 백그라운드로 돌린다(수집은 계속된다).
+// 몇 초~몇 분 걸리므로 요청 하나로 끝내지 않고 상태를 물어본다.
+let _rebalTimer = null;
+
+function _rebalBusy(running) {
+  const btn = document.getElementById('stRebalanceBtn');
+  if (!btn) return;
+  btn.disabled = running;
+  btn.innerHTML = running
+    ? '<span class="spinner-border spinner-border-sm me-1"></span>재배치 중'
+    : '<i class="bi bi-arrow-left-right me-1"></i>재배치';
+  if (running) btn.classList.remove('d-none');
+}
+
+async function _pollRebalance(announce = true) {
+  clearTimeout(_rebalTimer);
+  let st;
+  try { st = await api('GET', '/settings/storage/rebalance'); }
+  catch (e) { _rebalBusy(false); return; }
+  if (!st) return;
+  _rebalBusy(st.running);
+  if (st.running) {
+    settingsMsg('storageMsg', 'info', '재배치를 진행하고 있습니다. 이 동안에도 로그 수집은 계속됩니다.');
+    _rebalTimer = setTimeout(() => _pollRebalance(announce), 3000);
+    return;
+  }
+  if (!announce) return;                       // 화면에 들어왔을 뿐, 지난 결과까지 알릴 필요는 없다
+  try {
+    const s = await api('GET', '/settings/storage');
+    if (s) _renderStorage(s);
+  } catch (e) { /* 현황 갱신 실패는 아래 결과 메시지로 충분하다 */ }
+  const detail = (st.notices || []).join(' · ');
+  settingsMsg('storageMsg', st.ok ? 'success' : 'danger',
+    (st.ok ? '재배치를 마쳤습니다.' : `재배치 실패: ${st.message}`) + (detail ? ` — ${detail}` : ''));
+}
+
+async function runRebalance() {
+  const rows = _storage ? _storage.default_rows : 0;
+  if (!confirm(
+      `default 파티션에 남은 ${rows.toLocaleString()}행을 월별 파티션으로 옮깁니다.\n\n`
+      + '옮기는 동안 로그 수집은 멈추지 않습니다. 데이터 양에 따라 수십 초~수 분 걸립니다.\n'
+      + '계속할까요?')) return;
+  _rebalBusy(true);
+  try {
+    await api('POST', '/settings/storage/rebalance');
+    settingsMsg('storageMsg', 'info', '재배치를 시작했습니다.');
+    _pollRebalance();
+  } catch (e) {
+    _rebalBusy(false);
+    settingsMsg('storageMsg', 'danger', e.message);
   }
 }
 

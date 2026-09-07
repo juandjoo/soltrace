@@ -161,6 +161,16 @@ class StorageInfo(BaseModel):
     autopurge_enabled: bool = True         # 임계치 초과 시 오래된 월부터 자동 삭제
     autopurge_percent: int = 90
 
+class RebalanceStatus(BaseModel):
+    """default 파티션 재배치 작업 상태 (설정 > DB 저장소 버튼)."""
+    running: bool = False
+    ok: Optional[bool] = None              # 마지막 실행 성공 여부 (아직 돈 적 없으면 None)
+    message: str = ""
+    notices: List[str] = []                # DB 가 남긴 진행 메시지
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
 class DiskPurgeUpdate(BaseModel):
     enabled: bool = True
     percent: int = Field(default=90, ge=50, le=99)
