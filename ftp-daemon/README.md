@@ -23,6 +23,11 @@ proftpd 로그를 실시간으로 파싱하여 SolTrace WAS로 전송하는 데�
 | 항목 | 최소 |
 |------|------|
 | Python | 3.6 이상 (CentOS 7 기본 포함) |
+
+> **데몬 코드는 Python 3.6 호환을 지킨다.** 운영 장비에 CentOS 7(3.6)이 남아 있다.
+> `subprocess.run(capture_output=..., text=...)`, 워러스(`:=`), `list[str]` 같은 3.7+ 문법을
+> 쓰면 그 장비에서만 터진다. 실제로 1.1.1~1.1.3 이 `capture_output` 때문에 자가 업데이트
+> 재시작이 통째로 실패했다. 대신 `stdout=subprocess.PIPE, universal_newlines=True` 를 쓴다.
 | proftpd | TransferLog + ExtendedLog 설정 필요 |
 | 네트워크 | WAS HTTPS 접근 가능 (자가 업데이트 시 GitHub raw URL 접근 필요) |
 | 권한 | root 또는 proftpd 로그 파일 읽기 권한 |
@@ -379,6 +384,7 @@ started: 2026-09-07T13:52:04+09:00
 
 | 버전 | 변경 |
 |------|------|
+| `1.1.4` | 재시작이 Python 3.6 장비에서 터지던 것 수정(`capture_output` 제거). 재시작 중 어떤 예외가 나도 자기 종료 경로로 넘어간다 |
 | `1.1.3` | 경로를 해석하지 못한 전송 실패도 명령 문자열에서 경로를 꺼내 기록 (업로드·다운로드 공통) |
 | `1.1.2` | 비특권 계정에서도 자가 업데이트가 재시작되게 — systemctl 이 막히면 스스로 종료(exit 42)하고 systemd 가 다시 띄운다. 내려받은 파일의 버전도 로그에 남김 |
 | `1.1.1` | 시작 시 `VERSION` 파일 기록, 하트비트에도 버전 보고, 자가 업데이트 재시작 결과를 로그에 남김 |

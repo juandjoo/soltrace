@@ -32,7 +32,7 @@ import requests
 
 # 데몬 버전 — 하트비트로 WAS 에 보고하고, WAS 는 배포된 저장소의 이 값을 "최신"으로 삼아
 # 장비별 구버전 여부를 판정한다. 파싱·전송 동작이 바뀌면 올린다 (여기가 유일한 출처).
-DAEMON_VERSION = "1.1.3"
+DAEMON_VERSION = "1.1.4"
 
 # 자가 업데이트 후 스스로 종료해 재시작될 때 쓰는 종료 코드.
 # 유닛이 Restart=on-failure + RestartPreventExitStatus=1 이므로 0 도 1 도 아니어야 한다.
@@ -701,22 +701,27 @@ class SolTraceDaemon:
         곧바로 프로세스를 죽이지 않고 정상 종료 경로를 탄다 — 스레드가 끝나기를 기다렸다 내려간다.
         아직 전송하지 못한 구간은 tailer 위치가 확정되지 않았으므로 다시 뜰 때 그 자리부터 읽는다.
         """
+        rc, err = None, ""
         try:
             r = subprocess.run(
                 # --no-block: 자기가 속한 유닛이라 완료를 기다리면 서로를 기다리게 된다
                 ["systemctl", "restart", "--no-block", "soltrace-daemon"],
-                capture_output=True, text=True, check=False,
+                # capture_output / text 는 Python 3.7+ 다. 데몬은 CentOS 7 의 3.6 에서도 돌아야 해서
+                # 3.5 부터 있는 이름을 쓴다 — 1.1.1~1.1.3 이 이걸 어겨 재시작이 통째로 실패했다.
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True, check=False,
             )
-        except OSError as e:
-            log.warning("systemctl 실행 불가: %s — 스스로 종료해 systemd 가 다시 띄우게 한다", e)
-        else:
-            if r.returncode == 0:
-                log.info("Restart requested via systemctl — 새 버전으로 올라옵니다")
-                return
-            log.warning(
-                "systemctl restart 거부됨 (rc=%d): %s — 스스로 종료해 systemd 가 다시 띄우게 한다",
-                r.returncode, (r.stderr or "").strip()[:200],
-            )
+            rc, err = r.returncode, (r.stderr or "").strip()
+        except Exception as e:
+            # 여기서 무엇이 터지든 아래 자기 종료로 내려가야 한다. 재시작을 못 하면
+            # 파일만 새것이고 도는 코드는 옛것인 상태가 그대로 굳는다 — 그게 이 메서드가 막으려는 일이다.
+            err = "%s: %s" % (type(e).__name__, e)
+
+        if rc == 0:
+            log.info("Restart requested via systemctl — 새 버전으로 올라옵니다")
+            return
+        log.warning("systemctl restart 실패 (rc=%s): %s — 스스로 종료해 systemd 가 다시 띄우게 한다",
+                    rc, err[:200])
         log.info("Exiting with code %d for restart (Restart=on-failure, RestartSec)",
                  RESTART_EXIT_CODE)
         self._exit_code = RESTART_EXIT_CODE
