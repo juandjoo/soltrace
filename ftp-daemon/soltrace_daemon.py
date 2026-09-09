@@ -32,7 +32,7 @@ import requests
 
 # 데몬 버전 — 하트비트로 WAS 에 보고하고, WAS 는 배포된 저장소의 이 값을 "최신"으로 삼아
 # 장비별 구버전 여부를 판정한다. 파싱·전송 동작이 바뀌면 올린다 (여기가 유일한 출처).
-DAEMON_VERSION = "1.1.6"
+DAEMON_VERSION = "1.1.7"
 
 # 자가 업데이트 후 스스로 종료해 재시작될 때 쓰는 종료 코드.
 # 유닛이 Restart=on-failure + RestartPreventExitStatus=1 이므로 0 도 1 도 아니어야 한다.
@@ -257,19 +257,32 @@ def _norm_path(path):
     """
     return _MULTI_SLASH.sub("/", path) if path else path
 _rnfr_sessions: dict = {}   # pid -> (path, monotonic_time)
-_RNFR_TTL = 300.0           # RNFR 미완료 세션 만료 시간 (초)
+_user_sessions: dict = {}   # pid -> (USER 로 보낸 계정, monotonic_time)
+_SESSION_TTL = 300.0        # 짝이 되는 명령 없이 남은 세션의 만료 시간 (초)
+# 과거 로그를 한 번에 훑는 bulk 는 시간이 흐르지 않아 TTL 이 돌지 않는다.
+# PASS 없이 끊긴 세션이 계속 쌓이지 않도록 개수로도 자른다.
+_MAX_SESSIONS = 20000
 
 
-def _flush_stale_rnfr():
-    """RNTO 없이 TTL이 지난 RNFR 세션을 정리한다 (메모리 누수 방지)."""
-    if not _rnfr_sessions:
-        return
+def _remember(store: dict, pid: str, value):
+    store[pid] = (value, time.monotonic())
+    if len(store) > _MAX_SESSIONS:
+        # dict 는 삽입 순서를 지킨다 — 가장 오래된 것부터 절반을 버린다.
+        for k in list(store)[: len(store) - _MAX_SESSIONS // 2]:
+            del store[k]
+
+
+def _flush_stale_sessions():
+    """짝이 되는 명령(RNTO·PASS) 없이 TTL이 지난 세션을 정리한다 (메모리 누수 방지)."""
     now = time.monotonic()
-    stale = [k for k, (_, ts) in _rnfr_sessions.items() if now - ts > _RNFR_TTL]
-    if stale:
-        log.debug("Flushing %d stale RNFR sessions", len(stale))
-        for k in stale:
-            del _rnfr_sessions[k]
+    for name, store in (("RNFR", _rnfr_sessions), ("USER", _user_sessions)):
+        if not store:
+            continue
+        stale = [k for k, (_, ts) in store.items() if now - ts > _SESSION_TTL]
+        if stale:
+            log.debug("Flushing %d stale %s sessions", len(stale), name)
+            for k in stale:
+                del store[k]
 
 
 def parse_extended_log(line: str) -> Optional[dict]:
@@ -309,22 +322,35 @@ def parse_extended_log(line: str) -> Optional[dict]:
         "session_id": pid,
     }
 
+    if command == "USER":
+        # 인증이 끝나기 전이라 proftpd 는 username 자리에 '-' 만 남긴다. 실패한 로그인이
+        # 어느 계정이었는지 알려면 클라이언트가 보낸 USER 명령의 인자를 세션(pid)별로
+        # 기억해 두는 수밖에 없다 — PASS 실패 행에서 꺼내 쓴다.
+        arg = cmd_str.split(" ", 1)
+        attempted = arg[1].strip() if len(arg) > 1 else ""
+        if attempted:
+            _remember(_user_sessions, pid, attempted)
+        return None
     if command == "PASS":
+        val = _user_sessions.pop(pid, None)
         if status_code == 230:
             entry["action"] = "login"
             return entry
-        # 인증 실패(530 등) — username(id)이 식별된 경우만 서비스 영향으로 기록.
-        # 빈/익명("-") 시도는 스캔성 노이즈이므로 제외 (위에서 username=None 처리됨).
-        if username is not None:
+        # 인증 실패(530 등) — 계정이 식별된 경우만 기록한다.
+        # 비밀번호가 틀린 실패는 username 자리가 '-' 로 오므로(인증 전) USER 에서
+        # 기억해 둔 계정으로 채운다. 이 보정이 없으면 실패가 통째로 사라진다.
+        entry["username"] = username or (val[0] if val else None)
+        if entry["username"]:
             entry["action"] = "login"
             entry["status"] = "fail"
             return entry
         return None
     if command == "QUIT":
+        _user_sessions.pop(pid, None)
         entry["action"] = "logout"
         return entry
     if command == "RNFR":
-        _rnfr_sessions[pid] = (path, time.monotonic())
+        _remember(_rnfr_sessions, pid, path)
         return None
     if command == "RNTO" and status_code == 250:
         val = _rnfr_sessions.pop(pid, None)
@@ -997,7 +1023,7 @@ class SolTraceDaemon:
                         self._wait_interruptible(backoff)
                         continue
 
-            _flush_stale_rnfr()
+            _flush_stale_sessions()
             # 로그 파일 폴링
             all_entries = []
             for tailer in self.tailers:
