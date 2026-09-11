@@ -778,7 +778,8 @@
                   <tr><td class="text-muted">앱 로그</td><td><code>/var/log/soltrace/error.log</code> (트레이스백)<br><code>access.log</code> · <code>selfupdate.log</code> — 저널이 아니라 <b>파일</b></td></tr>
                   <tr><td class="text-muted">DB</td><td>PostgreSQL 16 · DB <code>soltrace</code></td></tr>
                   <tr><td class="text-muted">백업</td><td><code>/var/backups/soltrace</code> (매일 03:00, 3년 보관)</td></tr>
-                  <tr><td class="text-muted">장비 데몬</td><td><code>/opt/soltrace-daemon</code> · <code>config.ini</code><br>서비스 <code>soltrace-daemon</code> · 로그 <code>/var/log/soltrace-daemon/daemon.log</code></td></tr>
+                  <tr><td class="text-muted">장비 데몬</td><td><code>/opt/soltrace-daemon</code> · <code>config.ini</code><br>서비스 <code>soltrace-daemon</code> · 로그 <code>/var/log/soltrace-daemon/daemon.log</code><br><span class="text-muted">10MB × 5개 자동 회전(logrotate 불필요). 그 디렉토리에 쓸 수 없으면 <code>/var/lib/soltrace/daemon.log</code> 로 옮겨 쓰고 기동 로그에 경고를 남긴다 — 구버전 설치에서 나온다</span></td></tr>
+                  <tr><td class="text-muted">데몬이 읽는 로그<br>(장비 · proftpd)</td><td><code>/usr/service/logs/proftpd/TransferLog</code> — 업/다운로드·삭제<br><code>/usr/service/logs/proftpd/ExtendedAllLog</code> — 로그인·로그아웃·폴더·실패<br><span class="text-muted">경로는 장비 <code>config.ini</code> 의 <code>transfer_log</code>·<code>extended_log</code> 로 바꾼다. <b>이 두 파일이 안 쌓이면 화면에도 안 나온다</b> — proftpd 쪽 설정이 먼저다. 어디까지 읽었는지는 <code>/var/lib/soltrace</code> 에 파일별로 저장되고, 로그 회전은 스스로 알아채 처음부터 다시 읽는다</span></td></tr>
                 </tbody>
               </table>
             </div>
@@ -810,7 +811,7 @@
               <table class="table table-sm mb-0" style="font-size:0.75rem">
                 <tbody>
                   <tr><td class="text-muted" style="width:38%">화면이 안 뜨거나 500</td><td><code>systemctl status soltrace-was</code> → <code>/var/log/soltrace/error.log</code> 마지막 트레이스백. 배포 직후면 <code>selfupdate.log</code></td></tr>
-                  <tr><td class="text-muted">로그가 안 들어옴</td><td>장비 관리에서 <b>데몬 상태</b> 확인(하트비트 120초) → 장비에서 <code>systemctl status soltrace-daemon</code>, <code>daemon.log</code>. WAS 가 살아나면 장비 버퍼가 자동 재전송한다</td></tr>
+                  <tr><td class="text-muted">로그가 안 들어옴</td><td>장비 관리에서 <b>데몬 상태</b> 확인(하트비트 120초) → 장비에서 <code>systemctl status soltrace-daemon</code>, <code>daemon.log</code>. 데몬이 멀쩡하면 <b>원본 로그가 쌓이는지</b> 본다(<code>tail -f</code> 로 위 TransferLog · ExtendedAllLog) — 비어 있으면 proftpd 설정·경로 문제다. WAS 가 살아나면 장비 버퍼가 자동 재전송한다</td></tr>
                   <tr><td class="text-muted">알림이 쏟아짐</td><td>같은 장비·지표면 대개 임계가 그 장비에 안 맞는 것 — 위 '알림이 잦을 때'. 작업 중이면 음소거</td></tr>
                   <tr><td class="text-muted">디스크 부족</td><td>설정 &gt; DB 저장소에서 사용률·파티션 확인. 자동 정리가 켜져 있으면 오래된 월부터 <b>되돌릴 수 없이</b> 지운다 — 필요한 달은 먼저 백업 확인. DB 데이터 디렉토리를 다른 볼륨으로 옮겼다면 같은 화면의 <b>디스크 감시 경로</b>도 그 마운트로 바꿔야 한다(README '디스크 확장 · DB 위치 이동')</td></tr>
                   <tr><td class="text-muted">배포가 오래 걸림</td><td>스키마 단계에서 락 대기일 수 있다(<code>lock_timeout=5s</code>·3회 재시도). 로그를 보고 기다리되, 반복 실패면 한산한 시간에 다시 시도</td></tr>
