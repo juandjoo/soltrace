@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # 원인이 밝혀진 경로를 알림에서만 제외한다 — 로그 조회에는 그대로 남는다.
     # .env 는 여러 줄 값을 담지 못하므로 설정 페이지에서만 입력한다(여기는 빈 기본값 용도).
     alert_cwd_ignore_paths: str = ""
+    # 전송 실패 집계에서 뺄 FTP 계정 (줄 단위, '*' 와일드카드). 병렬 업로드 지연처럼
+    # 원인이 밝혀졌고 고객사가 재처리로 마무리하는 계정을 지표·알림에서만 제외한다
+    # — 로그 조회에는 그대로 남는다. cwd 제외 경로와 같은 취지·같은 방식이다.
+    alert_xfer_ignore_accounts: str = ""
     alert_throughput_drop: float = 0.6     # baseline 대비 throughput 하락 비율 (60%↓)
     # 평소에도 느린 버킷이 얼마나 있는지 — 업로드 사용자마다 회선 대역폭이 달라 장비 합산
     # 속도는 "그 시간에 누가 올렸는가"로 크게 흔들린다. baseline 의 하위 이 백분위보다도

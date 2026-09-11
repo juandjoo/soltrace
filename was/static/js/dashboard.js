@@ -583,6 +583,9 @@ async function loadServiceHealth() {
   const ft = data.fail_totals || {};
   // cwd_fails 는 설정의 '제외 경로'를 뺀 값 — 숨긴 건수를 범례/툴팁에 같이 밝힌다
   const cwdIgnored = ft.cwd_fails_ignored || 0;
+  // 전송 실패도 설정의 '제외 계정'을 뺀 값 — 같은 방식으로 숨긴 건수를 밝힌다
+  const xferIgnored = ft.transfer_fails_ignored || 0;
+  const ignoredOf = i => (i === 0 ? xferIgnored : (i === 2 ? cwdIgnored : 0));
   const failTotal = (ft.transfer_fails || 0) + (ft.login_fails || 0) + (ft.cwd_fails || 0);
   const rateEl = document.getElementById('chartHealthRate');
   const rateWrap = rateEl.parentElement;
@@ -628,7 +631,7 @@ async function loadServiceHealth() {
                 const ds = chart.data.datasets[0];
                 return chart.data.labels.map((label, i) => ({
                   text: `${label}: ${ds.data[i].toLocaleString()}건`
-                        + (i === 2 && cwdIgnored ? ` (제외 ${cwdIgnored.toLocaleString()}건)` : ''),
+                        + (ignoredOf(i) ? ` (제외 ${ignoredOf(i).toLocaleString()}건)` : ''),
                   fillStyle: ds.backgroundColor[i],
                   strokeStyle: ds.backgroundColor[i],
                   hidden: false, index: i,
@@ -639,7 +642,8 @@ async function loadServiceHealth() {
           tooltip: {callbacks: {label: c => c.dataIndex === 2
             ? `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 원인 경로 분석`
               + (cwdIgnored ? ` (제외 경로 ${cwdIgnored.toLocaleString()}건 제외됨)` : '')
-            : `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 조회`}},
+            : `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 조회`
+              + (c.dataIndex === 0 && xferIgnored ? ` (제외 계정 ${xferIgnored.toLocaleString()}건 제외됨)` : '')}},
           centerText: {line1: `${failTotal.toLocaleString()}건`, line2: '총 실패', size: 13, color: '#dc3545'},
         },
       },

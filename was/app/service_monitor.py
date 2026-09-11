@@ -109,6 +109,19 @@ def cwd_not_ignored_sql(col: str = "file_path") -> str:
     return f"NOT (COALESCE({col},'') LIKE ANY(CAST(:cwd_ignore AS text[])))"
 
 
+def xfer_not_ignored_sql(col: str = "username") -> str:
+    """전송 실패 집계에서 제외 계정을 거르는 SQL 조건 (:xfer_ignore 바인딩 필요).
+
+    병렬 업로드가 몰리면 ftp·s3fs 지연으로 일부가 실패하고 고객사가 재처리로 마무리하는
+    계정이 있다. 그 실패까지 세면 전송 실패율이 늘 떠 있어 진짜 장애가 묻힌다.
+    롤업(service_metrics.transfer_fails)·알림 판정·대시보드 실패 건수가 모두 이 한 조건을
+    써야 "제외 계정을 넣었는데 화면 숫자는 그대로" 같은 어긋남이 생기지 않는다.
+    성공 건은 그대로 세므로(분모 유지) 그 계정의 전송량은 화면에서 사라지지 않는다.
+    빈 목록이면 LIKE ANY(ARRAY[]) 가 false → NOT false = true 로 전부 집계된다.
+    """
+    return f"NOT (COALESCE({col},'') LIKE ANY(CAST(:xfer_ignore AS text[])))"
+
+
 def _now():
     return datetime.now(timezone.utc)
 
@@ -227,7 +240,8 @@ class ServiceMonitor:
                 device_id,
                 date_bin(:iv, log_time, TIMESTAMPTZ '{_EPOCH}') AS bucket,
                 COUNT(*) FILTER (WHERE action IN ('upload','download')),
-                COUNT(*) FILTER (WHERE action IN ('upload','download') AND status='fail'),
+                COUNT(*) FILTER (WHERE action IN ('upload','download') AND status='fail'
+                                 AND {xfer_not_ignored_sql()}),
                 COALESCE(SUM(file_size) FILTER (WHERE action IN ('upload','download')), 0),
                 COALESCE(SUM(transfer_time) FILTER (WHERE action IN ('upload','download')), 0),
                 -- 전송 속도 판정용: 큰 파일 + 성공 전송만. 작은 파일은 고정 오버헤드가,
@@ -259,7 +273,8 @@ class ServiceMonitor:
                 updated_at     = NOW()
         """), {"iv": self._bucket, "win_start": win_start,
                "large": settings.alert_large_file_bytes,
-               "cwd_ignore": _like_patterns(cfg["cwd_ignore_paths"])})
+               "cwd_ignore": _like_patterns(cfg["cwd_ignore_paths"]),
+               "xfer_ignore": _like_patterns(cfg["xfer_ignore_accounts"])})
         db.commit()
 
     # ── (2) 이상 판정 ────────────────────────────────────────────────────────

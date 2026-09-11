@@ -8,7 +8,7 @@ import pytest
 
 from app import alert_settings
 from app.service_monitor import (ServiceMonitor, _like_patterns, cwd_not_ignored_sql,
-                                 cwd_probe_sql, cwd_real_fail_sql)
+                                 cwd_probe_sql, cwd_real_fail_sql, xfer_not_ignored_sql)
 
 MB = 1024 * 1024
 
@@ -244,6 +244,32 @@ def test_cwd_ignore_rule_lives_in_one_place():
         assert "cwd_not_ignored_sql(" in src
         # 실패 건수를 세는 곳은 '진짜 실패' 조건을 쓴다 (존재 확인 건이 다시 새어 들어오지 않게)
         assert "cwd_real_fail_sql(" in src
+
+
+def test_xfer_ignore_condition_is_shared():
+    """전송 실패 제외 계정도 조건을 xfer_not_ignored_sql() 한 곳에만 둔다.
+
+    롤업(service_metrics.transfer_fails) · 알림 판정 · 대시보드 실패 건수가 갈라지면
+    "제외 계정을 넣었는데 화면 숫자만 그대로"가 된다 (cwd 제외 경로와 같은 이유).
+    """
+    import inspect
+
+    from app.routers import dashboard
+    from app import service_monitor
+
+    assert xfer_not_ignored_sql() == xfer_not_ignored_sql("username")
+    assert "fl.username" in xfer_not_ignored_sql("fl.username")
+    for mod in (dashboard, service_monitor):
+        src = inspect.getsource(mod)
+        literal = src.count("LIKE ANY(CAST(:xfer_ignore")
+        expected = 1 if mod is service_monitor else 0   # 헬퍼 정의 1회
+        assert literal == expected, f"{mod.__name__}: 제외 조건을 직접 적지 말고 헬퍼를 쓰세요"
+        assert "xfer_not_ignored_sql(" in src
+
+
+def test_xfer_ignore_setting_is_registered():
+    """설정 화면에서 저장·로드되려면 필드가 등록돼 있어야 한다."""
+    assert "xfer_ignore_accounts" in alert_settings.defaults()
 
 
 # ── 발송 전 지속 조건 (짧은 흔들림 억제) ────────────────────────────────────

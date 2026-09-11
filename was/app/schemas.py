@@ -458,6 +458,7 @@ class FailTotals(BaseModel):
     login_fails: int = 0
     cwd_fails: int = 0            # 진짜 이동 실패만 (알림/추이와 같은 기준)
     cwd_fails_ignored: int = 0    # 그중 설정의 제외 경로로 빠진 건수 (존재 확인 건은 아예 세지 않는다)
+    transfer_fails_ignored: int = 0   # 설정의 제외 계정으로 빠진 전송 실패 건수 (transfer_fails 에는 없다)
 
 
 class CwdFailPath(BaseModel):
@@ -515,6 +516,8 @@ class AlertSettings(BaseModel):
     cwd_fail_floor: Optional[int] = Field(default=None, ge=0)
     # CWD 실패 집계 제외 경로 (한 줄에 하나, '*' 와일드카드)
     cwd_ignore_paths: Optional[str] = Field(default=None, max_length=2000)
+    # 전송 실패 집계 제외 FTP 계정 (한 줄에 하나, '*' 와일드카드)
+    xfer_ignore_accounts: Optional[str] = Field(default=None, max_length=2000)
     # 발송 전 이상이 이어져야 하는 버킷 수 (1 = 즉시 발송)
     min_streak_buckets: Optional[int] = Field(default=None, ge=1, le=12)
     min_samples: Optional[int] = Field(default=None, ge=1)

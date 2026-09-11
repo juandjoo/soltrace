@@ -1208,6 +1208,16 @@
                       로그 조회에는 그대로 남습니다. 최근 2시간 버킷은 다음 판정 주기에 다시 집계됩니다.
                     </div>
                   </div>
+                  <div class="col-12">
+                    <label class="form-label small mb-1">전송 실패 제외 계정</label>
+                    <textarea class="form-control form-control-sm" id="alXferIgnoreAccounts" rows="3"
+                      placeholder="한 줄에 하나씩 입력 (* 와일드카드)&#10;예) CUST_UPLOAD&#10;    vod_*"></textarea>
+                    <div class="form-text">
+                      병렬 업로드 지연처럼 원인이 밝혀졌고 고객사가 재처리로 마무리하는 계정을
+                      <b>전송 실패 집계·실패율·알림에서만</b> 뺍니다. 성공 건은 그대로 세고,
+                      로그 조회에도 그대로 남습니다. 최근 2시간 버킷은 다음 판정 주기에 다시 집계됩니다.
+                    </div>
+                  </div>
                 </div>
                 <hr class="my-3">
                 <dl class="row small mb-0">
