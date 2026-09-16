@@ -81,12 +81,31 @@ function _setPeriodLabels(...ids) {
   });
 }
 
-let _dashExactStart = null;
-let _dashExactEnd   = null;
+// '24H' 처럼 지금을 기준으로 삼는 구간은 **시각을 얼려두지 않는다**.
+// 얼려두면 새로고침·자동 새로고침·다른 탭에 갔다 돌아오기가 모두 '화면을 연 시점의
+// 24시간' 을 다시 물어, 그 뒤에 들어온 로그는 영영 안 보인다(캐시처럼 보이던 원인).
+// 그래서 구간 길이(시간)만 기억하고 실제 시각은 요청할 때마다 다시 만든다.
+let _dashRelHours = null;
+
+// 지금 기준 상대 구간 → {start, end}. 상대 구간이 아니면 null.
+function _dashRelRange() {
+  if (!_dashRelHours) return null;
+  const end = new Date();
+  return {start: new Date(end.getTime() - _dashRelHours * 3600 * 1000), end};
+}
+
+// 상대 구간이면 창이 흘러간 만큼 날짜 입력칸도 같이 민다(카드 제목의 기간 표시가 같이 움직인다).
+function _syncDashDateInputs() {
+  const rel = _dashRelRange();
+  if (!rel) return;
+  document.getElementById('dashStart').value = fmtLocalDate(rel.start);
+  document.getElementById('dashEnd').value   = fmtLocalDate(rel.end);
+}
 
 function _dashDateParams() {
-  if (_dashExactStart && _dashExactEnd) {
-    return `start_date=${encodeURIComponent(_dashExactStart)}&end_date=${encodeURIComponent(_dashExactEnd)}`;
+  const rel = _dashRelRange();
+  if (rel) {
+    return `start_date=${encodeURIComponent(rel.start.toISOString())}&end_date=${encodeURIComponent(rel.end.toISOString())}`;
   }
   const s = document.getElementById('dashStart').value;
   const e = document.getElementById('dashEnd').value;
@@ -98,9 +117,7 @@ function _dashDateParams() {
 
 // 조회 기간(일). 주/월 처럼 긴 기간은 시간 버킷이면 점이 너무 촘촘해 읽히지 않는다.
 function _dashRangeDays() {
-  if (_dashExactStart && _dashExactEnd) {
-    return (new Date(_dashExactEnd) - new Date(_dashExactStart)) / 86400000;
-  }
+  if (_dashRelHours) return _dashRelHours / 24;
   const s = document.getElementById('dashStart').value;
   const e = document.getElementById('dashEnd').value;
   if (s && e) return (new Date(e + 'T23:59:59') - new Date(s + 'T00:00:00')) / 86400000;
@@ -111,12 +128,8 @@ function _dashRangeDays() {
 function _dashBucketUnit() { return _dashRangeDays() > 2 ? 'day' : 'hour'; }
 
 function dashLast24() {
-  const end   = new Date();
-  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
-  _dashExactStart = start.toISOString();
-  _dashExactEnd   = end.toISOString();
-  document.getElementById('dashStart').value = fmtLocalDate(start);
-  document.getElementById('dashEnd').value   = fmtLocalDate(end);
+  _dashRelHours = 24;
+  _syncDashDateInputs();
   document.querySelectorAll('.dash-quick').forEach(b => {
     const active = b.dataset.h24 === 'true';
     b.classList.toggle('btn-primary', active);
@@ -126,8 +139,7 @@ function dashLast24() {
 }
 
 function dashQuick(days) {
-  _dashExactStart = null;
-  _dashExactEnd   = null;
+  _dashRelHours = null;
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - days + 1);
@@ -142,8 +154,7 @@ function dashQuick(days) {
 }
 
 function dashCustom() {
-  _dashExactStart = null;
-  _dashExactEnd   = null;
+  _dashRelHours = null;
   document.querySelectorAll('.dash-quick').forEach(b => {
     b.classList.remove('btn-primary');
     b.classList.add('btn-outline-secondary');
@@ -152,6 +163,7 @@ function dashCustom() {
 }
 
 function loadAll() {
+  _syncDashDateInputs();  // 24H 는 요청할 때마다 창이 움직인다 — 표시 날짜도 맞춰 둔다
   loadServiceHealth();
   loadUserHourly();
 }
@@ -238,8 +250,9 @@ const RATE_DRILL_ACTIONS = [
 // 대시보드 날짜 범위를 유지하면서 로그 조회 페이지로 드릴다운
 function navToLogsFilters({action = '', status = '', filePath = ''} = {}) {
   // 로그 조회는 날짜 단위라 시각은 떨군다 (setLogDateRange 가 형식을 맡는다)
-  if (_dashExactStart && _dashExactEnd) {
-    setLogDateRange(new Date(_dashExactStart), new Date(_dashExactEnd));
+  const rel = _dashRelRange();
+  if (rel) {
+    setLogDateRange(rel.start, rel.end);
   } else {
     const s = document.getElementById('dashStart').value;
     const e = document.getElementById('dashEnd').value;

@@ -14,7 +14,7 @@ function nav(page) {
   if (link) link.classList.add('active');
   if (page === 'dashboard') {
     initDashLayout();
-    if (_dashExactStart || document.getElementById('dashStart').value) loadAll();
+    if (_dashRelHours || document.getElementById('dashStart').value) loadAll();
     else dashLast24();
   }
   else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
