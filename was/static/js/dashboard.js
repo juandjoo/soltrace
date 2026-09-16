@@ -370,42 +370,60 @@ function _renderUserCountChart(key, series, buckets, fmtBucket) {
     },
   });
 
-  _renderUserLegend(key, active.map((u, i) => ({
-    name: u.username,
-    max: Math.max(0, ...datasets[i].data),
-    cur: datasets[i].data[datasets[i].data.length - 1] ?? 0,
-  })), v => v.toLocaleString());
+  _renderUserLegend(key, active.map((u, i) => _legendStats(u.username, datasets[i].data)),
+                    v => v.toLocaleString());
 }
 
-// 범례표(사용자 · 최대 · 현재) — 건수 카드와 양 카드가 같은 표를 쓴다.
+// 범례 숫자(최대 · 현재 · 합산)는 여기서만 계산한다 — 건수 카드와 양 카드가 같은 정의를
+// 써야 "카드마다 합계가 다르다" 가 생기지 않는다. values 는 버킷 순서대로의 값 배열.
+//   최대 = 한 버킷 최고값 · 현재 = 마지막 버킷 · 합산 = 기간 전체 합
+function _legendStats(name, values) {
+  return {
+    name,
+    max: Math.max(0, ...values),
+    cur: values[values.length - 1] ?? 0,
+    sum: values.reduce((a, b) => a + b, 0),
+  };
+}
+
+// 숫자 칸 정의(정렬 키 · 머리글) — 표 머리글과 각 행이 같은 목록을 돌며 만들어진다.
+const LEGEND_VALUE_COLS = [['max', '최대'], ['cur', '현재'], ['sum', '합산']];
+
+// 범례표(사용자 · 최대 · 현재 · 합산) — 건수 카드와 양 카드가 같은 표를 쓴다.
 // 한쪽에만 값이 나오던 문제(양 카드는 Chart.js 기본 범례라 이름만 나왔다)를 막으려면
-// 표를 만드는 곳이 하나여야 한다. items: [{name, max, cur}] · fmtVal: 표시 형식.
+// 표를 만드는 곳이 하나여야 한다. items: _legendStats() 결과 · fmtVal: 표시 형식.
 function _renderUserLegend(key, items, fmtVal) {
   const cfg = _userChartCfg(key);
   const legendEl = document.getElementById(cfg.legend);
   if (!legendEl) return;
-  // 바이트는 '1.2 GB' 처럼 폭이 넓어 숫자 칸을 형식에 맞춰 잡는다
-  const valW = fmtVal === fmtBytes ? 62 : 46;
+  // 바이트는 '1023.9 MB' 처럼 폭이 넓어 숫자 칸을 형식에 맞춰 잡는다
+  const valW = fmtVal === fmtBytes ? 58 : 46;
   const rows = items.map((it, i) => {
     const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
-    return `<tr onclick="focusUserChart('${key}', ${i})" id="${key}LegendItem${i}" style="cursor:pointer" data-name="${esc(it.name)}" data-max="${it.max}" data-cur="${it.cur}">
+    const attrs = LEGEND_VALUE_COLS.map(([col]) => `data-${col}="${it[col]}"`).join(' ');
+    const vals = LEGEND_VALUE_COLS.map(([col]) =>
+      `<td style="text-align:right;padding:3px 3px;white-space:nowrap;font-size:0.72rem">${esc(fmtVal(it[col]))}</td>`
+    ).join('');
+    return `<tr onclick="focusUserChart('${key}', ${i})" id="${key}LegendItem${i}" style="cursor:pointer" data-name="${esc(it.name)}" ${attrs}>
       <td style="padding:3px 4px;min-width:0;max-width:0">
         <div class="d-flex align-items-center gap-1" style="min-width:0">
           <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
           <span class="text-truncate" style="font-size:0.75rem" title="${esc(it.name)}">${esc(it.name)}</span>
         </div>
       </td>
-      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${esc(fmtVal(it.max))}</td>
-      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${esc(fmtVal(it.cur))}</td>
+      ${vals}
     </tr>`;
   }).join('');
+  const cols = LEGEND_VALUE_COLS.map(() => `<col style="width:${valW}px">`).join('');
+  const heads = LEGEND_VALUE_COLS.map(([col, label]) =>
+    `<th data-col="${col}" onclick="sortUserChart('${key}', '${col}')" style="font-size:0.7rem;font-weight:600;padding:2px 3px;text-align:right;cursor:pointer;user-select:none">${label}<span class="sort-arrow"></span></th>`
+  ).join('');
   _chartState(key).sort = {col: null, asc: true};
   legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
-    <colgroup><col><col style="width:${valW}px"><col style="width:${valW}px"></colgroup>
+    <colgroup><col>${cols}</colgroup>
     <thead><tr style="color:var(--st-muted);border-bottom:1px solid var(--st-border)">
       <th data-col="name" onclick="sortUserChart('${key}', 'name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">${cfg.head}<span class="sort-arrow"></span></th>
-      <th data-col="max" onclick="sortUserChart('${key}', 'max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
-      <th data-col="cur" onclick="sortUserChart('${key}', 'cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
+      ${heads}
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -466,11 +484,7 @@ function _renderUserVolumeChart(chartKey, series, buckets, fmtBucket) {
     },
   });
 
-  _renderUserLegend(chartKey, datasets.map(ds => ({
-    name: ds.label,
-    max: Math.max(0, ...ds.data),
-    cur: ds.data[ds.data.length - 1] ?? 0,
-  })), fmtBytes);
+  _renderUserLegend(chartKey, datasets.map(ds => _legendStats(ds.label, ds.data)), fmtBytes);
 }
 
 function _applyLegendSort(legendId, state) {
