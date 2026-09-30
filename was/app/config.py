@@ -18,15 +18,18 @@ class Settings(BaseSettings):
 
     # ── 서비스 영향도 감지 ──────────────────────────────────────────────
     alerts_enabled: bool = True
-    alert_bucket_minutes: int = 10          # 집계 버킷 크기
+    alert_bucket_minutes: int = 5           # 집계 버킷 크기
     alert_rollup_interval_sec: int = 300    # 롤업/판정 주기 (5분)
     alert_baseline_days: int = 7            # baseline 산출 기간
     alert_mad_k: float = 4.0               # median + k·MAD 이탈 임계
     alert_min_samples: int = 20            # 전송 지표 평가 최소 건수 (소표본 오탐 방지)
-    # 발송 전 이상이 이어져야 하는 버킷 수 — 한 버킷(10분) 반짝했다 돌아오는 흔들림은
+    # 발송 전 이상이 이어져야 하는 버킷 수 — 한 버킷(5분) 반짝했다 돌아오는 흔들림은
     # 사람이 손쓸 새도 없이 끝나므로 감지·복구 알림을 아예 내보내지 않는다.
-    # 1 = 즉시 발송(종전 동작). '심각' 등급은 이 값과 무관하게 바로 나간다.
+    # 1 = 즉시 발송. '심각' 등급도 이 조건을 따른다(한 버킷짜리 100% 실패가 잦았다).
     alert_min_streak_buckets: int = 2
+    # 전송 속도만 따로 — 업로드 사용자별 회선 차이로 한두 버킷 느린 구간이 흔해
+    # 다른 지표보다 길게(기본 3버킷 = 15분) 이어져야 알린다.
+    alert_min_streak_throughput: int = 3
     # 전송 속도(throughput) 판정 대상 — 이 크기 이상의 전송만 집계한다.
     # 작은 파일은 연결/인증 오버헤드가 전송시간의 대부분이라 실효속도가 낮게 나오고,
     # 소량 파일 대량 업로드가 성능 저하로 오인된다. 롤업 시점에 반영되는 값이므로

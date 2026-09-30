@@ -376,6 +376,7 @@ async function loadNotify() {
 const ALERT_FIELDS = {
   alMadK: 'mad_k',
   alMinStreak: 'min_streak_buckets',
+  alMinStreakThroughput: 'min_streak_throughput',
   alThroughputDrop: 'throughput_drop',
   alThroughputSlowPct: 'throughput_slow_pct',
   alFailFloor: 'fail_rate_floor',

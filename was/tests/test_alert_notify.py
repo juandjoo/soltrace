@@ -84,3 +84,24 @@ def test_mixed_list_is_not_treated_as_recovery():
     """이상과 복구를 한 묶음으로 보내지 않는다 — 섞이면 이상 알림 형식을 따른다."""
     assert notifier._is_recovery([recovery(), alert()]) is False
     assert notifier._is_recovery([]) is False
+
+
+# ── 원인 정보 (로그인 실패 계정 · CWD 경로) ─────────────────────────────────
+
+def test_login_fail_alert_shows_accounts():
+    from app.service_monitor import alert_detail
+    msg = "로그인 실패율 100.0% (임계 30.0%) — 계정 lguser01 24건, x 2건 외 1개"
+    a = alert(metric="login_fail_rate", value=1.0, baseline=0.0, detail=alert_detail(msg))
+    text = notifier._slack_payload([a])["blocks"][0]["text"]["text"]
+    assert "로그인 실패율 100.0% (평소 0.0%)" in text
+    assert "· 계정 lguser01 24건, x 2건 외 1개" in text
+    assert "lguser01" in notifier._build_hms_body([{**a, "device_hostname": "h"}])
+    assert notifier._generic_payload([a])["alerts"][0]["detail"].startswith("계정 lguser01")
+
+
+def test_alert_without_detail_is_unchanged():
+    from app.service_monitor import alert_detail
+    assert alert_detail("전송 속도 5.28MB/s (평소 121.13MB/s)") is None
+    assert alert_detail(None) is None
+    text = notifier._slack_payload([alert(detail=None)])["blocks"][0]["text"]["text"]
+    assert text.rstrip().endswith("KST")

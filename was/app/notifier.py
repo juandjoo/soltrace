@@ -60,6 +60,11 @@ def _alert_label(alert: dict) -> str:
     return alert.get("device_hostname", "unknown")
 
 
+def _detail_suffix(alert: dict) -> str:
+    """판정 시 덧붙인 원인 정보(로그인 실패 계정·CWD 실패 경로). 없으면 빈 문자열."""
+    return f" · {alert['detail']}" if alert.get("detail") else ""
+
+
 def build_summary(alert: dict) -> str:
     sev = _SEVERITY_LABEL.get(alert["severity"], alert["severity"])
     metric = _METRIC_LABEL.get(alert["metric"], alert["metric"])
@@ -73,7 +78,7 @@ def build_summary(alert: dict) -> str:
     return (
         f"[{sev}] {_alert_label(alert)} — {metric} "
         f"{_fmt_metric(alert['metric'], alert['value'])}{base_str} "
-        f"@ {kst:%Y-%m-%d %H:%M} KST"
+        f"@ {kst:%Y-%m-%d %H:%M} KST{_detail_suffix(alert)}"
     )
 
 
@@ -161,7 +166,8 @@ def _slack_payload(alerts: list[dict]) -> dict:
         val = _fmt_metric(a["metric"], a["value"])
         base = a.get("baseline")
         base_str = f" (평소 {_fmt_metric(a['metric'], base)})" if base is not None else ""
-        lines.append(f"{icon} [{sev}] *{_alert_label(a)}* — {metric} {val}{base_str} · {kst} KST")
+        lines.append(f"{icon} [{sev}] *{_alert_label(a)}* — {metric} {val}{base_str} · {kst} KST"
+                     f"{_detail_suffix(a)}")
     text = header + "\n" + "\n".join(lines)
     return {
         "text": f"[SolTrace] {title} {len(alerts)}건",
@@ -185,6 +191,7 @@ def _generic_payload(alerts: list[dict]) -> dict:
                 "severity": a["severity"],
                 "value": a["value"],
                 "baseline": a.get("baseline"),
+                "detail": a.get("detail"),
                 "bucket": a["bucket"].isoformat(),
                 "recovered": bool(a.get("recovered")),
                 # 복구 알림에서만 채워진다 — 이상이 이어진 시간과 묶인 알림 건수
@@ -215,6 +222,7 @@ def _build_hms_body(alerts: list[dict]) -> str:
         f"<td style='padding:4px 8px'>{_esc(_SEVERITY_LABEL.get(a['severity'], a['severity']))}</td>"
         f"<td style='padding:4px 8px'>"
         f"{_esc('정상 회복 (이상 ' + _fmt_span(a) + ')' if recovered else _fmt_metric(a['metric'], a['value']))}"
+        f"{'' if recovered or not a.get('detail') else '<br>' + _esc(a['detail'])}"
         f"</td>"
         f"<td style='padding:4px 8px'>{a['bucket'].astimezone(_KST):%Y-%m-%d %H:%M} KST</td></tr>"
         for a in alerts

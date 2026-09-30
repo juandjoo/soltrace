@@ -295,11 +295,13 @@ def test_sent_once_when_streak_is_reached():
     assert notify(prev_count=9) is False
 
 
-def test_critical_does_not_wait_for_streak():
-    assert notify(prev_count=0, severity="critical") is True
-    # 이미 심각으로 알린 뒤에는 반복하지 않는다
-    assert notify(prev_count=1, prev_severity="critical", severity="critical") is False
-    assert notify(prev_count=1, prev_severity="critical", severity="warning") is False
+def test_critical_also_waits_for_streak():
+    """한 버킷짜리 로그인 실패 100%(심각)가 즉시 나가 알림이 잦았다 — 심각도 이어져야 보낸다."""
+    assert notify(prev_count=0, severity="critical") is False
+    assert notify(prev_count=1, prev_severity="critical", severity="critical") is True
+    # 이미 알린 뒤에는 반복하지 않는다
+    assert notify(prev_count=2, prev_severity="critical", severity="critical") is False
+    assert notify(prev_count=2, prev_severity="critical", severity="warning") is False
 
 
 def test_escalation_still_sends_after_streak_alert():
@@ -323,6 +325,16 @@ def test_longer_streak_is_configurable():
     assert notify(prev_count=2, min_streak=4) is False
     assert notify(prev_count=3, min_streak=4) is True
     assert notify(prev_count=4, min_streak=4) is False
+
+
+def test_throughput_has_its_own_streak():
+    cfg = alert_settings.defaults()
+    assert cfg["min_streak_throughput"] == 3
+    assert ServiceMonitor._min_streak(cfg, "throughput") == 3
+    assert ServiceMonitor._min_streak(cfg, "login_fail_rate") == cfg["min_streak_buckets"]
+    # 전송 속도 이상 2버킷(10분)으로는 아직 보내지 않는다
+    assert notify(prev_count=1, min_streak=3) is False
+    assert notify(prev_count=2, min_streak=3) is True
 
 
 def test_streak_setting_is_exposed():

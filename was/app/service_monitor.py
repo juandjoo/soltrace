@@ -122,6 +122,18 @@ def xfer_not_ignored_sql(col: str = "username") -> str:
     return f"NOT (COALESCE({col},'') LIKE ANY(CAST(:xfer_ignore AS text[])))"
 
 
+# 판정 메시지와 덧붙인 원인 정보(경로·계정)를 가르는 구분자. 발송 문안은 값·평소값을
+# 따로 조립하므로 메시지 전체가 아니라 이 뒤쪽(원인 정보)만 알림에 싣는다.
+_DETAIL_SEP = " — "
+
+
+def alert_detail(message):
+    """알림 메시지에서 원인 정보(_annotate_* 가 붙인 부분)만 꺼낸다. 없으면 None."""
+    if not message or _DETAIL_SEP not in message:
+        return None
+    return message.split(_DETAIL_SEP, 1)[1]
+
+
 def _now():
     return datetime.now(timezone.utc)
 
@@ -314,6 +326,7 @@ class ServiceMonitor:
             return 0
 
         self._annotate_cwd_paths(db, alerts, cfg)
+        self._annotate_login_accounts(db, alerts)
 
         inserted = 0
         # 버킷 순서대로 처리해야 에피소드의 시작/지속 판단이 시간순과 어긋나지 않는다
@@ -341,7 +354,7 @@ class ServiceMonitor:
         """), a).fetchone()
         if row is None:
             return False    # 이미 있는 버킷(재롤업) — 에피소드 상태는 건드리지 않는다
-        if not self._track_episode(db, a, cfg["min_streak_buckets"]):
+        if not self._track_episode(db, a, self._min_streak(cfg, a["metric"])):
             db.execute(text("UPDATE service_alerts SET notified = TRUE WHERE id = :id"),
                        {"id": row.id})
         return True
@@ -352,26 +365,30 @@ class ServiceMonitor:
     _RECOVERY_QUIET_BUCKETS = 3
 
     @staticmethod
+    def _min_streak(cfg, metric: str) -> int:
+        """지표별 발송 전 지속 버킷 수 — 전송 속도만 따로 둔다(흔들림이 가장 잦은 지표)."""
+        return cfg["min_streak_throughput"] if metric == "throughput" else cfg["min_streak_buckets"]
+
+    @staticmethod
     def _should_notify(prev_count: int, prev_severity, severity: str, min_streak: int) -> bool:
         """이 이상을 발송할지 — 에피소드의 직전 상태만 보고 정한다 (순수 함수).
 
         prev_count 는 이번 것을 빼고 이 에피소드에 쌓인 이상 버킷 수(새 에피소드면 0).
 
-        발송하는 경우는 셋뿐이다.
-          1. 이상이 min_streak 버킷만큼 이어진 순간 — 에피소드당 한 번.
-          2. 등급이 '심각'인 순간 — 짧아도 기다리지 않는다.
-          3. 주의 → 심각 등급 상승 — 이미 알린 뒤라도 한 번 더.
-        같은 에피소드에서 1·2가 두 번 나가지 않도록 "직전에 이미 나갈 조건이었는가"(was)를
-        함께 본다. min_streak=1 이면 첫 버킷에서 바로 나가 종전 동작과 같다.
+        발송하는 경우는 둘뿐이다.
+          1. 이상이 min_streak 버킷만큼 이어진 순간 — 에피소드당 한 번. 등급과 무관하다.
+          2. 이미 알린 에피소드가 주의 → 심각으로 올라간 순간 — 한 번 더.
+        min_streak=1 이면 첫 버킷에서 바로 나간다.
 
-        min_streak 를 두는 이유: 한 버킷(기본 10분) 반짝했다 스스로 돌아오는 흔들림은
+        min_streak 를 두는 이유: 한 버킷(기본 5분) 반짝했다 스스로 돌아오는 흔들림은
         사람이 손쓸 새도 없이 끝나는데, 감지 + 복구로 메시지는 두 건이 나간다.
         여기서 막으면 그 흔들림은 화면(service_alerts)에만 남고 발송은 0건이 된다.
+        '심각'도 기다린다 — 한 버킷짜리 로그인 실패 100%(계정 하나의 비밀번호 오류 등)가
+        심각으로 즉시 나가 알림이 잦았다.
         """
-        escalated = prev_count > 0 and severity == "critical" and prev_severity != "critical"
-        was = prev_count > 0 and (prev_severity == "critical" or prev_count >= min_streak)
-        now = severity == "critical" or prev_count + 1 >= min_streak
-        return escalated or (now and not was)
+        was = prev_count >= min_streak
+        escalated = was and severity == "critical" and prev_severity != "critical"
+        return escalated or (prev_count + 1 == min_streak)
 
     @staticmethod
     def _track_episode(db, a, min_streak: int) -> bool:
@@ -460,10 +477,40 @@ class ServiceMonitor:
             # 롤업 이후 도착한 로그(write_buffer 지연)로 n 이 집계보다 클 수 있어 1.0 로 자른다
             ratio = min(row.n / total, 1.0) if total else 0
             if ratio >= self._CWD_PATH_CONCENTRATION:
-                a["message"] += (f" — {row.file_path} 한 경로에 {ratio*100:.0f}% 집중"
+                a["message"] += (f"{_DETAIL_SEP}{row.file_path} 한 경로에 {ratio*100:.0f}% 집중"
                                  f" (홈/업로드 경로 설정 확인)")
             else:
-                a["message"] += f" — 최다 경로 {row.file_path} {row.n}건"
+                a["message"] += f"{_DETAIL_SEP}최다 경로 {row.file_path} {row.n}건"
+
+    # 로그인 실패 알림에 이름을 적는 계정 수 (나머지는 'N개 계정 더'로 줄인다)
+    _LOGIN_TOP_ACCOUNTS = 3
+
+    def _annotate_login_accounts(self, db, alerts: list) -> None:
+        """로그인 실패율 알림에 실패한 계정을 덧붙인다 — 한 계정의 비밀번호 오류인지,
+        여러 계정이 한꺼번에 막힌 장애인지 알림만 보고 가를 수 있게 한다.
+
+        _annotate_cwd_paths 와 같이 알림이 뜬 버킷에 한해 ftp_logs 를 되짚는다.
+        """
+        for a in alerts:
+            if a["metric"] != "login_fail_rate":
+                continue
+            rows = db.execute(text("""
+                SELECT COALESCE(NULLIF(username, ''), '(계정 없음)') AS username,
+                       COUNT(*)::int AS n, COUNT(*) OVER ()::int AS accounts
+                FROM ftp_logs
+                WHERE device_id = :device_id AND action = 'login' AND status = 'fail'
+                  AND log_time >= :bucket AND log_time < :bucket_end
+                GROUP BY 1
+                ORDER BY n DESC, 1
+                LIMIT :top
+            """), {"device_id": a["device_id"], "bucket": a["bucket"],
+                   "bucket_end": a["bucket"] + self._bucket,
+                   "top": self._LOGIN_TOP_ACCOUNTS}).fetchall()
+            if not rows:
+                continue
+            names = ", ".join(f"{r.username} {r.n}건" for r in rows)
+            more = rows[0].accounts - len(rows)
+            a["message"] += f"{_DETAIL_SEP}계정 {names}" + (f" 외 {more}개" if more > 0 else "")
 
     # 큰 파일 평균 크기가 평소와 이 배수 이상 차이 나면 전송 속도 판정을 보류한다.
     # (같은 '큰 파일'이라도 5MB 묶음과 2GB 원본은 오버헤드 비중이 달라 비교가 성립하지 않음)
@@ -575,7 +622,7 @@ class ServiceMonitor:
         # FOR UPDATE SKIP LOCKED: 다중 워커가 동시에 실행될 때 이중 발송 방지
         rows = db.execute(text("""
             SELECT a.id, a.device_id, d.hostname, a.bucket, a.metric,
-                   a.severity, a.value, a.baseline
+                   a.severity, a.value, a.baseline, a.message
             FROM service_alerts a JOIN devices d ON d.id = a.device_id
             WHERE a.notified = FALSE
             ORDER BY a.created_at
@@ -595,6 +642,7 @@ class ServiceMonitor:
             "device_id": r.device_id, "device_hostname": r.hostname,
             "bucket": r.bucket, "metric": r.metric, "severity": r.severity,
             "value": r.value, "baseline": r.baseline,
+            "detail": alert_detail(r.message),
         } for r in rows]
 
         if notifier.dispatch(alerts, db):

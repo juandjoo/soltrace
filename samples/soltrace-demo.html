@@ -385,7 +385,7 @@ body        { background: var(--st-bg); font-size: 14px; }
             </div>
             <div class="d-flex gap-2">
               <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartUserUploadCnt"></canvas></div>
-              <div id="userUploadCntLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
+              <div id="userUploadCntLegend" style="width:284px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
             </div>
           </div>
         </div>
@@ -400,7 +400,7 @@ body        { background: var(--st-bg); font-size: 14px; }
             </div>
             <div class="d-flex gap-2">
               <div style="position:relative;flex:1;min-width:0;height:240px"><canvas id="chartUserDeleteCnt"></canvas></div>
-              <div id="userDeleteCntLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
+              <div id="userDeleteCntLegend" style="width:284px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
             </div>
           </div>
         </div>
@@ -417,7 +417,7 @@ body        { background: var(--st-bg); font-size: 14px; }
                 <canvas id="chartUserUpload"></canvas>
                 <div id="chartUserUploadEmpty" class="d-none h-100 d-flex align-items-center justify-content-center text-muted small">기간 내 업로드 없음</div>
               </div>
-              <div id="userUploadLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
+              <div id="userUploadLegend" style="width:284px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
             </div>
           </div>
         </div>
@@ -434,7 +434,7 @@ body        { background: var(--st-bg); font-size: 14px; }
                 <canvas id="chartUserDelete"></canvas>
                 <div id="chartUserDeleteEmpty" class="d-none h-100 d-flex align-items-center justify-content-center text-muted small">기간 내 삭제 없음</div>
               </div>
-              <div id="userDeleteLegend" style="width:230px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
+              <div id="userDeleteLegend" style="width:284px;overflow-y:auto;max-height:240px;flex-shrink:0"></div>
             </div>
           </div>
         </div>
@@ -882,7 +882,7 @@ body        { background: var(--st-bg); font-size: 14px; }
             </div>
             <div class="arch-node store">
               <div class="n-t">service_metrics</div>
-              <div class="n-d">장비 × 10분 버킷 롤업<br>최근 2시간은 매 주기 재집계</div>
+              <div class="n-d">장비 × 5분 버킷 롤업<br>최근 2시간은 매 주기 재집계</div>
             </div>
             <div class="arch-node store">
               <div class="n-t">service_alerts · episodes</div>
@@ -923,7 +923,7 @@ body        { background: var(--st-bg); font-size: 14px; }
       <div class="card p-3">
         <div class="fw-semibold small mb-1">이상 감지 · 알림 흐름</div>
         <div class="text-muted small mb-3">
-          판정은 10분 버킷마다 하지만, <b>발송은 에피소드(장비 × 지표)당 한 번</b>이다.
+          판정은 5분 버킷마다 하지만, <b>발송은 에피소드(장비 × 지표)당 한 번</b>이다.
           짧은 흔들림으로 메시지가 쏟아지지 않게 발송 앞단에 지속 조건을 둔다.
         </div>
         <div class="arch-flow">
@@ -931,7 +931,7 @@ body        { background: var(--st-bg); font-size: 14px; }
           <div class="arch-col">
             <div class="arch-col-title">1 · 롤업</div>
             <div class="arch-node">
-              <div class="n-t">10분 버킷 집계</div>
+              <div class="n-t">5분 버킷 집계</div>
               <div class="n-d">전송 실패율 · 전송 속도<br>로그인 실패율 · CWD 실패</div>
             </div>
           </div>
@@ -962,7 +962,7 @@ body        { background: var(--st-bg); font-size: 14px; }
             <div class="arch-col-title">4 · 발송 게이트</div>
             <div class="arch-node">
               <div class="n-t">보냄</div>
-              <div class="n-d">지속 버킷 수 충족(기본 2 = 20분)<br>심각 등급은 즉시<br>주의 → 심각 승격 1회</div>
+              <div class="n-d">지속 버킷 수 충족(기본 2 = 10분, 전송 속도 3 = 15분)<br>심각 등급도 동일<br>주의 → 심각 승격 1회</div>
             </div>
             <div class="arch-node buffer">
               <div class="n-t">보내지 않음</div>
@@ -975,7 +975,7 @@ body        { background: var(--st-bg); font-size: 14px; }
           <div class="arch-col">
             <div class="arch-col-title">5 · 복구</div>
             <div class="arch-node">
-              <div class="n-t">30분(3버킷) 조용</div>
+              <div class="n-t">15분(3버킷) 조용</div>
               <div class="n-d">에피소드 종료 → 복구 알림<br>지속 시간과 이상 건수를 함께 보낸다</div>
             </div>
           </div>
@@ -1031,7 +1031,8 @@ body        { background: var(--st-bg); font-size: 14px; }
                   <tr><td class="text-muted">앱 로그</td><td><code>/var/log/soltrace/error.log</code> (트레이스백)<br><code>access.log</code> · <code>selfupdate.log</code> — 저널이 아니라 <b>파일</b></td></tr>
                   <tr><td class="text-muted">DB</td><td>PostgreSQL 16 · DB <code>soltrace</code></td></tr>
                   <tr><td class="text-muted">백업</td><td><code>/var/backups/soltrace</code> (매일 03:00, 3년 보관)</td></tr>
-                  <tr><td class="text-muted">장비 데몬</td><td><code>/opt/soltrace-daemon</code> · <code>config.ini</code><br>서비스 <code>soltrace-daemon</code> · 로그 <code>/var/log/soltrace-daemon/daemon.log</code></td></tr>
+                  <tr><td class="text-muted">장비 데몬</td><td><code>/opt/soltrace-daemon</code> · <code>config.ini</code><br>서비스 <code>soltrace-daemon</code> · 로그 <code>/var/log/soltrace-daemon/daemon.log</code><br><span class="text-muted">10MB × 5개 자동 회전(logrotate 불필요). 그 디렉토리에 쓸 수 없으면 <code>/var/lib/soltrace/daemon.log</code> 로 옮겨 쓰고 기동 로그에 경고를 남긴다 — 구버전 설치에서 나온다</span></td></tr>
+                  <tr><td class="text-muted">데몬이 읽는 로그<br>(장비 · proftpd)</td><td><code>/usr/service/logs/proftpd/TransferLog</code> — 업/다운로드·삭제<br><code>/usr/service/logs/proftpd/ExtendedAllLog</code> — 로그인·로그아웃·폴더·실패<br><span class="text-muted">경로는 장비 <code>config.ini</code> 의 <code>transfer_log</code>·<code>extended_log</code> 로 바꾼다. <b>이 두 파일이 안 쌓이면 화면에도 안 나온다</b> — proftpd 쪽 설정이 먼저다. 어디까지 읽었는지는 <code>/var/lib/soltrace</code> 에 파일별로 저장되고, 로그 회전은 스스로 알아채 처음부터 다시 읽는다</span></td></tr>
                 </tbody>
               </table>
             </div>
@@ -1063,7 +1064,7 @@ body        { background: var(--st-bg); font-size: 14px; }
               <table class="table table-sm mb-0" style="font-size:0.75rem">
                 <tbody>
                   <tr><td class="text-muted" style="width:38%">화면이 안 뜨거나 500</td><td><code>systemctl status soltrace-was</code> → <code>/var/log/soltrace/error.log</code> 마지막 트레이스백. 배포 직후면 <code>selfupdate.log</code></td></tr>
-                  <tr><td class="text-muted">로그가 안 들어옴</td><td>장비 관리에서 <b>데몬 상태</b> 확인(하트비트 120초) → 장비에서 <code>systemctl status soltrace-daemon</code>, <code>daemon.log</code>. WAS 가 살아나면 장비 버퍼가 자동 재전송한다</td></tr>
+                  <tr><td class="text-muted">로그가 안 들어옴</td><td>장비 관리에서 <b>데몬 상태</b> 확인(하트비트 120초) → 장비에서 <code>systemctl status soltrace-daemon</code>, <code>daemon.log</code>. 데몬이 멀쩡하면 <b>원본 로그가 쌓이는지</b> 본다(<code>tail -f</code> 로 위 TransferLog · ExtendedAllLog) — 비어 있으면 proftpd 설정·경로 문제다. WAS 가 살아나면 장비 버퍼가 자동 재전송한다</td></tr>
                   <tr><td class="text-muted">알림이 쏟아짐</td><td>같은 장비·지표면 대개 임계가 그 장비에 안 맞는 것 — 위 '알림이 잦을 때'. 작업 중이면 음소거</td></tr>
                   <tr><td class="text-muted">디스크 부족</td><td>설정 &gt; DB 저장소에서 사용률·파티션 확인. 자동 정리가 켜져 있으면 오래된 월부터 <b>되돌릴 수 없이</b> 지운다 — 필요한 달은 먼저 백업 확인. DB 데이터 디렉토리를 다른 볼륨으로 옮겼다면 같은 화면의 <b>디스크 감시 경로</b>도 그 마운트로 바꿔야 한다(README '디스크 확장 · DB 위치 이동')</td></tr>
                   <tr><td class="text-muted">배포가 오래 걸림</td><td>스키마 단계에서 락 대기일 수 있다(<code>lock_timeout=5s</code>·3회 재시도). 로그를 보고 기다리되, 반복 실패면 한산한 시간에 다시 시도</td></tr>
@@ -1404,9 +1405,17 @@ body        { background: var(--st-bg); font-size: 14px; }
                     <label class="form-label small mb-1">발송 전 이상 지속 버킷 수</label>
                     <input type="number" step="1" min="1" max="12" class="form-control form-control-sm" id="alMinStreak">
                     <div class="form-text">
-                      이상이 이 버킷 수만큼 <b>이어질 때만</b> 알림을 보냅니다(2 = 20분).
+                      이상이 이 버킷 수만큼 <b>이어질 때만</b> 알림을 보냅니다(2 = 10분).
                       한 버킷 반짝했다 스스로 돌아오는 흔들림은 화면에만 남고 감지·복구 메시지가
-                      나가지 않습니다. <b>1 = 즉시 발송</b>, '심각' 등급은 이 값과 무관하게 바로 나갑니다.
+                      나가지 않습니다. <b>1 = 즉시 발송</b>, '심각' 등급도 같은 조건을 따릅니다.
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">전송 속도 지속 버킷 수</label>
+                    <input type="number" step="1" min="1" max="12" class="form-control form-control-sm" id="alMinStreakThroughput">
+                    <div class="form-text">
+                      전송 속도만 따로 적용합니다(3 = 15분). 사용자별 회선 차이로 짧게 느린 구간이
+                      흔해 다른 지표보다 길게 이어져야 알립니다.
                     </div>
                   </div>
                   <div class="col-6">
@@ -1459,6 +1468,16 @@ body        { background: var(--st-bg); font-size: 14px; }
                     <div class="form-text">
                       원인이 밝혀진 경로(홈·업로드 경로 설정 오류 등)를 <b>CWD 실패 집계에서만</b> 뺍니다.
                       로그 조회에는 그대로 남습니다. 최근 2시간 버킷은 다음 판정 주기에 다시 집계됩니다.
+                    </div>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small mb-1">전송 실패 제외 계정</label>
+                    <textarea class="form-control form-control-sm" id="alXferIgnoreAccounts" rows="3"
+                      placeholder="한 줄에 하나씩 입력 (* 와일드카드)&#10;예) CUST_UPLOAD&#10;    vod_*"></textarea>
+                    <div class="form-text">
+                      병렬 업로드 지연처럼 원인이 밝혀졌고 고객사가 재처리로 마무리하는 계정을
+                      <b>전송 실패 집계·실패율·알림에서만</b> 뺍니다. 성공 건은 그대로 세고,
+                      로그 조회에도 그대로 남습니다. 최근 2시간 버킷은 다음 판정 주기에 다시 집계됩니다.
                     </div>
                   </div>
                 </div>
@@ -2086,7 +2105,7 @@ body        { background: var(--st-bg); font-size: 14px; }
       })),
       alerts,
       trend,
-      fail_totals: { transfer_fails: 812, login_fails: 143, cwd_fails: 291, cwd_fails_ignored: 640 },
+      fail_totals: { transfer_fails: 812, login_fails: 143, cwd_fails: 291, cwd_fails_ignored: 640, transfer_fails_ignored: 96 },
     };
   }
 
@@ -2200,12 +2219,13 @@ body        { background: var(--st-bg); font-size: 14px; }
     [/^\/settings\/storage$/, storage],
     [/^\/settings\/security$/, () => ({ username: 'admin', allowed_ips: ['10.0.0.0/8', '203.0.113.0/24'], my_ip: '203.0.113.42' })],
     [/^\/settings\/alerts$/, () => ({
-      mad_k: 4.0, min_streak_buckets: 2,
+      mad_k: 4.0, min_streak_buckets: 2, min_streak_throughput: 3,
       fail_rate_floor: 0.05, login_fail_rate_floor: 0.3, throughput_drop: 0.6,
       throughput_slow_pct: 0.05,
       cwd_fail_floor: 20, min_samples: 20, min_login_samples: 10, min_cwd_samples: 5,
       min_large_samples: 5, cwd_ignore_paths: '/data/incoming/tmp\n/backup/daily',
-      large_file_bytes: 4 * 1024 * 1024, bucket_minutes: 10, baseline_days: 7,
+      xfer_ignore_accounts: 'batch_upload\nvod_*',
+      large_file_bytes: 4 * 1024 * 1024, bucket_minutes: 5, baseline_days: 7,
     })],
     [/^\/settings\/notify\/mute$/, () => ({ muted: false })],
     [/^\/settings\/notify$/, () => ({ webhook_url: 'https://hooks.example.com/soltrace', hms_url: '' })],
@@ -2611,12 +2631,31 @@ function _setPeriodLabels(...ids) {
   });
 }
 
-let _dashExactStart = null;
-let _dashExactEnd   = null;
+// '24H' 처럼 지금을 기준으로 삼는 구간은 **시각을 얼려두지 않는다**.
+// 얼려두면 새로고침·자동 새로고침·다른 탭에 갔다 돌아오기가 모두 '화면을 연 시점의
+// 24시간' 을 다시 물어, 그 뒤에 들어온 로그는 영영 안 보인다(캐시처럼 보이던 원인).
+// 그래서 구간 길이(시간)만 기억하고 실제 시각은 요청할 때마다 다시 만든다.
+let _dashRelHours = null;
+
+// 지금 기준 상대 구간 → {start, end}. 상대 구간이 아니면 null.
+function _dashRelRange() {
+  if (!_dashRelHours) return null;
+  const end = new Date();
+  return {start: new Date(end.getTime() - _dashRelHours * 3600 * 1000), end};
+}
+
+// 상대 구간이면 창이 흘러간 만큼 날짜 입력칸도 같이 민다(카드 제목의 기간 표시가 같이 움직인다).
+function _syncDashDateInputs() {
+  const rel = _dashRelRange();
+  if (!rel) return;
+  document.getElementById('dashStart').value = fmtLocalDate(rel.start);
+  document.getElementById('dashEnd').value   = fmtLocalDate(rel.end);
+}
 
 function _dashDateParams() {
-  if (_dashExactStart && _dashExactEnd) {
-    return `start_date=${encodeURIComponent(_dashExactStart)}&end_date=${encodeURIComponent(_dashExactEnd)}`;
+  const rel = _dashRelRange();
+  if (rel) {
+    return `start_date=${encodeURIComponent(rel.start.toISOString())}&end_date=${encodeURIComponent(rel.end.toISOString())}`;
   }
   const s = document.getElementById('dashStart').value;
   const e = document.getElementById('dashEnd').value;
@@ -2628,9 +2667,7 @@ function _dashDateParams() {
 
 // 조회 기간(일). 주/월 처럼 긴 기간은 시간 버킷이면 점이 너무 촘촘해 읽히지 않는다.
 function _dashRangeDays() {
-  if (_dashExactStart && _dashExactEnd) {
-    return (new Date(_dashExactEnd) - new Date(_dashExactStart)) / 86400000;
-  }
+  if (_dashRelHours) return _dashRelHours / 24;
   const s = document.getElementById('dashStart').value;
   const e = document.getElementById('dashEnd').value;
   if (s && e) return (new Date(e + 'T23:59:59') - new Date(s + 'T00:00:00')) / 86400000;
@@ -2641,12 +2678,8 @@ function _dashRangeDays() {
 function _dashBucketUnit() { return _dashRangeDays() > 2 ? 'day' : 'hour'; }
 
 function dashLast24() {
-  const end   = new Date();
-  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
-  _dashExactStart = start.toISOString();
-  _dashExactEnd   = end.toISOString();
-  document.getElementById('dashStart').value = fmtLocalDate(start);
-  document.getElementById('dashEnd').value   = fmtLocalDate(end);
+  _dashRelHours = 24;
+  _syncDashDateInputs();
   document.querySelectorAll('.dash-quick').forEach(b => {
     const active = b.dataset.h24 === 'true';
     b.classList.toggle('btn-primary', active);
@@ -2656,8 +2689,7 @@ function dashLast24() {
 }
 
 function dashQuick(days) {
-  _dashExactStart = null;
-  _dashExactEnd   = null;
+  _dashRelHours = null;
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - days + 1);
@@ -2672,8 +2704,7 @@ function dashQuick(days) {
 }
 
 function dashCustom() {
-  _dashExactStart = null;
-  _dashExactEnd   = null;
+  _dashRelHours = null;
   document.querySelectorAll('.dash-quick').forEach(b => {
     b.classList.remove('btn-primary');
     b.classList.add('btn-outline-secondary');
@@ -2682,6 +2713,7 @@ function dashCustom() {
 }
 
 function loadAll() {
+  _syncDashDateInputs();  // 24H 는 요청할 때마다 창이 움직인다 — 표시 날짜도 맞춰 둔다
   loadServiceHealth();
   loadUserHourly();
 }
@@ -2768,8 +2800,9 @@ const RATE_DRILL_ACTIONS = [
 // 대시보드 날짜 범위를 유지하면서 로그 조회 페이지로 드릴다운
 function navToLogsFilters({action = '', status = '', filePath = ''} = {}) {
   // 로그 조회는 날짜 단위라 시각은 떨군다 (setLogDateRange 가 형식을 맡는다)
-  if (_dashExactStart && _dashExactEnd) {
-    setLogDateRange(new Date(_dashExactStart), new Date(_dashExactEnd));
+  const rel = _dashRelRange();
+  if (rel) {
+    setLogDateRange(rel.start, rel.end);
   } else {
     const s = document.getElementById('dashStart').value;
     const e = document.getElementById('dashEnd').value;
@@ -2900,42 +2933,60 @@ function _renderUserCountChart(key, series, buckets, fmtBucket) {
     },
   });
 
-  _renderUserLegend(key, active.map((u, i) => ({
-    name: u.username,
-    max: Math.max(0, ...datasets[i].data),
-    cur: datasets[i].data[datasets[i].data.length - 1] ?? 0,
-  })), v => v.toLocaleString());
+  _renderUserLegend(key, active.map((u, i) => _legendStats(u.username, datasets[i].data)),
+                    v => v.toLocaleString());
 }
 
-// 범례표(사용자 · 최대 · 현재) — 건수 카드와 양 카드가 같은 표를 쓴다.
+// 범례 숫자(최대 · 현재 · 합산)는 여기서만 계산한다 — 건수 카드와 양 카드가 같은 정의를
+// 써야 "카드마다 합계가 다르다" 가 생기지 않는다. values 는 버킷 순서대로의 값 배열.
+//   최대 = 한 버킷 최고값 · 현재 = 마지막 버킷 · 합산 = 기간 전체 합
+function _legendStats(name, values) {
+  return {
+    name,
+    max: Math.max(0, ...values),
+    cur: values[values.length - 1] ?? 0,
+    sum: values.reduce((a, b) => a + b, 0),
+  };
+}
+
+// 숫자 칸 정의(정렬 키 · 머리글) — 표 머리글과 각 행이 같은 목록을 돌며 만들어진다.
+const LEGEND_VALUE_COLS = [['max', '최대'], ['cur', '현재'], ['sum', '합산']];
+
+// 범례표(사용자 · 최대 · 현재 · 합산) — 건수 카드와 양 카드가 같은 표를 쓴다.
 // 한쪽에만 값이 나오던 문제(양 카드는 Chart.js 기본 범례라 이름만 나왔다)를 막으려면
-// 표를 만드는 곳이 하나여야 한다. items: [{name, max, cur}] · fmtVal: 표시 형식.
+// 표를 만드는 곳이 하나여야 한다. items: _legendStats() 결과 · fmtVal: 표시 형식.
 function _renderUserLegend(key, items, fmtVal) {
   const cfg = _userChartCfg(key);
   const legendEl = document.getElementById(cfg.legend);
   if (!legendEl) return;
-  // 바이트는 '1.2 GB' 처럼 폭이 넓어 숫자 칸을 형식에 맞춰 잡는다
-  const valW = fmtVal === fmtBytes ? 62 : 46;
+  // 바이트는 '1023.9 MB' 처럼 폭이 넓어 숫자 칸을 형식에 맞춰 잡는다
+  const valW = fmtVal === fmtBytes ? 58 : 46;
   const rows = items.map((it, i) => {
     const color = HOURLY_PALETTE[i % HOURLY_PALETTE.length];
-    return `<tr onclick="focusUserChart('${key}', ${i})" id="${key}LegendItem${i}" style="cursor:pointer" data-name="${esc(it.name)}" data-max="${it.max}" data-cur="${it.cur}">
+    const attrs = LEGEND_VALUE_COLS.map(([col]) => `data-${col}="${it[col]}"`).join(' ');
+    const vals = LEGEND_VALUE_COLS.map(([col]) =>
+      `<td style="text-align:right;padding:3px 3px;white-space:nowrap;font-size:0.72rem">${esc(fmtVal(it[col]))}</td>`
+    ).join('');
+    return `<tr onclick="focusUserChart('${key}', ${i})" id="${key}LegendItem${i}" style="cursor:pointer" data-name="${esc(it.name)}" ${attrs}>
       <td style="padding:3px 4px;min-width:0;max-width:0">
         <div class="d-flex align-items-center gap-1" style="min-width:0">
           <span style="display:inline-block;width:14px;height:3px;background:${color};border-radius:1px;flex-shrink:0"></span>
           <span class="text-truncate" style="font-size:0.75rem" title="${esc(it.name)}">${esc(it.name)}</span>
         </div>
       </td>
-      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${esc(fmtVal(it.max))}</td>
-      <td style="text-align:right;padding:3px 4px;white-space:nowrap;font-size:0.75rem">${esc(fmtVal(it.cur))}</td>
+      ${vals}
     </tr>`;
   }).join('');
+  const cols = LEGEND_VALUE_COLS.map(() => `<col style="width:${valW}px">`).join('');
+  const heads = LEGEND_VALUE_COLS.map(([col, label]) =>
+    `<th data-col="${col}" onclick="sortUserChart('${key}', '${col}')" style="font-size:0.7rem;font-weight:600;padding:2px 3px;text-align:right;cursor:pointer;user-select:none">${label}<span class="sort-arrow"></span></th>`
+  ).join('');
   _chartState(key).sort = {col: null, asc: true};
   legendEl.innerHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed">
-    <colgroup><col><col style="width:${valW}px"><col style="width:${valW}px"></colgroup>
+    <colgroup><col>${cols}</colgroup>
     <thead><tr style="color:var(--st-muted);border-bottom:1px solid var(--st-border)">
       <th data-col="name" onclick="sortUserChart('${key}', 'name')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:left;cursor:pointer;user-select:none">${cfg.head}<span class="sort-arrow"></span></th>
-      <th data-col="max" onclick="sortUserChart('${key}', 'max')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">최대<span class="sort-arrow"></span></th>
-      <th data-col="cur" onclick="sortUserChart('${key}', 'cur')" style="font-size:0.7rem;font-weight:600;padding:2px 4px;text-align:right;cursor:pointer;user-select:none">현재<span class="sort-arrow"></span></th>
+      ${heads}
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -2996,11 +3047,7 @@ function _renderUserVolumeChart(chartKey, series, buckets, fmtBucket) {
     },
   });
 
-  _renderUserLegend(chartKey, datasets.map(ds => ({
-    name: ds.label,
-    max: Math.max(0, ...ds.data),
-    cur: ds.data[ds.data.length - 1] ?? 0,
-  })), fmtBytes);
+  _renderUserLegend(chartKey, datasets.map(ds => _legendStats(ds.label, ds.data)), fmtBytes);
 }
 
 function _applyLegendSort(legendId, state) {
@@ -3113,6 +3160,9 @@ async function loadServiceHealth() {
   const ft = data.fail_totals || {};
   // cwd_fails 는 설정의 '제외 경로'를 뺀 값 — 숨긴 건수를 범례/툴팁에 같이 밝힌다
   const cwdIgnored = ft.cwd_fails_ignored || 0;
+  // 전송 실패도 설정의 '제외 계정'을 뺀 값 — 같은 방식으로 숨긴 건수를 밝힌다
+  const xferIgnored = ft.transfer_fails_ignored || 0;
+  const ignoredOf = i => (i === 0 ? xferIgnored : (i === 2 ? cwdIgnored : 0));
   const failTotal = (ft.transfer_fails || 0) + (ft.login_fails || 0) + (ft.cwd_fails || 0);
   const rateEl = document.getElementById('chartHealthRate');
   const rateWrap = rateEl.parentElement;
@@ -3158,7 +3208,7 @@ async function loadServiceHealth() {
                 const ds = chart.data.datasets[0];
                 return chart.data.labels.map((label, i) => ({
                   text: `${label}: ${ds.data[i].toLocaleString()}건`
-                        + (i === 2 && cwdIgnored ? ` (제외 ${cwdIgnored.toLocaleString()}건)` : ''),
+                        + (ignoredOf(i) ? ` (제외 ${ignoredOf(i).toLocaleString()}건)` : ''),
                   fillStyle: ds.backgroundColor[i],
                   strokeStyle: ds.backgroundColor[i],
                   hidden: false, index: i,
@@ -3169,7 +3219,8 @@ async function loadServiceHealth() {
           tooltip: {callbacks: {label: c => c.dataIndex === 2
             ? `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 원인 경로 분석`
               + (cwdIgnored ? ` (제외 경로 ${cwdIgnored.toLocaleString()}건 제외됨)` : '')
-            : `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 조회`}},
+            : `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 조회`
+              + (c.dataIndex === 0 && xferIgnored ? ` (제외 계정 ${xferIgnored.toLocaleString()}건 제외됨)` : '')}},
           centerText: {line1: `${failTotal.toLocaleString()}건`, line2: '총 실패', size: 13, color: '#dc3545'},
         },
       },
@@ -4004,6 +4055,7 @@ async function loadNotify() {
 const ALERT_FIELDS = {
   alMadK: 'mad_k',
   alMinStreak: 'min_streak_buckets',
+  alMinStreakThroughput: 'min_streak_throughput',
   alThroughputDrop: 'throughput_drop',
   alThroughputSlowPct: 'throughput_slow_pct',
   alFailFloor: 'fail_rate_floor',
@@ -4016,6 +4068,7 @@ const ALERT_FIELDS = {
 };
 // 숫자가 아니라 따로 다루는 필드 (ALERT_FIELDS 는 parseFloat 로 읽는다)
 const ALERT_CWD_IGNORE = 'alCwdIgnorePaths';
+const ALERT_XFER_IGNORE = 'alXferIgnoreAccounts';
 
 function _renderAlerts(a) {
   if (!a) return;
@@ -4023,6 +4076,7 @@ function _renderAlerts(a) {
     document.getElementById(id).value = a[key];
   }
   document.getElementById(ALERT_CWD_IGNORE).value = a.cwd_ignore_paths || '';
+  document.getElementById(ALERT_XFER_IGNORE).value = a.xfer_ignore_accounts || '';
   document.getElementById('alLargeBytes').textContent = fmtBytes(a.large_file_bytes) + ' 이상';
   document.getElementById('alBucketInfo').textContent =
     `${a.bucket_minutes}분 버킷 · 최근 ${a.baseline_days}일 기준`;
@@ -4044,6 +4098,7 @@ async function saveAlerts() {
     body[key] = v;
   }
   body.cwd_ignore_paths = document.getElementById(ALERT_CWD_IGNORE).value.trim();
+  body.xfer_ignore_accounts = document.getElementById(ALERT_XFER_IGNORE).value.trim();
   try {
     _renderAlerts(await api('PUT', '/settings/alerts', body));
     settingsMsg('alertMsg', 'success', '저장했습니다. 다음 판정 주기(약 5분)부터 적용됩니다.');
@@ -5874,7 +5929,7 @@ function nav(page) {
   if (link) link.classList.add('active');
   if (page === 'dashboard') {
     initDashLayout();
-    if (_dashExactStart || document.getElementById('dashStart').value) loadAll();
+    if (_dashRelHours || document.getElementById('dashStart').value) loadAll();
     else dashLast24();
   }
   else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();

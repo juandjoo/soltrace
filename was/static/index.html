@@ -629,7 +629,7 @@
             </div>
             <div class="arch-node store">
               <div class="n-t">service_metrics</div>
-              <div class="n-d">장비 × 10분 버킷 롤업<br>최근 2시간은 매 주기 재집계</div>
+              <div class="n-d">장비 × 5분 버킷 롤업<br>최근 2시간은 매 주기 재집계</div>
             </div>
             <div class="arch-node store">
               <div class="n-t">service_alerts · episodes</div>
@@ -670,7 +670,7 @@
       <div class="card p-3">
         <div class="fw-semibold small mb-1">이상 감지 · 알림 흐름</div>
         <div class="text-muted small mb-3">
-          판정은 10분 버킷마다 하지만, <b>발송은 에피소드(장비 × 지표)당 한 번</b>이다.
+          판정은 5분 버킷마다 하지만, <b>발송은 에피소드(장비 × 지표)당 한 번</b>이다.
           짧은 흔들림으로 메시지가 쏟아지지 않게 발송 앞단에 지속 조건을 둔다.
         </div>
         <div class="arch-flow">
@@ -678,7 +678,7 @@
           <div class="arch-col">
             <div class="arch-col-title">1 · 롤업</div>
             <div class="arch-node">
-              <div class="n-t">10분 버킷 집계</div>
+              <div class="n-t">5분 버킷 집계</div>
               <div class="n-d">전송 실패율 · 전송 속도<br>로그인 실패율 · CWD 실패</div>
             </div>
           </div>
@@ -709,7 +709,7 @@
             <div class="arch-col-title">4 · 발송 게이트</div>
             <div class="arch-node">
               <div class="n-t">보냄</div>
-              <div class="n-d">지속 버킷 수 충족(기본 2 = 20분)<br>심각 등급은 즉시<br>주의 → 심각 승격 1회</div>
+              <div class="n-d">지속 버킷 수 충족(기본 2 = 10분, 전송 속도 3 = 15분)<br>심각 등급도 동일<br>주의 → 심각 승격 1회</div>
             </div>
             <div class="arch-node buffer">
               <div class="n-t">보내지 않음</div>
@@ -722,7 +722,7 @@
           <div class="arch-col">
             <div class="arch-col-title">5 · 복구</div>
             <div class="arch-node">
-              <div class="n-t">30분(3버킷) 조용</div>
+              <div class="n-t">15분(3버킷) 조용</div>
               <div class="n-d">에피소드 종료 → 복구 알림<br>지속 시간과 이상 건수를 함께 보낸다</div>
             </div>
           </div>
@@ -1152,9 +1152,17 @@
                     <label class="form-label small mb-1">발송 전 이상 지속 버킷 수</label>
                     <input type="number" step="1" min="1" max="12" class="form-control form-control-sm" id="alMinStreak">
                     <div class="form-text">
-                      이상이 이 버킷 수만큼 <b>이어질 때만</b> 알림을 보냅니다(2 = 20분).
+                      이상이 이 버킷 수만큼 <b>이어질 때만</b> 알림을 보냅니다(2 = 10분).
                       한 버킷 반짝했다 스스로 돌아오는 흔들림은 화면에만 남고 감지·복구 메시지가
-                      나가지 않습니다. <b>1 = 즉시 발송</b>, '심각' 등급은 이 값과 무관하게 바로 나갑니다.
+                      나가지 않습니다. <b>1 = 즉시 발송</b>, '심각' 등급도 같은 조건을 따릅니다.
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small mb-1">전송 속도 지속 버킷 수</label>
+                    <input type="number" step="1" min="1" max="12" class="form-control form-control-sm" id="alMinStreakThroughput">
+                    <div class="form-text">
+                      전송 속도만 따로 적용합니다(3 = 15분). 사용자별 회선 차이로 짧게 느린 구간이
+                      흔해 다른 지표보다 길게 이어져야 알립니다.
                     </div>
                   </div>
                   <div class="col-6">
