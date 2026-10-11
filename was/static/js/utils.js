@@ -141,8 +141,10 @@ async function api(method, path, body) {
   const r = await fetch(API + path, opts);
   if (r.status === 401) { showLogin(); return null; }
   if (!r.ok) {
-    const err = await r.json().catch(() => ({detail: r.statusText}));
-    throw new Error(err.detail || r.statusText);
+    // HTTP/2 는 statusText 가 비어 있어 500 이 빈 경고로 떴다 — 상태코드라도 남긴다.
+    const fallback = `서버 오류 (HTTP ${r.status})`;
+    const err = await r.json().catch(() => ({detail: fallback}));
+    throw new Error(err.detail || fallback);
   }
   if (r.status === 204) return null;
   return r.json();
