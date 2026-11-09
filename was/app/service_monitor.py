@@ -122,6 +122,19 @@ def xfer_not_ignored_sql(col: str = "username") -> str:
     return f"NOT (COALESCE({col},'') LIKE ANY(CAST(:xfer_ignore AS text[])))"
 
 
+def login_not_ignored_sql(col: str = "username") -> str:
+    """로그인 실패율 집계에서 제외 계정을 거르는 SQL 조건 (:login_ignore 바인딩 필요).
+
+    비밀번호가 바뀐 채 재시도를 반복하는 클라이언트처럼 한 계정이 실패율을 늘 띄우면
+    다른 계정의 진짜 로그인 장애가 묻혀 관제가 안 된다.
+    전송 제외와 달리 시도(분모)·실패(분자) 모두에서 뺀다 — 실패만 빼고 시도를 남기면
+    재시도를 퍼붓는 계정이 분모를 키워 다른 계정의 실패율을 거꾸로 묽게 만든다.
+    롤업(login_attempts·login_fails)·알림 계정 표시·대시보드 실패 건수가 모두 이 조건을 쓴다.
+    빈 목록이면 LIKE ANY(ARRAY[]) 가 false → NOT false = true 로 전부 집계된다.
+    """
+    return f"NOT (COALESCE({col},'') LIKE ANY(CAST(:login_ignore AS text[])))"
+
+
 # 판정 메시지와 덧붙인 원인 정보(경로·계정)를 가르는 구분자. 발송 문안은 값·평소값을
 # 따로 조립하므로 메시지 전체가 아니라 이 뒤쪽(원인 정보)만 알림에 싣는다.
 _DETAIL_SEP = " — "
@@ -264,8 +277,10 @@ class ServiceMonitor:
                     WHERE action IN ('upload','download') AND status='success' AND file_size >= :large), 0),
                 COALESCE(SUM(transfer_time) FILTER (
                     WHERE action IN ('upload','download') AND status='success' AND file_size >= :large), 0),
-                COUNT(*) FILTER (WHERE action='login'),
-                COUNT(*) FILTER (WHERE action='login' AND status='fail'),
+                -- 제외 계정은 시도·실패 모두에서 뺀다 (login_not_ignored_sql 참고)
+                COUNT(*) FILTER (WHERE action='login' AND {login_not_ignored_sql()}),
+                COUNT(*) FILTER (WHERE action='login' AND status='fail'
+                                 AND {login_not_ignored_sql()}),
                 -- 존재 확인(실패 직후 그 경로가 생성됨)과 제외 경로는 실패로 세지 않는다.
                 COUNT(*) FILTER (WHERE action='cwd_fail' AND {cwd_real_fail_sql('ftp_logs', ':win_start', 'NOW()')})
             FROM ftp_logs
@@ -286,7 +301,8 @@ class ServiceMonitor:
         """), {"iv": self._bucket, "win_start": win_start,
                "large": settings.alert_large_file_bytes,
                "cwd_ignore": _like_patterns(cfg["cwd_ignore_paths"]),
-               "xfer_ignore": _like_patterns(cfg["xfer_ignore_accounts"])})
+               "xfer_ignore": _like_patterns(cfg["xfer_ignore_accounts"]),
+               "login_ignore": _like_patterns(cfg["login_ignore_accounts"])})
         db.commit()
 
     # ── (2) 이상 판정 ────────────────────────────────────────────────────────
@@ -326,7 +342,7 @@ class ServiceMonitor:
             return 0
 
         self._annotate_cwd_paths(db, alerts, cfg)
-        self._annotate_login_accounts(db, alerts)
+        self._annotate_login_accounts(db, alerts, cfg)
 
         inserted = 0
         # 버킷 순서대로 처리해야 에피소드의 시작/지속 판단이 시간순과 어긋나지 않는다
@@ -485,27 +501,31 @@ class ServiceMonitor:
     # 로그인 실패 알림에 이름을 적는 계정 수 (나머지는 'N개 계정 더'로 줄인다)
     _LOGIN_TOP_ACCOUNTS = 3
 
-    def _annotate_login_accounts(self, db, alerts: list) -> None:
+    def _annotate_login_accounts(self, db, alerts: list, cfg: dict) -> None:
         """로그인 실패율 알림에 실패한 계정을 덧붙인다 — 한 계정의 비밀번호 오류인지,
         여러 계정이 한꺼번에 막힌 장애인지 알림만 보고 가를 수 있게 한다.
 
         _annotate_cwd_paths 와 같이 알림이 뜬 버킷에 한해 ftp_logs 를 되짚는다.
+        제외 계정은 판정에 들어가지 않았으므로 여기서도 이름을 적지 않는다.
         """
+        login_ignore = _like_patterns(cfg["login_ignore_accounts"])
         for a in alerts:
             if a["metric"] != "login_fail_rate":
                 continue
-            rows = db.execute(text("""
+            rows = db.execute(text(f"""
                 SELECT COALESCE(NULLIF(username, ''), '(계정 없음)') AS username,
                        COUNT(*)::int AS n, COUNT(*) OVER ()::int AS accounts
                 FROM ftp_logs
                 WHERE device_id = :device_id AND action = 'login' AND status = 'fail'
+                  AND {login_not_ignored_sql()}
                   AND log_time >= :bucket AND log_time < :bucket_end
                 GROUP BY 1
                 ORDER BY n DESC, 1
                 LIMIT :top
             """), {"device_id": a["device_id"], "bucket": a["bucket"],
                    "bucket_end": a["bucket"] + self._bucket,
-                   "top": self._LOGIN_TOP_ACCOUNTS}).fetchall()
+                   "top": self._LOGIN_TOP_ACCOUNTS,
+                   "login_ignore": login_ignore}).fetchall()
             if not rows:
                 continue
             names = ", ".join(f"{r.username} {r.n}건" for r in rows)

@@ -612,7 +612,8 @@ async function loadServiceHealth() {
   const cwdIgnored = ft.cwd_fails_ignored || 0;
   // 전송 실패도 설정의 '제외 계정'을 뺀 값 — 같은 방식으로 숨긴 건수를 밝힌다
   const xferIgnored = ft.transfer_fails_ignored || 0;
-  const ignoredOf = i => (i === 0 ? xferIgnored : (i === 2 ? cwdIgnored : 0));
+  const loginIgnored = ft.login_fails_ignored || 0;
+  const ignoredOf = i => [xferIgnored, loginIgnored, cwdIgnored][i] || 0;
   const failTotal = (ft.transfer_fails || 0) + (ft.login_fails || 0) + (ft.cwd_fails || 0);
   const rateEl = document.getElementById('chartHealthRate');
   const rateWrap = rateEl.parentElement;
@@ -670,7 +671,8 @@ async function loadServiceHealth() {
             ? `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 원인 경로 분석`
               + (cwdIgnored ? ` (제외 경로 ${cwdIgnored.toLocaleString()}건 제외됨)` : '')
             : `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 조회`
-              + (c.dataIndex === 0 && xferIgnored ? ` (제외 계정 ${xferIgnored.toLocaleString()}건 제외됨)` : '')}},
+              + (c.dataIndex < 2 && ignoredOf(c.dataIndex)
+                ? ` (제외 계정 ${ignoredOf(c.dataIndex).toLocaleString()}건 제외됨)` : '')}},
           centerText: {line1: `${failTotal.toLocaleString()}건`, line2: '총 실패', size: 13, color: '#dc3545'},
         },
       },

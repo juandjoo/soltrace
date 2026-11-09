@@ -390,6 +390,7 @@ const ALERT_FIELDS = {
 // 숫자가 아니라 따로 다루는 필드 (ALERT_FIELDS 는 parseFloat 로 읽는다)
 const ALERT_CWD_IGNORE = 'alCwdIgnorePaths';
 const ALERT_XFER_IGNORE = 'alXferIgnoreAccounts';
+const ALERT_LOGIN_IGNORE = 'alLoginIgnoreAccounts';
 
 function _renderAlerts(a) {
   if (!a) return;
@@ -398,6 +399,7 @@ function _renderAlerts(a) {
   }
   document.getElementById(ALERT_CWD_IGNORE).value = a.cwd_ignore_paths || '';
   document.getElementById(ALERT_XFER_IGNORE).value = a.xfer_ignore_accounts || '';
+  document.getElementById(ALERT_LOGIN_IGNORE).value = a.login_ignore_accounts || '';
   document.getElementById('alLargeBytes').textContent = fmtBytes(a.large_file_bytes) + ' 이상';
   document.getElementById('alBucketInfo').textContent =
     `${a.bucket_minutes}분 버킷 · 최근 ${a.baseline_days}일 기준`;
@@ -420,6 +422,7 @@ async function saveAlerts() {
   }
   body.cwd_ignore_paths = document.getElementById(ALERT_CWD_IGNORE).value.trim();
   body.xfer_ignore_accounts = document.getElementById(ALERT_XFER_IGNORE).value.trim();
+  body.login_ignore_accounts = document.getElementById(ALERT_LOGIN_IGNORE).value.trim();
   try {
     _renderAlerts(await api('PUT', '/settings/alerts', body));
     settingsMsg('alertMsg', 'success', '저장했습니다. 다음 판정 주기(약 5분)부터 적용됩니다.');

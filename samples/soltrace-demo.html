@@ -1480,6 +1480,17 @@ body        { background: var(--st-bg); font-size: 14px; }
                       로그 조회에도 그대로 남습니다. 최근 2시간 버킷은 다음 판정 주기에 다시 집계됩니다.
                     </div>
                   </div>
+                  <div class="col-12">
+                    <label class="form-label small mb-1">로그인 실패 제외 계정</label>
+                    <textarea class="form-control form-control-sm" id="alLoginIgnoreAccounts" rows="3"
+                      placeholder="한 줄에 하나씩 입력 (* 와일드카드)&#10;예) old_backup&#10;    test_*"></textarea>
+                    <div class="form-text">
+                      비밀번호가 바뀐 채 재시도를 반복하는 계정처럼 원인이 밝혀진 계정을
+                      <b>로그인 실패 집계·실패율·알림에서만</b> 뺍니다. 실패율이 묽어지지 않도록 그 계정의
+                      로그인 시도 전체를 빼고 계산하며, 로그 조회에는 그대로 남습니다.
+                      최근 2시간 버킷은 다음 판정 주기에 다시 집계됩니다.
+                    </div>
+                  </div>
                 </div>
                 <hr class="my-3">
                 <dl class="row small mb-0">
@@ -2105,7 +2116,7 @@ body        { background: var(--st-bg); font-size: 14px; }
       })),
       alerts,
       trend,
-      fail_totals: { transfer_fails: 812, login_fails: 143, cwd_fails: 291, cwd_fails_ignored: 640, transfer_fails_ignored: 96 },
+      fail_totals: { transfer_fails: 812, login_fails: 143, cwd_fails: 291, cwd_fails_ignored: 640, transfer_fails_ignored: 96, login_fails_ignored: 58 },
     };
   }
 
@@ -2225,6 +2236,7 @@ body        { background: var(--st-bg); font-size: 14px; }
       cwd_fail_floor: 20, min_samples: 20, min_login_samples: 10, min_cwd_samples: 5,
       min_large_samples: 5, cwd_ignore_paths: '/data/incoming/tmp\n/backup/daily',
       xfer_ignore_accounts: 'batch_upload\nvod_*',
+      login_ignore_accounts: 'old_backup',
       large_file_bytes: 4 * 1024 * 1024, bucket_minutes: 5, baseline_days: 7,
     })],
     [/^\/settings\/notify\/mute$/, () => ({ muted: false })],
@@ -2439,8 +2451,10 @@ async function api(method, path, body) {
   const r = await fetch(API + path, opts);
   if (r.status === 401) { showLogin(); return null; }
   if (!r.ok) {
-    const err = await r.json().catch(() => ({detail: r.statusText}));
-    throw new Error(err.detail || r.statusText);
+    // HTTP/2 는 statusText 가 비어 있어 500 이 빈 경고로 떴다 — 상태코드라도 남긴다.
+    const fallback = `서버 오류 (HTTP ${r.status})`;
+    const err = await r.json().catch(() => ({detail: fallback}));
+    throw new Error(err.detail || fallback);
   }
   if (r.status === 204) return null;
   return r.json();
@@ -3162,7 +3176,8 @@ async function loadServiceHealth() {
   const cwdIgnored = ft.cwd_fails_ignored || 0;
   // 전송 실패도 설정의 '제외 계정'을 뺀 값 — 같은 방식으로 숨긴 건수를 밝힌다
   const xferIgnored = ft.transfer_fails_ignored || 0;
-  const ignoredOf = i => (i === 0 ? xferIgnored : (i === 2 ? cwdIgnored : 0));
+  const loginIgnored = ft.login_fails_ignored || 0;
+  const ignoredOf = i => [xferIgnored, loginIgnored, cwdIgnored][i] || 0;
   const failTotal = (ft.transfer_fails || 0) + (ft.login_fails || 0) + (ft.cwd_fails || 0);
   const rateEl = document.getElementById('chartHealthRate');
   const rateWrap = rateEl.parentElement;
@@ -3220,7 +3235,8 @@ async function loadServiceHealth() {
             ? `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 원인 경로 분석`
               + (cwdIgnored ? ` (제외 경로 ${cwdIgnored.toLocaleString()}건 제외됨)` : '')
             : `${c.label}: ${c.parsed.toLocaleString()}건 — 클릭하여 조회`
-              + (c.dataIndex === 0 && xferIgnored ? ` (제외 계정 ${xferIgnored.toLocaleString()}건 제외됨)` : '')}},
+              + (c.dataIndex < 2 && ignoredOf(c.dataIndex)
+                ? ` (제외 계정 ${ignoredOf(c.dataIndex).toLocaleString()}건 제외됨)` : '')}},
           centerText: {line1: `${failTotal.toLocaleString()}건`, line2: '총 실패', size: 13, color: '#dc3545'},
         },
       },
@@ -4069,6 +4085,7 @@ const ALERT_FIELDS = {
 // 숫자가 아니라 따로 다루는 필드 (ALERT_FIELDS 는 parseFloat 로 읽는다)
 const ALERT_CWD_IGNORE = 'alCwdIgnorePaths';
 const ALERT_XFER_IGNORE = 'alXferIgnoreAccounts';
+const ALERT_LOGIN_IGNORE = 'alLoginIgnoreAccounts';
 
 function _renderAlerts(a) {
   if (!a) return;
@@ -4077,6 +4094,7 @@ function _renderAlerts(a) {
   }
   document.getElementById(ALERT_CWD_IGNORE).value = a.cwd_ignore_paths || '';
   document.getElementById(ALERT_XFER_IGNORE).value = a.xfer_ignore_accounts || '';
+  document.getElementById(ALERT_LOGIN_IGNORE).value = a.login_ignore_accounts || '';
   document.getElementById('alLargeBytes').textContent = fmtBytes(a.large_file_bytes) + ' 이상';
   document.getElementById('alBucketInfo').textContent =
     `${a.bucket_minutes}분 버킷 · 최근 ${a.baseline_days}일 기준`;
@@ -4099,6 +4117,7 @@ async function saveAlerts() {
   }
   body.cwd_ignore_paths = document.getElementById(ALERT_CWD_IGNORE).value.trim();
   body.xfer_ignore_accounts = document.getElementById(ALERT_XFER_IGNORE).value.trim();
+  body.login_ignore_accounts = document.getElementById(ALERT_LOGIN_IGNORE).value.trim();
   try {
     _renderAlerts(await api('PUT', '/settings/alerts', body));
     settingsMsg('alertMsg', 'success', '저장했습니다. 다음 판정 주기(약 5분)부터 적용됩니다.');

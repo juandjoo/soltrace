@@ -8,7 +8,8 @@ import pytest
 
 from app import alert_settings
 from app.service_monitor import (ServiceMonitor, _like_patterns, cwd_not_ignored_sql,
-                                 cwd_probe_sql, cwd_real_fail_sql, xfer_not_ignored_sql)
+                                 cwd_probe_sql, cwd_real_fail_sql, login_not_ignored_sql,
+                                 xfer_not_ignored_sql)
 
 MB = 1024 * 1024
 
@@ -270,6 +271,39 @@ def test_xfer_ignore_condition_is_shared():
 def test_xfer_ignore_setting_is_registered():
     """설정 화면에서 저장·로드되려면 필드가 등록돼 있어야 한다."""
     assert "xfer_ignore_accounts" in alert_settings.defaults()
+    assert "login_ignore_accounts" in alert_settings.defaults()
+
+
+def test_login_ignore_condition_is_shared():
+    """로그인 실패 제외 계정도 조건을 login_not_ignored_sql() 한 곳에만 둔다.
+
+    롤업(login_attempts·login_fails) · 알림 계정 표시 · 대시보드 실패 건수가 갈라지면
+    "제외 계정을 넣었는데 알림·화면에 그 계정이 그대로"가 된다.
+    """
+    import inspect
+
+    from app.routers import dashboard
+    from app import service_monitor
+
+    assert login_not_ignored_sql() == login_not_ignored_sql("username")
+    assert "fl.username" in login_not_ignored_sql("fl.username")
+    for mod in (dashboard, service_monitor):
+        src = inspect.getsource(mod)
+        literal = src.count("LIKE ANY(CAST(:login_ignore")
+        expected = 1 if mod is service_monitor else 0   # 헬퍼 정의 1회
+        assert literal == expected, f"{mod.__name__}: 제외 조건을 직접 적지 말고 헬퍼를 쓰세요"
+        assert "login_not_ignored_sql(" in src
+
+
+def test_login_ignore_excludes_attempts_too():
+    """로그인 제외 계정은 시도(분모)에서도 빠져야 한다 — 실패만 빼면 재시도를 퍼붓는
+    계정이 분모를 키워 다른 계정의 실패율을 묽게 만든다."""
+    import inspect
+
+    from app import service_monitor
+
+    src = inspect.getsource(service_monitor.ServiceMonitor._rollup)
+    assert "WHERE action='login' AND {login_not_ignored_sql()}" in src
 
 
 # ── 발송 전 지속 조건 (짧은 흔들림 억제) ────────────────────────────────────

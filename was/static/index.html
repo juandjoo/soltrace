@@ -1227,6 +1227,17 @@
                       로그 조회에도 그대로 남습니다. 최근 2시간 버킷은 다음 판정 주기에 다시 집계됩니다.
                     </div>
                   </div>
+                  <div class="col-12">
+                    <label class="form-label small mb-1">로그인 실패 제외 계정</label>
+                    <textarea class="form-control form-control-sm" id="alLoginIgnoreAccounts" rows="3"
+                      placeholder="한 줄에 하나씩 입력 (* 와일드카드)&#10;예) old_backup&#10;    test_*"></textarea>
+                    <div class="form-text">
+                      비밀번호가 바뀐 채 재시도를 반복하는 계정처럼 원인이 밝혀진 계정을
+                      <b>로그인 실패 집계·실패율·알림에서만</b> 뺍니다. 실패율이 묽어지지 않도록 그 계정의
+                      로그인 시도 전체를 빼고 계산하며, 로그 조회에는 그대로 남습니다.
+                      최근 2시간 버킷은 다음 판정 주기에 다시 집계됩니다.
+                    </div>
+                  </div>
                 </div>
                 <hr class="my-3">
                 <dl class="row small mb-0">

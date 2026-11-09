@@ -25,6 +25,7 @@ FIELDS: dict[str, tuple] = {
     "cwd_fail_floor":        (int,   "alert_cwd_fail_floor"),
     "cwd_ignore_paths":      (str,   "alert_cwd_ignore_paths"),
     "xfer_ignore_accounts":  (str,   "alert_xfer_ignore_accounts"),
+    "login_ignore_accounts": (str,   "alert_login_ignore_accounts"),
     "min_streak_buckets":    (int,   "alert_min_streak_buckets"),
     "min_streak_throughput": (int,   "alert_min_streak_throughput"),
     "min_samples":           (int,   "alert_min_samples"),

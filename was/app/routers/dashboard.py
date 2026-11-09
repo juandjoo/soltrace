@@ -17,7 +17,7 @@ from app.schemas import (
 )
 # cwd_fail 제외 규칙은 롤업/알림과 같은 것을 쓴다 (기준이 갈라지면 화면 숫자가 어긋난다)
 from app.service_monitor import (_like_patterns, cwd_not_ignored_sql, cwd_real_fail_sql,
-                                 xfer_not_ignored_sql)
+                                 login_not_ignored_sql, xfer_not_ignored_sql)
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
@@ -434,6 +434,9 @@ def get_service_health(
     # 전송 실패도 같은 방식으로 제외 계정을 뺀다 (롤업·알림과 같은 조건).
     params["xfer_ignore"] = _like_patterns(acfg["xfer_ignore_accounts"])
     xfer_ok = xfer_not_ignored_sql("fl.username")
+    # 로그인 실패도 제외 계정을 뺀다 (롤업·알림과 같은 조건).
+    params["login_ignore"] = _like_patterns(acfg["login_ignore_accounts"])
+    login_ok = login_not_ignored_sql("fl.username")
     totals_row = db.execute(text(f"""
         SELECT
             COALESCE(SUM(CASE WHEN fl.action IN ('upload','download')
@@ -442,7 +445,10 @@ def get_service_health(
             COALESCE(SUM(CASE WHEN fl.action IN ('upload','download')
                               AND fl.status = 'fail'
                               AND NOT ({xfer_ok}) THEN 1 ELSE 0 END), 0)::int AS xfer_ignored,
-            COALESCE(SUM(CASE WHEN fl.action = 'login' AND fl.status = 'fail' THEN 1 ELSE 0 END), 0)::int AS login_fails,
+            COALESCE(SUM(CASE WHEN fl.action = 'login' AND fl.status = 'fail'
+                              AND {login_ok} THEN 1 ELSE 0 END), 0)::int AS login_fails,
+            COALESCE(SUM(CASE WHEN fl.action = 'login' AND fl.status = 'fail'
+                              AND NOT ({login_ok}) THEN 1 ELSE 0 END), 0)::int AS login_ignored,
             COUNT(*) FILTER (WHERE fl.action = 'cwd_fail'
                              AND {cwd_real_fail_sql('fl', ':since', ':until')})::int AS cwd_fails,
             COUNT(*) FILTER (WHERE fl.action = 'cwd_fail'
@@ -456,6 +462,7 @@ def get_service_health(
         cwd_fails=totals_row.cwd_fails,
         cwd_fails_ignored=totals_row.cwd_ignored,
         transfer_fails_ignored=totals_row.xfer_ignored,
+        login_fails_ignored=totals_row.login_ignored,
     )
 
     return ServiceHealthResponse(devices=devices, alerts=alerts, trend=trend, fail_totals=fail_totals)
