@@ -90,3 +90,50 @@ log_backup_count = 5
 
 # true: 로그인/로그아웃 이벤트를 WAS로 전송하지 않음 (파일 전송 이벤트만 기록)
 skip_login_logout = false
+
+# ────────────────────────────────────────────────────────────────
+# 업로드 자동 purge (선택 — 쓰는 장비만)
+# ────────────────────────────────────────────────────────────────
+# 어느 FTP 계정의 업로드를 purge 할지는 WAS 의 그룹 설정(업로드 자동 purge)에서 정한다.
+# 여기에는 경로 규칙과 PURGE 를 보낼 서버 IP 만 둔다. 이 절이 없으면 purge 는 꺼져 있다.
+# 처음에는 dry_run = true 로 두고 데몬 로그에 찍히는 PURGE URL 이 맞는지 먼저 확인한다.
+# (줄 끝 주석은 값에 섞이므로 쓰지 않는다)
+#
+# [purge]
+# 경로가 strip_prefix 로 시작하면 그 다음 폴더(계정 ID)까지 떼어 CDN 경로로 쓴다
+# 예) /mnt1/8000000000000004549/cjenm/CLIP/a.mp4 → cjenm/CLIP/a.mp4
+# strip_prefix = /mnt1
+# 실패한 서버만 다시 보내는 횟수와 간격(초)
+# retry        = 3
+# retry_delay  = 5
+# timeout      = 10
+# dry_run      = false
+#
+# 규칙 — [purge:<이름>] 절마다 하나, 위에서부터 처음 맞는 규칙을 쓴다.
+#   match       : CDN 경로 접두어 (쉼표로 여러 개)
+#   parent_ips  : (선택) 먼저 지울 부모 서버 IP — 하나라도 끝내 실패하면 엣지는 건너뛴다
+#   edge_ips    : 엣지 서버 IP
+#                 (IP 는 쉼표·공백·줄바꿈 어느 것으로 나눠도 된다. 여러 줄이면 다음 줄을 들여쓴다)
+#   *_url       : {ip}, {path} 자리표시자. edge_url_smil 은 경로에 .smil 이 있을 때 쓴다
+#   host        : PURGE 요청의 Host 헤더
+#
+# [purge:clip]
+# match         = cjenm/CLIP/
+# edge_ips      = 10.0.0.1, 10.0.0.2
+# edge_url      = http://{ip}:61800/smc/naver/single/eng/0/{path}/content.mp4
+# edge_url_smil = http://{ip}:61800/smc/naver/single/eng/0/{path}
+#
+# [purge:vod]
+# match      = VOD/
+# parent_ips = 10.0.1.1
+# parent_url = http://{ip}:61800/{path}
+# edge_ips   = 10.0.1.11
+#              10.0.1.12
+# edge_url   = http://{ip}:61800/{path}
+# host       = vod-cjvod.lgucdn.com
+#
+# [purge:movie]
+# match    = inisoft/MOVIE/
+# edge_ips = 10.0.2.1
+# edge_url = http://{ip}:61800/{path}/playlist.m3u8
+# host     = movie-cjmovie.lgucdn.com

@@ -138,6 +138,9 @@ class Group(Base):
     customer = Column(Text)
     upload_domains = Column(Text)
     application = Column(Text)
+    # 업로드 자동 purge (app/purge_accounts.py) — 계정은 한 줄에 하나
+    purge_enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    purge_accounts = Column(Text)
     created_at = Column(DateTime(timezone=True), default=_now)
 
     devices = relationship("Device", secondary="device_groups", back_populates="groups")

@@ -268,6 +268,8 @@ class GroupCreate(BaseModel):
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
     application: Optional[str] = None
+    purge_enabled: bool = False
+    purge_accounts: Optional[str] = Field(default=None, max_length=20000)
 
 class GroupUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
@@ -276,6 +278,8 @@ class GroupUpdate(BaseModel):
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
     application: Optional[str] = None
+    purge_enabled: Optional[bool] = None
+    purge_accounts: Optional[str] = Field(default=None, max_length=20000)
 
 class GroupDeviceAssign(BaseModel):
     device_ids: List[int]
@@ -288,6 +292,8 @@ class GroupResponse(BaseModel):
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
     application: Optional[str] = None
+    purge_enabled: bool = False
+    purge_accounts: Optional[str] = None
     created_at: datetime
     device_count: int = 0
 

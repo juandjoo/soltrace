@@ -1554,6 +1554,14 @@
           <label class="form-label small fw-semibold">업로드 도메인</label>
           <textarea class="form-control form-control-sm" id="groupUploadDomains" rows="6" placeholder="한 줄에 하나씩 입력&#10;예) vivasambackup-ftp.lgucdn.com&#10;    cjclip-ftp.lgucdn.com"></textarea>
         </div>
+        <div class="mb-3 border rounded p-2">
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="groupPurgeEnabled">
+            <label class="form-check-label small fw-semibold" for="groupPurgeEnabled">업로드 자동 purge</label>
+          </div>
+          <textarea class="form-control form-control-sm" id="groupPurgeAccounts" rows="3" placeholder="purge 할 FTP 계정 — 한 줄에 하나&#10;예) cjenm_clip"></textarea>
+          <div class="form-text">이 그룹 장비에서 위 계정이 업로드를 마치면 CDN 캐시를 지웁니다. 경로 규칙과 PURGE 를 보낼 서버 IP 는 각 장비의 config.ini <code>[purge]</code> 에서 설정합니다.</div>
+        </div>
         <div class="mb-3">
           <label class="form-label small fw-semibold">Application</label>
           <textarea class="form-control form-control-sm" id="groupApplication" rows="3" placeholder="예) CMS&#10;Ingest Server&#10;관련 시스템명 또는 연동 정보"></textarea>

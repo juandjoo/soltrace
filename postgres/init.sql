@@ -102,6 +102,10 @@ ALTER TABLE groups DROP COLUMN IF EXISTS group_type;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS customer TEXT;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS upload_domains TEXT;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS auth TEXT;
+-- 업로드 자동 purge — 이 그룹 장비에서 아래 FTP 계정이 올린 파일만 CDN 캐시를 지운다.
+-- 경로 규칙·PURGE 대상 서버 IP 는 장비 config.ini [purge] 에서 따로 관리한다.
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS purge_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS purge_accounts TEXT;
 
 -- 통신사 목록
 CREATE TABLE IF NOT EXISTS telcos (

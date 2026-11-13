@@ -12,6 +12,7 @@ import configparser
 import hashlib
 import json
 import logging
+import queue
 import logging.handlers
 import os
 import platform
@@ -22,17 +23,18 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import psutil
 import requests
 
 # 데몬 버전 — 하트비트로 WAS 에 보고하고, WAS 는 배포된 저장소의 이 값을 "최신"으로 삼아
 # 장비별 구버전 여부를 판정한다. 파싱·전송 동작이 바뀌면 올린다 (여기가 유일한 출처).
-DAEMON_VERSION = "1.1.7"
+DAEMON_VERSION = "1.2.0"
 
 # 자가 업데이트 후 스스로 종료해 재시작될 때 쓰는 종료 코드.
 # 유닛이 Restart=on-failure + RestartPreventExitStatus=1 이므로 0 도 1 도 아니어야 한다.
@@ -504,6 +506,211 @@ class FileTailer:
             log.warning("Failed to save tailer state: %s", e)
 
 
+# ── Upload Purge ──────────────────────────────────────────────────────────────
+# 업로드가 끝난 파일의 CDN 캐시를 지운다 (예전 cjenm-purge 를 데몬으로 옮긴 것).
+#   - 어느 계정의 업로드를 purge 할지 : WAS 그룹 설정 → 하트비트 응답 purge_accounts
+#   - 경로 규칙·대상 서버 IP           : 이 장비 config.ini 의 [purge], [purge:<이름>] 절
+
+PURGE_SECTION = "purge"
+PURGE_RULE_PREFIX = "purge:"
+PURGE_WORKERS = 4            # 동시에 처리할 업로드 건수
+PURGE_IP_PARALLEL = 16       # 한 건 안에서 동시에 PURGE 보낼 서버 수
+PURGE_QUEUE_MAX = 10000      # 밀려도 메모리를 다 쓰지 않게 — 넘치면 버리고 경고
+# encodeurl(예전 Node 구현)과 같은 규칙 — 경로 구분자·예약문자·이미 인코딩된 %XX 는 그대로 둔다
+_PURGE_URL_SAFE = "!#$&'()*+,/:;=?@[]~%"
+
+purge_defaults = {
+    "strip_prefix": "/mnt1",
+    "retry": "3",
+    "retry_delay": "5",
+    "timeout": "10",
+}
+
+
+class PurgeRule:
+    """[purge:<이름>] 절 하나 — 경로 접두어로 고르고, 지정한 서버들에 PURGE 를 보낸다."""
+
+    def __init__(self, name: str, sec):
+        self.name = name
+        self.match = [m.strip().lstrip("/") for m in sec.get("match", "").split(",") if m.strip()]
+        self.parent_ips = _split_list(sec.get("parent_ips", ""))
+        self.parent_url = sec.get("parent_url", "", raw=True).strip()
+        self.edge_ips = _split_list(sec.get("edge_ips", ""))
+        self.edge_url = sec.get("edge_url", "", raw=True).strip()
+        self.edge_url_smil = sec.get("edge_url_smil", "", raw=True).strip()
+        self.host = sec.get("host", "").strip()
+        if not self.match or not self.edge_ips or not self.edge_url:
+            raise ValueError("[purge:%s] match·edge_ips·edge_url 은 필수" % name)
+        if self.parent_ips and not self.parent_url:
+            raise ValueError("[purge:%s] parent_ips 가 있으면 parent_url 도 필요" % name)
+
+    def matches(self, path: str) -> bool:
+        return any(path.startswith(m) for m in self.match)
+
+    def edge_template(self, path: str) -> str:
+        # 예전 동작 그대로: smil 은 /content.mp4 를 붙이지 않는 별도 URL
+        if self.edge_url_smil and ".smil" in path:
+            return self.edge_url_smil
+        return self.edge_url
+
+
+def _split_list(value: str) -> list:
+    """쉼표·공백·줄바꿈 어느 것으로 나눠 적어도 받는다. 순서는 지키고 중복은 뺀다."""
+    return list(dict.fromkeys(v for v in re.split(r"[\s,]+", value) if v))
+
+
+def purge_content_path(file_path: str, strip_prefix: str) -> str:
+    """xferlog 경로 → CDN 경로.
+
+    '/mnt1/<계정ID>/cjenm/CLIP/a.mp4' → 'cjenm/CLIP/a.mp4' (strip_prefix 와 그 다음 폴더를 뗀다).
+    접두어로 시작하지 않으면 앞의 '/' 만 뗀다 — 예전 cjenm-purge 와 같은 규칙.
+    """
+    prefix = strip_prefix.rstrip("/")
+    if prefix and (file_path == prefix or file_path.startswith(prefix + "/")):
+        parts = file_path[len(prefix):].lstrip("/").split("/", 1)
+        return parts[1] if len(parts) > 1 else ""
+    return file_path.lstrip("/")
+
+
+class UploadPurger:
+    """업로드 완료 → CDN purge. 큐 + 작업 스레드로 돌려 로그 전송을 막지 않는다."""
+
+    def __init__(self, cfg: configparser.ConfigParser, state_dir: str):
+        self.enabled = cfg.has_section(PURGE_SECTION)
+        self._accounts_file = Path(state_dir) / "purge_accounts.json"
+        self._accounts = self._load_accounts()
+        self._warned_disabled = False
+        self.rules: list = []
+        if not self.enabled:
+            return
+        sec = cfg[PURGE_SECTION]
+        d = purge_defaults
+        self.strip_prefix = sec.get("strip_prefix", d["strip_prefix"]).strip()
+        self.retry = sec.getint("retry", fallback=int(d["retry"]))
+        self.retry_delay = sec.getint("retry_delay", fallback=int(d["retry_delay"]))
+        self.timeout = sec.getint("timeout", fallback=int(d["timeout"]))
+        self.dry_run = sec.getboolean("dry_run", fallback=False)
+        for name in cfg.sections():
+            if name.startswith(PURGE_RULE_PREFIX):
+                self.rules.append(PurgeRule(name[len(PURGE_RULE_PREFIX):], cfg[name]))
+        if not self.rules:
+            log.error("[purge] 에 [purge:<이름>] 규칙이 하나도 없습니다 — 자동 purge 꺼짐")
+            self.enabled = False
+            return
+        self._queue: "queue.Queue" = queue.Queue(maxsize=PURGE_QUEUE_MAX)
+        self._http = requests.Session()
+        self._ip_pool = ThreadPoolExecutor(max_workers=PURGE_IP_PARALLEL)
+
+    # ── 계정 (WAS 하트비트가 내려준다) ──
+    def _load_accounts(self) -> frozenset:
+        # 재시작 직후 첫 하트비트(최대 heartbeat_interval) 전 업로드도 놓치지 않게 디스크에 둔다
+        try:
+            return frozenset(json.loads(self._accounts_file.read_text()))
+        except FileNotFoundError:
+            return frozenset()
+        except Exception as e:
+            log.warning("purge 계정 파일 읽기 실패 (%s) — 빈 목록으로 시작", e)
+            return frozenset()
+
+    def set_accounts(self, accounts) -> None:
+        new = frozenset(a for a in accounts if isinstance(a, str) and a)
+        if new == self._accounts:
+            return
+        self._accounts = new
+        log.info("purge 대상 계정 변경: %s", ", ".join(sorted(new)) or "(없음)")
+        try:
+            tmp = self._accounts_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps(sorted(new)))
+            tmp.replace(self._accounts_file)
+        except Exception as e:
+            log.warning("purge 계정 저장 실패: %s", e)
+
+    # ── 진입점 ──
+    def start(self) -> None:
+        if not self.enabled:
+            return
+        for i in range(PURGE_WORKERS):
+            threading.Thread(target=self._worker, daemon=True, name="purge-%d" % i).start()
+        log.info("자동 purge 켜짐 — 규칙 %s%s", ", ".join(r.name for r in self.rules),
+                 " (dry_run: 요청 없이 URL 만 기록)" if self.dry_run else "")
+
+    def submit(self, entries: list) -> None:
+        """WAS 전송 위치가 확정된 로그 중 purge 대상 업로드를 큐에 넣는다."""
+        accounts = self._accounts
+        if not accounts:
+            return
+        uploads = [e for e in entries
+                   if e.get("action") == "upload" and e.get("status") == "success"
+                   and e.get("username") in accounts]
+        if not uploads:
+            return
+        if not self.enabled:
+            if not self._warned_disabled:
+                log.warning("WAS 에서 purge 계정을 받았지만 config.ini 에 [purge] 설정이 없어 건너뜁니다")
+                self._warned_disabled = True
+            return
+        for e in uploads:
+            try:
+                self._queue.put_nowait(e["file_path"])
+            except queue.Full:
+                log.error("purge 큐가 가득 차 버림: %s", e["file_path"])
+
+    # ── 처리 ──
+    def _worker(self) -> None:
+        while True:
+            file_path = self._queue.get()
+            try:
+                self._purge_one(file_path)
+            except Exception as e:
+                log.error("purge 오류 %s: %s", file_path, e)
+
+    def _purge_one(self, file_path: str) -> None:
+        path = purge_content_path(file_path, self.strip_prefix)
+        rule = next((r for r in self.rules if r.matches(path)), None)
+        if not path or rule is None:
+            log.debug("purge 규칙에 맞는 경로 아님: %s", file_path)
+            return
+        encoded = quote(path, safe=_PURGE_URL_SAFE)
+        # 부모를 먼저 지워야 엣지가 다시 받아올 때 옛 파일을 받지 않는다 — 부모 실패면 엣지 생략
+        if rule.parent_ips:
+            if not self._purge_tier(rule, "parent", rule.parent_ips, rule.parent_url, encoded, path):
+                return
+        if self._purge_tier(rule, "edge", rule.edge_ips, rule.edge_template(path), encoded, path):
+            log.info("purge 성공 [%s] %s", rule.name, path)
+
+    def _purge_tier(self, rule: PurgeRule, tier: str, ips: list, template: str,
+                    encoded: str, path: str) -> bool:
+        headers = {"Host": rule.host} if rule.host else {}
+        pending = ips
+        for attempt in range(self.retry + 1):
+            if attempt:
+                time.sleep(self.retry_delay)
+            urls = [template.format(ip=ip, path=encoded) for ip in pending]
+            results = list(self._ip_pool.map(lambda u: self._send(u, headers), urls))
+            pending = [ip for ip, ok in zip(pending, results) if not ok]
+            if not pending:
+                return True
+            if attempt < self.retry:
+                log.warning("purge 재시도 %d/%d [%s/%s] 실패 서버 %s: %s",
+                            attempt + 1, self.retry, rule.name, tier, ", ".join(pending), path)
+        log.error("purge 실패 [%s/%s] 서버 %s: %s", rule.name, tier, ", ".join(pending), path)
+        return False
+
+    def _send(self, url: str, headers: dict) -> bool:
+        if self.dry_run:
+            log.info("purge dry_run PURGE %s %s", url, headers or "")
+            return True
+        try:
+            r = self._http.request("PURGE", url, headers=headers, timeout=self.timeout)
+        except requests.RequestException as e:
+            log.warning("PURGE 연결 실패 %s: %s", url, e)
+            return False
+        if r.status_code != 200:
+            log.warning("PURGE %d %s", r.status_code, url)
+            return False
+        return True
+
+
 # ── HTTP Client ───────────────────────────────────────────────────────────────
 
 class DeviceDisabledError(Exception):
@@ -673,6 +880,8 @@ class SolTraceDaemon:
         self.poll_interval = int(self.cfg["poll_interval"])
         self.heartbeat_interval = int(self.cfg["heartbeat_interval"])
         self.skip_login_logout = self.cfg.getboolean("skip_login_logout", fallback=False)
+
+        self.purger = UploadPurger(cfg, state_dir)
 
         self.tailers = [
             FileTailer(self.cfg["transfer_log"], parse_transfer_log, state_dir),
@@ -929,6 +1138,8 @@ class SolTraceDaemon:
                               status_payload.get("daemon_status"),
                               status_payload.get("cpu_percent") or 0,
                               status_payload.get("mem_mb") or 0)
+                    if "purge_accounts" in result:
+                        self.purger.set_accounts(result.get("purge_accounts") or [])
                     if result.get("update"):
                         log.info("Update requested by WAS — starting self-update")
                         threading.Thread(target=self._self_update, daemon=True).start()
@@ -1067,6 +1278,7 @@ class SolTraceDaemon:
                 backoff = 0
                 for tailer in self.tailers:
                     tailer.commit()
+                self.purger.submit(all_entries)
                 log.debug("Sent %d entries: accepted=%d rejected=%d",
                           len(all_entries), result.get("accepted", 0), result.get("rejected", 0))
             else:
@@ -1081,6 +1293,8 @@ class SolTraceDaemon:
                 self.buffer.write(all_entries)
                 for tailer in self.tailers:
                     tailer.advance()
+                # purge 는 WAS 와 무관하다 — 전송이 밀려도 위치가 확정됐으면 바로 지운다
+                self.purger.submit(all_entries)
                 self._wait_interruptible(backoff)
 
     def start(self):
@@ -1095,6 +1309,8 @@ class SolTraceDaemon:
 
         hb_thread = threading.Thread(target=self._heartbeat_loop, daemon=True, name="heartbeat")
         hb_thread.start()
+
+        self.purger.start()
 
         sender_thread = threading.Thread(target=self._sender_loop, daemon=True, name="sender")
         sender_thread.start()

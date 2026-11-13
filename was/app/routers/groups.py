@@ -8,6 +8,7 @@ from app.database import get_db
 from app.deps import Principal, get_current_user, require_admin
 from app.models import Device, DeviceGroup, Group
 from app import daemon_update
+from app.purge_accounts import normalize_accounts
 from app.schemas import (
     DaemonUpdateGroups, DaemonUpdateResult, GroupCreate, GroupDeviceAssign, GroupResponse,
     GroupUpdate,
@@ -38,7 +39,9 @@ def list_groups(db: Session = Depends(get_db), user: Principal = Depends(get_cur
 def create_group(body: GroupCreate, db: Session = Depends(get_db), _: str = Depends(require_admin)):
     if db.query(Group).filter(Group.name == body.name).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
-    group = Group(**body.model_dump())
+    data = body.model_dump()
+    data["purge_accounts"] = normalize_accounts(data.get("purge_accounts"))
+    group = Group(**data)
     db.add(group)
     db.commit()
     db.refresh(group)
@@ -59,6 +62,10 @@ def update_group(
         if db.query(Group).filter(Group.name == body.name).first():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
     for field, value in body.model_dump(exclude_unset=True).items():
+        if field == "purge_enabled" and value is None:
+            continue  # NOT NULL 컬럼 — 명시적 null 은 '안 바꿈'으로 본다
+        if field == "purge_accounts":
+            value = normalize_accounts(value)
         setattr(group, field, value)
     db.commit()
     db.refresh(group)

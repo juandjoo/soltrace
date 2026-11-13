@@ -10,6 +10,7 @@ from app.schemas import (
     DeviceRegister, HeartbeatRequest, IngestResponse, LogBatch,
 )
 from app import write_buffer as wb
+from app.purge_accounts import accounts_for_device
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 
@@ -95,6 +96,8 @@ def heartbeat(req: HeartbeatRequest, db: Session = Depends(get_db)):
             setattr(device, field, val)
 
     resp: dict = {"status": device.status}
+    # 업로드 자동 purge 대상 계정 — 빈 목록도 늘 보낸다(그룹에서 끄면 데몬도 바로 멈추도록)
+    resp["purge_accounts"] = accounts_for_device(db, device.id)
     if device.update_requested:
         resp["update"] = True
         device.update_requested = False

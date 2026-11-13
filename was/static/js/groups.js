@@ -66,7 +66,7 @@ function renderGroupPage(page) {
 
   const groupRowHtml = g => `
       <td class="text-center"><input class="form-check-input grp-pick" type="checkbox" value="${g.id}" onchange="updateGroupPickCount()"></td>
-      <td class="fw-semibold" style="word-break:break-word">${esc(g.name)}</td>
+      <td class="fw-semibold" style="word-break:break-word">${esc(g.name)}${g.purge_enabled ? ` <span class="badge bg-info-subtle text-info-emphasis border fw-normal" title="업로드 자동 purge 계정&#10;${esc(g.purge_accounts || '')}">purge</span>` : ''}</td>
       <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
       <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer ? esc(g.customer) : '<span class="text-muted">-</span>'}</td>
       <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains ? esc(g.upload_domains) : '-'}</td>
@@ -161,6 +161,8 @@ async function openGroupModal(id) {
   document.getElementById('groupCustomer').value = g?.customer || '';
   document.getElementById('groupUploadDomains').value = g?.upload_domains || '';
   document.getElementById('groupApplication').value = g?.application || '';
+  document.getElementById('groupPurgeEnabled').checked = !!g?.purge_enabled;
+  document.getElementById('groupPurgeAccounts').value = g?.purge_accounts || '';
   await getTelcos();
   populateGroupTelco(g?.telco || '');
   document.getElementById('groupModalTitle').textContent = id ? '그룹 수정' : '그룹 추가';
@@ -176,8 +178,11 @@ async function saveGroup() {
     customer: document.getElementById('groupCustomer').value.trim() || null,
     upload_domains: document.getElementById('groupUploadDomains').value.trim() || null,
     application: document.getElementById('groupApplication').value.trim() || null,
+    purge_enabled: document.getElementById('groupPurgeEnabled').checked,
+    purge_accounts: document.getElementById('groupPurgeAccounts').value.trim() || null,
   };
   if (!body.name) return alert('그룹명을 입력하세요.');
+  if (body.purge_enabled && !body.purge_accounts) return alert('자동 purge 를 켜려면 FTP 계정을 입력하세요.');
   try {
     if (id) {
       await api('PUT', `/groups/${id}`, body);
