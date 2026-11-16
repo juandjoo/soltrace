@@ -47,6 +47,7 @@ def _sync_purge_targets(group: Group, targets, telco_changed: bool) -> None:
         name = t.ftp_username.strip()
         row = existing.get(name) or PurgeTarget(ftp_username=name)
         before = (row.api_username, row.api_password)
+        row.enabled = t.enabled
         row.service = t.service.strip()
         row.volume = t.volume.strip()
         row.strip_prefix = (t.strip_prefix or "").strip().rstrip("/") or None
@@ -106,6 +107,8 @@ def update_group(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
     old_telco = group.telco
     for field, value in body.model_dump(exclude_unset=True, exclude={"purge_targets"}).items():
+        if field == "purge_active" and value is None:
+            continue    # NOT NULL — 명시적 null 은 '안 바꿈'
         setattr(group, field, value)
     telco_changed = group.telco != old_telco
     if "purge_targets" in body.model_fields_set:

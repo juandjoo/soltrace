@@ -66,7 +66,7 @@ function renderGroupPage(page) {
 
   const groupRowHtml = g => `
       <td class="text-center"><input class="form-check-input grp-pick" type="checkbox" value="${g.id}" onchange="updateGroupPickCount()"></td>
-      <td class="fw-semibold" style="word-break:break-word">${esc(g.name)}${g.purge_targets?.length ? ` <span class="badge bg-info-subtle text-info-emphasis border fw-normal" title="업로드 자동 purge&#10;${esc(g.purge_targets.map(t => `${t.ftp_username} → ${t.service}/${t.volume}`).join('\n'))}">purge ${g.purge_targets.length}</span>` : ''}</td>
+      <td class="fw-semibold" style="word-break:break-word">${esc(g.name)}${purgeBadge(g)}</td>
       <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
       <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer ? esc(g.customer) : '<span class="text-muted">-</span>'}</td>
       <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains ? esc(g.upload_domains) : '-'}</td>
@@ -139,6 +139,17 @@ function renderGroupPage(page) {
   </ul>`;
 }
 
+// 그룹 목록의 purge 배지 — 사용 중인 ID 수 / 전체. 그룹을 끄면 회색 '꺼짐'.
+function purgeBadge(g) {
+  const ts = g.purge_targets || [];
+  if (!ts.length) return '';
+  const on = ts.filter(t => t.enabled !== false).length;
+  const tip = ts.map(t => `${t.enabled !== false ? '●' : '○'} ${t.ftp_username} → ${t.service}/${t.volume}`).join('\n');
+  if (g.purge_active === false)
+    return ` <span class="badge bg-light text-muted border fw-normal" title="업로드 자동 purge (그룹 꺼짐)&#10;${esc(tip)}">purge 꺼짐</span>`;
+  return ` <span class="badge bg-info-subtle text-info-emphasis border fw-normal" title="업로드 자동 purge&#10;${esc(tip)}">purge ${on}/${ts.length}</span>`;
+}
+
 function filterGroups(btn) {
   document.querySelectorAll('#groupFilter button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
@@ -161,6 +172,7 @@ async function openGroupModal(id) {
   document.getElementById('groupCustomer').value = g?.customer || '';
   document.getElementById('groupUploadDomains').value = g?.upload_domains || '';
   document.getElementById('groupApplication').value = g?.application || '';
+  document.getElementById('groupPurgeActive').checked = g ? g.purge_active !== false : true;
   renderPurgeTargetRows(g?.purge_targets || []);
   await getTelcos();
   populateGroupTelco(g?.telco || '');
@@ -168,57 +180,95 @@ async function openGroupModal(id) {
   bootstrap.Modal.getOrCreateInstance(document.getElementById('groupModal')).show();
 }
 
-// ── 업로드 자동 purge — FTP ID별 서비스·볼륨·뗄 경로 ─────────────────────────
-function _purgeRowHtml(t = {}) {
-  const cell = (cls, v, ph) => `<td><input class="form-control form-control-sm ${cls}" value="${esc(v || '')}" placeholder="${ph}"></td>`;
-  // 비밀번호는 서버가 돌려주지 않는다 — 저장돼 있으면 비워 둔 채 '바꿀 때만 입력'
-  const tokenInfo = t.api_token_at ? `토큰 발급 ${fmtLocalDateTime(new Date(t.api_token_at))}` : '';
-  return `<tr>
-    ${cell('pt-user', t.ftp_username, 'FTP ID')}
-    ${cell('pt-svc', t.service, '서비스명')}
-    ${cell('pt-vol', t.volume, '볼륨')}
-    ${cell('pt-strip', t.strip_prefix, '/mnt1/…/…')}
-    ${cell('pt-api-user', t.api_username, 'API 계정')}
-    <td><input class="form-control form-control-sm pt-api-pass" type="password" autocomplete="new-password" placeholder="${t.has_api_password ? '••••• (저장됨)' : '비밀번호'}"></td>
-    <td class="text-nowrap">
-      <button type="button" class="btn btn-xs btn-outline-success" onclick="testPurgeTargetToken(this)" title="입력 중인 값으로 토큰 발급 시험"><i class="bi bi-key"></i> 테스트</button>
-      <button type="button" class="btn btn-xs btn-outline-danger" onclick="this.closest('tr').nextElementSibling?.classList.contains('pt-msg-row') && this.closest('tr').nextElementSibling.remove(); this.closest('tr').remove()"><i class="bi bi-x-lg"></i></button>
-    </td>
-  </tr>
-  <tr class="pt-msg-row"><td colspan="7" class="border-0 pt-0 pb-1"><span class="pt-msg small text-muted">${esc(tokenInfo)}</span></td></tr>`;
+// ── 업로드 자동 purge — 업로드 ID별 카드 ───────────────────────────────────
+// 윗줄 감지(FTP ID · 마운트 경로), 아랫줄 API(계정 · 비밀번호 · 서비스 · 볼륨).
+// 비밀번호는 서버가 돌려주지 않는다 — 저장돼 있으면 비워 둔 채 '바꿀 때만 입력'.
+function _purgeCardHtml(t = {}) {
+  const on = t.enabled !== false;
+  const field = (col, lbl, cls, v, ph, extra = '') =>
+    `<div class="${col}"><label class="pt-lbl">${lbl}</label><input class="form-control form-control-sm ${cls}" value="${esc(v || '')}" placeholder="${ph}" ${extra}></div>`;
+  const tokenInfo = t.api_token_at
+    ? `<span class="badge bg-success-subtle text-success-emphasis border fw-normal"><i class="bi bi-check-circle me-1"></i>토큰 발급 ${esc(fmtLocalDateTime(new Date(t.api_token_at)))}</span>`
+    : (t.ftp_username ? '<span class="text-muted small">토큰 미발급</span>' : '');
+  return `<div class="pt-card${on ? '' : ' off'}">
+    <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+      <div class="form-check form-switch m-0" title="미사용이면 설정은 남기고 감지·purge 만 멈춥니다">
+        <input class="form-check-input pt-enabled" type="checkbox" ${on ? 'checked' : ''} onchange="syncPurgeCardStates()">
+        <label class="form-check-label small pt-enabled-label">${on ? '사용' : '미사용'}</label>
+      </div>
+      <span class="pt-name"><i class="bi bi-person me-1"></i><span class="pt-name-text">${esc(t.ftp_username || '새 ID')}</span></span>
+      <span class="pt-msg">${tokenInfo}</span>
+      <div class="ms-auto text-nowrap">
+        <button type="button" class="btn btn-xs btn-outline-success" onclick="testPurgeTargetToken(this)" title="입력 중인 값으로 토큰 발급 시험"><i class="bi bi-key me-1"></i>토큰 테스트</button>
+        <button type="button" class="btn btn-xs btn-outline-danger" onclick="removePurgeCard(this)" title="이 ID 삭제(저장해야 반영)"><i class="bi bi-trash"></i></button>
+      </div>
+    </div>
+    <div class="row g-2 pt-fields">
+      ${field('col-md-3', 'FTP ID', 'pt-user', t.ftp_username, 'FTP ID', 'oninput="this.closest(\'.pt-card\').querySelector(\'.pt-name-text\').textContent = this.value || \'새 ID\'"')}
+      ${field('col-md-9', '마운트 경로', 'pt-strip font-monospace', t.strip_prefix, '/mnt1/8000000000000004549/cjenm')}
+      ${field('col-6 col-md-3', 'API 계정', 'pt-api-user', t.api_username, 'API 계정')}
+      <div class="col-6 col-md-3"><label class="pt-lbl">API 비밀번호</label><input class="form-control form-control-sm pt-api-pass" type="password" autocomplete="new-password" placeholder="${t.has_api_password ? '••••• 저장됨' : '비밀번호'}"></div>
+      ${field('col-6 col-md-3', '서비스', 'pt-svc', t.service, '서비스명')}
+      ${field('col-6 col-md-3', '볼륨', 'pt-vol', t.volume, '볼륨')}
+    </div>
+  </div>`;
 }
 
 function renderPurgeTargetRows(targets) {
-  document.getElementById('purgeTargetRows').innerHTML = targets.map(_purgeRowHtml).join('');
+  document.getElementById('purgeTargetRows').innerHTML = targets.map(_purgeCardHtml).join('');
+  syncPurgeCardStates();
 }
 
 function addPurgeTargetRow() {
-  document.getElementById('purgeTargetRows').insertAdjacentHTML('beforeend', _purgeRowHtml());
+  document.getElementById('purgeTargetRows').insertAdjacentHTML('beforeend', _purgeCardHtml());
+  syncPurgeCardStates();
 }
 
-// 네 칸이 모두 빈 행은 버린다(추가만 누르고 안 채운 행)
+function removePurgeCard(btn) {
+  btn.closest('.pt-card').remove();
+  syncPurgeCardStates();
+}
+
+// 스위치 상태를 화면에 반영 — ID 스위치 라벨·흐림, 그룹이 꺼지면 모든 카드를 흐리게, ID 수 배지
+function syncPurgeCardStates() {
+  const groupOn = document.getElementById('groupPurgeActive').checked;
+  const cards = [...document.querySelectorAll('#purgeTargetRows .pt-card')];
+  cards.forEach(card => {
+    const on = card.querySelector('.pt-enabled').checked;
+    card.querySelector('.pt-enabled-label').textContent = on ? '사용' : '미사용';
+    card.classList.toggle('off', !on || !groupOn);
+  });
+  document.getElementById('purgeTargetCount').textContent = cards.length;
+}
+
+// 모든 칸이 빈 카드는 버린다(추가만 누르고 안 채운 카드)
 function readPurgeTargetRows() {
-  return [...document.querySelectorAll('#purgeTargetRows tr:not(.pt-msg-row)')].map(tr => ({
-    ftp_username: tr.querySelector('.pt-user').value.trim(),
-    service: tr.querySelector('.pt-svc').value.trim(),
-    volume: tr.querySelector('.pt-vol').value.trim(),
-    strip_prefix: tr.querySelector('.pt-strip').value.trim() || null,
-    api_username: tr.querySelector('.pt-api-user').value.trim() || null,
-    api_password: tr.querySelector('.pt-api-pass').value.trim() || null,
+  return [...document.querySelectorAll('#purgeTargetRows .pt-card')].map(card => ({
+    enabled: card.querySelector('.pt-enabled').checked,
+    ftp_username: card.querySelector('.pt-user').value.trim(),
+    service: card.querySelector('.pt-svc').value.trim(),
+    volume: card.querySelector('.pt-vol').value.trim(),
+    strip_prefix: card.querySelector('.pt-strip').value.trim() || null,
+    api_username: card.querySelector('.pt-api-user').value.trim() || null,
+    api_password: card.querySelector('.pt-api-pass').value.trim() || null,
   })).filter(t => t.ftp_username || t.service || t.volume || t.strip_prefix || t.api_username || t.api_password);
 }
 
-// 행의 '테스트' — 저장 전에 입력 중인 통신사·계정으로 발급해 본다. 비밀번호를 비우면 저장된 것을 쓴다.
+// 카드의 '토큰 테스트' — 저장 전에 입력 중인 통신사·계정으로 발급해 본다. 비밀번호를 비우면 저장된 것을 쓴다.
 async function testPurgeTargetToken(btn) {
-  const tr = btn.closest('tr');
-  const msg = tr.nextElementSibling?.querySelector('.pt-msg');
-  const show = (kind, text) => { if (msg) { msg.className = `pt-msg small text-${kind}`; msg.textContent = text; } };
+  const card = btn.closest('.pt-card');
+  const msg = card.querySelector('.pt-msg');
+  const show = (kind, text) => {
+    const cls = {success: 'bg-success-subtle text-success-emphasis', danger: 'bg-danger-subtle text-danger-emphasis', muted: 'bg-light text-muted'}[kind];
+    const icon = {success: 'bi-check-circle', danger: 'bi-exclamation-circle', muted: 'bi-hourglass-split'}[kind];
+    msg.innerHTML = `<span class="badge ${cls} border fw-normal text-wrap text-start"><i class="bi ${icon} me-1"></i>${esc(text)}</span>`;
+  };
   const body = {
     telco: document.getElementById('groupTelco').value,
-    api_username: tr.querySelector('.pt-api-user').value.trim(),
-    api_password: tr.querySelector('.pt-api-pass').value.trim() || null,
+    api_username: card.querySelector('.pt-api-user').value.trim(),
+    api_password: card.querySelector('.pt-api-pass').value.trim() || null,
     group_id: Number(document.getElementById('groupId').value) || null,
-    ftp_username: tr.querySelector('.pt-user').value.trim() || null,
+    ftp_username: card.querySelector('.pt-user').value.trim() || null,
   };
   if (!body.telco) return show('danger', '그룹 통신사를 먼저 지정하세요.');
   if (!body.api_username) return show('danger', 'API 계정을 입력하세요.');
@@ -238,11 +288,12 @@ async function saveGroup() {
     customer: document.getElementById('groupCustomer').value.trim() || null,
     upload_domains: document.getElementById('groupUploadDomains').value.trim() || null,
     application: document.getElementById('groupApplication').value.trim() || null,
+    purge_active: document.getElementById('groupPurgeActive').checked,
     purge_targets: readPurgeTargetRows(),
   };
   if (!body.name) return alert('그룹명을 입력하세요.');
   const badRow = body.purge_targets.find(t => !t.ftp_username || !t.service || !t.volume);
-  if (badRow) return alert('purge 행마다 FTP ID · 서비스 · 볼륨을 모두 입력하세요.');
+  if (badRow) return alert('업로드 ID마다 FTP ID · 서비스 · 볼륨을 모두 입력하세요.');
   if (body.purge_targets.length && !body.telco) return alert('purge 를 쓰려면 통신사를 지정하세요 — 그 통신사의 API 로 보냅니다.');
   const noAccount = body.purge_targets.find(t => !t.api_username);
   if (noAccount) return alert(`'${noAccount.ftp_username}' 의 API 계정을 입력하세요.`);

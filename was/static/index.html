@@ -1581,9 +1581,9 @@
   </div>
 </div>
 
-<!-- 그룹 모달 -->
+<!-- 그룹 모달 — 기본 정보 / 업로드 자동 purge / 기타 세 구역 (시안 B, 2026-11-16) -->
 <div class="modal fade" id="groupModal" tabindex="-1">
-  <div class="modal-dialog modal-xl">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h6 class="modal-title" id="groupModalTitle">그룹 추가</h6>
@@ -1591,48 +1591,57 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="groupId">
-        <div class="row g-3 mb-3">
-          <div class="col-sm-7">
-            <label class="form-label small fw-semibold">그룹명 *</label>
-            <input class="form-control form-control-sm" id="groupName">
+        <div class="gm-sec">
+          <div class="gm-sec-title"><i class="bi bi-info-circle me-1"></i>기본 정보</div>
+          <div class="row g-3">
+            <div class="col-md-7">
+              <label class="form-label small fw-semibold">그룹명 *</label>
+              <input class="form-control" id="groupName">
+            </div>
+            <div class="col-md-5">
+              <label class="form-label small fw-semibold">통신사</label>
+              <select class="form-select" id="groupTelco"></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">고객사</label>
+              <textarea class="form-control" id="groupCustomer" rows="2" placeholder="예) LG CNS"></textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">업로드 도메인 <span class="text-muted fw-normal">(한 줄에 하나)</span></label>
+              <textarea class="form-control" id="groupUploadDomains" rows="2" placeholder="예) cjclip-ftp.lgucdn.com"></textarea>
+            </div>
           </div>
-          <div class="col-sm-5">
-            <label class="form-label small fw-semibold">통신사</label>
-            <select class="form-select form-select-sm" id="groupTelco"></select>
+        </div>
+
+        <div class="gm-sec">
+          <div class="gm-sec-title d-flex align-items-center flex-wrap gap-2">
+            <span><i class="bi bi-arrow-repeat me-1"></i>업로드 자동 purge <span class="badge bg-secondary" id="purgeTargetCount">0</span></span>
+            <div class="form-check form-switch m-0 ms-2" title="끄면 이 그룹의 모든 ID 가 감지·purge 를 멈춥니다(ID 설정은 유지)">
+              <input class="form-check-input" type="checkbox" id="groupPurgeActive" onchange="syncPurgeCardStates()">
+              <label class="form-check-label small fw-semibold" for="groupPurgeActive">그룹 사용</label>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="addPurgeTargetRow()"><i class="bi bi-plus-lg me-1"></i>ID 추가</button>
+          </div>
+          <div id="purgeTargetRows"></div>
+          <div class="form-text">
+            윗줄은 업로드 감지(FTP ID · 마운트 경로), 아랫줄은 <b>그룹 통신사</b> purge API(설정 › 텔코 정보)에 쓰는 계정 · 서비스 · 볼륨입니다.
+            마운트 경로 <code>/mnt1/8000000000000004549/cjenm</code> 이면 <code>…/cjenm/CLIP/a.mp4</code> 를 <code>/CLIP/a.mp4</code> 로 보냅니다.
+            비밀번호는 저장 후 다시 보이지 않으며 비워 두면 기존 값을 유지합니다.
           </div>
         </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">고객사</label>
-          <textarea class="form-control form-control-sm" id="groupCustomer" rows="3" placeholder="예) LG CNS&#10;SK브로드밴드"></textarea>
-        </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">업로드 도메인</label>
-          <textarea class="form-control form-control-sm" id="groupUploadDomains" rows="6" placeholder="한 줄에 하나씩 입력&#10;예) vivasambackup-ftp.lgucdn.com&#10;    cjclip-ftp.lgucdn.com"></textarea>
-        </div>
-        <div class="mb-3 border rounded p-2">
-          <div class="d-flex align-items-center mb-2">
-            <span class="small fw-semibold">업로드 자동 purge — 업로드 ID별</span>
-            <button type="button" class="btn btn-xs btn-outline-primary ms-auto" onclick="addPurgeTargetRow()"><i class="bi bi-plus-lg me-1"></i>ID 추가</button>
+
+        <div class="gm-sec mb-0">
+          <div class="gm-sec-title"><i class="bi bi-journal-text me-1"></i>기타</div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Application</label>
+              <textarea class="form-control" id="groupApplication" rows="2" placeholder="예) CMS, Ingest Server"></textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">비고</label>
+              <textarea class="form-control" id="groupDesc" rows="2"></textarea>
+            </div>
           </div>
-          <div class="table-responsive">
-            <table class="table table-sm align-middle mb-1">
-              <thead class="table-light"><tr class="small">
-                <th style="width:13%">FTP ID</th><th style="width:12%">서비스</th><th style="width:12%">볼륨</th><th>뗄 경로</th>
-                <th style="width:13%">API 계정</th><th style="width:13%">API 비밀번호</th><th style="width:96px"></th>
-              </tr></thead>
-              <tbody id="purgeTargetRows"></tbody>
-            </table>
-          </div>
-          <div class="form-text">이 그룹 장비에서 위 ID가 업로드를 마치면 <b>그룹 통신사</b>의 purge API(설정 › 텔코 정보)로, 그 ID의 API 계정으로 캐시를 지웁니다. 비밀번호는 저장 후 다시 보이지 않으며 비워 두면 기존 값을 유지합니다.
-            뗄 경로 예) <code>/mnt1/8000000000000004549/cjenm</code> → <code>/mnt1/8000000000000004549/cjenm/CLIP/a.mp4</code> 는 <code>/CLIP/a.mp4</code> 로 보냅니다. 비우면 경로 그대로.</div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Application</label>
-          <textarea class="form-control form-control-sm" id="groupApplication" rows="3" placeholder="예) CMS&#10;Ingest Server&#10;관련 시스템명 또는 연동 정보"></textarea>
-        </div>
-        <div class="mb-0">
-          <label class="form-label small fw-semibold">비고</label>
-          <textarea class="form-control form-control-sm" id="groupDesc" rows="2"></textarea>
         </div>
       </div>
       <div class="modal-footer">

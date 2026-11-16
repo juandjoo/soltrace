@@ -147,6 +147,8 @@ class Group(Base):
     customer = Column(Text)
     upload_domains = Column(Text)
     application = Column(Text)
+    # 업로드 자동 purge 그룹 스위치 — 끄면 이 그룹의 모든 업로드 ID 가 멈춘다(ID 설정은 유지)
+    purge_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), default=_now)
 
     devices = relationship("Device", secondary="device_groups", back_populates="groups")
@@ -193,7 +195,7 @@ class PurgeTarget(Base):
     """업로드 자동 purge 대상 — 이 그룹 장비에서 이 FTP 계정이 올린 파일을 지운다.
 
     어느 텔코 API 로 보낼지는 그룹의 telco 로 정한다(telcos.name 과 같은 값).
-    strip_prefix: 업로드 경로 앞에서 떼어 CDN 경로로 만든다
+    strip_prefix(화면 '마운트 경로'): 업로드 경로 앞에서 떼어 CDN 경로로 만든다
       예) /mnt1/8000000000000004549/cjenm 을 떼면 /mnt1/8000000000000004549/cjenm/CLIP/a.mp4 → /CLIP/a.mp4
     """
     __tablename__ = "purge_targets"
@@ -203,7 +205,9 @@ class PurgeTarget(Base):
     ftp_username = Column(String(255), nullable=False)
     service = Column(String(255), nullable=False)
     volume = Column(String(255), nullable=False)
-    strip_prefix = Column(Text)
+    strip_prefix = Column(Text)      # 화면 이름 '마운트 경로'
+    # ID 스위치 — 끄면 설정은 남기고 감지·purge 만 멈춘다
+    enabled = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     # 이 업로드 ID 가 쓰는 텔코 API 계정. 비밀번호·토큰은 응답에 싣지 않는다.
     api_username = Column(Text)
     api_password = Column(Text)

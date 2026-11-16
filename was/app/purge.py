@@ -2,7 +2,8 @@
 
 흐름:
   1. /ingest/logs 로 들어온 업로드 성공 로그 중, 그 장비가 속한 그룹의 purge_targets 에
-     등록된 FTP 계정 것만 purge_jobs 에 쌓는다(enqueue_uploads).
+     등록된 FTP 계정 것만 purge_jobs 에 쌓는다(enqueue_uploads). 그룹 스위치(groups.purge_active)와
+     ID 스위치(purge_targets.enabled)가 둘 다 켜져 있어야 한다. 끈 동안 올라온 파일은 나중에 켜도 지우지 않는다.
   2. 워커 스레드가 쌓인 작업을 업로드 ID(=계정·서비스·볼륨)별로 묶어 filelist 한 번에 보낸다.
   3. 주소는 그룹 통신사(telcos.api_*_url), 계정은 업로드 ID(purge_targets.api_username/password)다.
      토큰은 그 계정으로 발급해 purge_targets.api_token 에 두고, 401 이면 다시 받아 한 번 더 보낸다.
@@ -81,7 +82,9 @@ def enqueue_uploads(db: Session, device_id: int, logs: list) -> int:
     targets = (
         db.query(PurgeTarget)
         .join(DeviceGroup, DeviceGroup.group_id == PurgeTarget.group_id)
-        .filter(DeviceGroup.device_id == device_id, PurgeTarget.ftp_username.in_(names))
+        .join(Group, Group.id == PurgeTarget.group_id)
+        .filter(DeviceGroup.device_id == device_id, PurgeTarget.ftp_username.in_(names),
+                PurgeTarget.enabled.is_(True), Group.purge_active.is_(True))
         .all()
     )
     if not targets:
@@ -103,7 +106,7 @@ def enqueue_uploads(db: Session, device_id: int, logs: list) -> int:
             if path is None:
                 # 설정이 틀린 것이라 재시도해도 같다 — 바로 실패로 남겨 화면에서 보이게
                 job.status = STATUS_FAILED
-                job.last_error = f"경로가 뗄 경로({t.strip_prefix})로 시작하지 않음"
+                job.last_error = f"경로가 마운트 경로({t.strip_prefix})로 시작하지 않음"
                 job.done_at = now
             jobs.append(job)
     db.add_all(jobs)

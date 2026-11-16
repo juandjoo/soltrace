@@ -141,6 +141,9 @@ ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS api_username TEXT;
 ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS api_password TEXT;
 ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS api_token    TEXT;
 ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS api_token_at TIMESTAMPTZ;
+-- 사용/미사용 — 끄면 설정은 남기고 감지·purge 만 멈춘다 (그룹 스위치와 둘 다 켜져야 동작)
+ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS purge_active BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- purge 요청 큐 + 이력 — 워커 재시작에도 잃지 않게 DB 에 둔다
 CREATE TABLE IF NOT EXISTS purge_jobs (

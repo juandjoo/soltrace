@@ -288,6 +288,7 @@ class DeviceGroupAssign(BaseModel):
 # ── Group ─────────────────────────────────────────────────────────────────────
 
 class PurgeTargetIn(BaseModel):
+    enabled: bool = True
     ftp_username: str = Field(min_length=1, max_length=255)
     service: str = Field(min_length=1, max_length=255)
     volume: str = Field(min_length=1, max_length=255)
@@ -299,6 +300,7 @@ class PurgeTargetIn(BaseModel):
 
 class PurgeTargetOut(BaseModel):
     """비밀번호·토큰 값은 싣지 않는다 — 있는지와 발급 시각만."""
+    enabled: bool = True
     ftp_username: str
     service: str
     volume: str
@@ -318,6 +320,7 @@ class GroupCreate(BaseModel):
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
     application: Optional[str] = None
+    purge_active: bool = True
     purge_targets: Optional[List[PurgeTargetIn]] = None   # 주면 전체 교체
 
 class GroupUpdate(BaseModel):
@@ -327,6 +330,7 @@ class GroupUpdate(BaseModel):
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
     application: Optional[str] = None
+    purge_active: Optional[bool] = None
     purge_targets: Optional[List[PurgeTargetIn]] = None   # 주면 전체 교체
 
 class GroupDeviceAssign(BaseModel):
@@ -340,6 +344,7 @@ class GroupResponse(BaseModel):
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
     application: Optional[str] = None
+    purge_active: bool = True
     created_at: datetime
     device_count: int = 0
     purge_targets: List[PurgeTargetOut] = []
