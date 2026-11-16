@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
 
-from app import alert_settings
+from app import alert_settings, device_health
 from app.database import get_db
 from app.deps import device_scope, ftp_scope, ftp_scope_sql
 from app.models import Device, DeviceGroup, FtpLog, Group
@@ -359,7 +359,7 @@ def get_service_health(
     # 기준: 모든 confirmed 장비 (기간 내 활동 없어도 표시)
     dev_f_devices = "AND d.id = :did" if device_id else ""
     all_devices = db.execute(text(f"""
-        SELECT d.id, d.hostname, d.daemon_status
+        SELECT d.id, d.hostname, d.daemon_status, d.last_heartbeat
         FROM devices d
         WHERE d.status = 'confirmed' {dev_f_devices}{scope_d}
         ORDER BY d.id
@@ -377,20 +377,24 @@ def get_service_health(
     """), params).fetchall()
     snap_map = {r.device_id: r for r in snap_rows}
 
-    # degraded/disabled/error 데몬 상태는 최소 warning 등급으로 처리
-    _daemon_sev = {"degraded": 1, "error": 1, "disabled": 1}
+    # 데몬 상태 등급 — 하트비트가 끊긴 장비(종료됨·응답 없음)는 심각, 저하·오류·비활성은 주의.
+    # 끊김 판정은 app/device_health 한 곳(장비 관리 화면·알림과 같은 규칙)이다.
+    _daemon_sev = {"degraded": 1, "error": 1, "disabled": 1,
+                   device_health.STOPPED: 2, device_health.LOST: 2}
+    now = datetime.now(timezone.utc)
 
     rank_status = {0: "ok", 1: "warning", 2: "critical"}
     devices = []
     for d in all_devices:
         snap = snap_map.get(d.id)
-        daemon_rank = _daemon_sev.get(d.daemon_status or "", 0)
+        daemon_state = device_health.effective_daemon_status(d.daemon_status, d.last_heartbeat, now)
+        daemon_rank = _daemon_sev.get(daemon_state, 0)
         sev = max(dev_sev.get(d.id, 0), daemon_rank)
         if snap:
             tp = _ratio(snap.bytes, snap.transfer_secs)
             devices.append(ServiceHealthDevice(
                 device_id=d.id, hostname=d.hostname, last_bucket=snap.bucket,
-                status=rank_status[sev],
+                status=rank_status[sev], daemon_status=daemon_state,
                 fail_rate=_ratio(snap.transfer_fails, snap.transfers),
                 throughput_mb=(tp / _MB) if tp is not None else None,
                 login_fail_rate=_ratio(snap.login_fails, snap.login_attempts),
@@ -400,7 +404,7 @@ def get_service_health(
         else:
             devices.append(ServiceHealthDevice(
                 device_id=d.id, hostname=d.hostname,
-                status=rank_status[sev],
+                status=rank_status[sev], daemon_status=daemon_state,
                 open_alerts=dev_open.get(d.id, 0),
                 open_metrics=dev_metrics.get(d.id, []),
             ))

@@ -17,11 +17,13 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 
 from app.config import settings
-from app import alert_settings, disk_guard, notifier
+from app import alert_settings, device_health, disk_guard, notifier
 
 log = logging.getLogger("soltrace.monitor")
 
 _EPOCH = "2000-01-01 00:00:00+00"  # date_bin origin (버킷 경계 고정)
+_EPOCH_DT = datetime(2000, 1, 1, tzinfo=timezone.utc)
+HEARTBEAT_METRIC = "heartbeat"
 
 # CWD 550 뒤 이 시간 안에 같은 경로가 만들어졌으면 "이동 실패"가 아니라 존재 확인으로 본다.
 # (업로드 클라이언트의 CWD → 550 → MKD → 업로드 흐름. 사람이 아니라 스크립트라 간격이 짧다.)
@@ -233,6 +235,7 @@ class ServiceMonitor:
             n = self._detect(db, cfg)
             if n:
                 log.info("Detected %d new service alert(s)", n)
+            self._detect_heartbeat(db, cfg)
             self._resolve_episodes(db)      # 조용해진 이상은 닫고 복구로 본다
             self._notify(db)
             self._notify_recovery(db)
@@ -382,8 +385,12 @@ class ServiceMonitor:
 
     @staticmethod
     def _min_streak(cfg, metric: str) -> int:
-        """지표별 발송 전 지속 버킷 수 — 전송 속도만 따로 둔다(흔들림이 가장 잦은 지표)."""
-        return cfg["min_streak_throughput"] if metric == "throughput" else cfg["min_streak_buckets"]
+        """지표별 발송 전 지속 버킷 수 — 전송 속도·하트비트는 따로 둔다."""
+        if metric == "throughput":
+            return cfg["min_streak_throughput"]
+        if metric == HEARTBEAT_METRIC:
+            return cfg["min_streak_heartbeat"]
+        return cfg["min_streak_buckets"]
 
     @staticmethod
     def _should_notify(prev_count: int, prev_severity, severity: str, min_streak: int) -> bool:
@@ -448,6 +455,59 @@ class ServiceMonitor:
                "bucket": a["bucket"], "severity": a["severity"]})
         return ServiceMonitor._should_notify(prev_count, prev_severity,
                                              a["severity"], min_streak)
+
+    # ── (2-2) 데몬 하트비트 끊김 ─────────────────────────────────────────────
+    def _detect_heartbeat(self, db, cfg) -> None:
+        """하트비트가 끊긴 장비(종료됨·응답 없음)를 판정 주기마다 다시 확인해 적재한다.
+
+        로그 기반 지표는 데몬이 죽으면 로그가 없어 판정 자체를 건너뛴다 — 그래서 데몬이
+        '종료중'으로 며칠 멈춰 있어도 알림이 없었다(2026-11-16). 여기서는 devices 의
+        하트비트를 직접 본다.
+
+        재시도 후 알림: 주기(5분)마다 지금 버킷으로 한 건씩 쌓고, min_streak_heartbeat 번
+        연달아 끊겨 있어야 발송한다(_should_notify). 그 전에 돌아오면 아무것도 나가지 않는다.
+        복구는 하트비트가 살아난 첫 주기에 바로 닫는다(로그 지표처럼 조용한 버킷을 기다리지
+        않는다) — 발송했던 에피소드면 _notify_recovery 가 복구 알림을 보낸다.
+        """
+        now = _now()
+        bucket = self._current_bucket(now)
+        rows = db.execute(text("""
+            SELECT id, daemon_status, last_heartbeat FROM devices WHERE status = 'confirmed'
+        """)).fetchall()
+        down = []
+        for d in rows:
+            problem = device_health.heartbeat_problem(d.daemon_status, d.last_heartbeat, now)
+            if problem:
+                down.append(self._heartbeat_alert(d, problem, bucket, now))
+
+        # 살아났거나(하트비트 회복) 대상에서 빠진(비활성·삭제) 장비의 진행 중 에피소드를 닫는다
+        db.execute(text("""
+            UPDATE service_alert_episodes SET resolved_at = NOW()
+            WHERE metric = :metric AND resolved_at IS NULL
+              AND NOT (device_id = ANY(:down))
+        """), {"metric": HEARTBEAT_METRIC, "down": [a["device_id"] for a in down]})
+        for a in down:
+            self._record_alert(db, a, cfg)
+        db.commit()
+
+    def _current_bucket(self, now: datetime) -> datetime:
+        """_EPOCH 기준으로 버킷 경계에 맞춘 지금 버킷 (롤업의 date_bin 과 같은 경계)."""
+        size = self._bucket.total_seconds()
+        offset = (now - _EPOCH_DT).total_seconds() // size * size
+        return _EPOCH_DT + timedelta(seconds=offset)
+
+    @staticmethod
+    def _heartbeat_alert(d, problem: str, bucket: datetime, now: datetime) -> dict:
+        minutes = device_health.minutes_since(d.last_heartbeat, now)
+        since = f"{minutes:.0f}분째" if minutes is not None else "기록 없음"
+        why = ("종료됨 — 마지막 보고가 '종료중' (proftpd 정지·안전 종료 여부 확인)"
+               if problem == device_health.STOPPED else "응답 없음 — 데몬·서버 상태 확인")
+        return {
+            "device_id": d.id, "bucket": bucket, "metric": HEARTBEAT_METRIC,
+            "severity": "critical", "value": float(minutes or 0), "baseline": None,
+            "threshold": device_health.HEARTBEAT_STALE_SEC / 60.0, "sample_count": 0,
+            "message": f"데몬 하트비트 없음 {since}{_DETAIL_SEP}{why}",
+        }
 
     def _resolve_episodes(self, db):
         """마지막 이상 버킷 이후 조용해진 에피소드를 닫는다(발송은 _notify_recovery 가 한다).

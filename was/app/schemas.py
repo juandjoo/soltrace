@@ -241,6 +241,9 @@ class DeviceResponse(BaseModel):
     last_heartbeat: Optional[datetime]
     # 데몬 상태
     daemon_status: Optional[str] = "unknown"
+    # 하트비트까지 본 상태 — 120초 넘게 소식이 없으면 stopped(종료됨)/lost(응답 없음).
+    # 화면은 이 값을 쓴다(규칙을 프론트에 두 벌 두지 않는다).
+    effective_daemon_status: str = "unknown"
     last_send_time: Optional[datetime] = None
     buffer_lines: Optional[int] = 0
     queue_size: Optional[int] = 0
@@ -461,7 +464,8 @@ class DashboardDetail(BaseModel):
 class ServiceHealthDevice(BaseModel):
     device_id: int
     hostname: str
-    status: str                       # ok | warning | critical | idle
+    status: str                       # ok | warning | critical
+    daemon_status: Optional[str] = None   # stopped | lost 면 데몬이 죽어 있다 (app/device_health)
     last_bucket: Optional[datetime] = None
     fail_rate: Optional[float] = None
     throughput_mb: Optional[float] = None        # MB/s
@@ -559,6 +563,8 @@ class AlertSettings(BaseModel):
     # 발송 전 이상이 이어져야 하는 버킷 수 (1 = 즉시 발송)
     min_streak_buckets: Optional[int] = Field(default=None, ge=1, le=12)
     min_streak_throughput: Optional[int] = Field(default=None, ge=1, le=12)
+    # 하트비트 끊김을 몇 번(판정 주기마다) 연달아 확인한 뒤 알릴지 — 짧은 재시작 오탐 방지
+    min_streak_heartbeat: Optional[int] = Field(default=None, ge=1, le=12)
     min_samples: Optional[int] = Field(default=None, ge=1)
     min_login_samples: Optional[int] = Field(default=None, ge=1)
     min_cwd_samples: Optional[int] = Field(default=None, ge=1)

@@ -28,6 +28,7 @@ FIELDS: dict[str, tuple] = {
     "login_ignore_accounts": (str,   "alert_login_ignore_accounts"),
     "min_streak_buckets":    (int,   "alert_min_streak_buckets"),
     "min_streak_throughput": (int,   "alert_min_streak_throughput"),
+    "min_streak_heartbeat":  (int,   "alert_min_streak_heartbeat"),
     "min_samples":           (int,   "alert_min_samples"),
     "min_login_samples":     (int,   "alert_min_login_samples"),
     "min_cwd_samples":       (int,   "alert_min_cwd_samples"),

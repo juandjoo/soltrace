@@ -22,6 +22,7 @@ _METRIC_LABEL = {
     "throughput": "전송 속도",
     "login_fail_rate": "로그인 실패율",
     "cwd_fail_spike": "CWD 실패 급증",
+    "heartbeat": "데몬 하트비트",
 }
 _NOTIFY_KEYS = [
     "notify_webhook_url",
@@ -35,6 +36,8 @@ def _fmt_metric(metric: str, value: float) -> str:
         return f"{value / (1024 * 1024):.2f} MB/s"
     if metric == "cwd_fail_spike":
         return f"{int(value)}건"
+    if metric == "heartbeat":
+        return f"{value:.0f}분째 없음"
     return f"{value * 100:.1f}%"
 
 

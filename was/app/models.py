@@ -7,6 +7,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.device_health import effective_daemon_status as _effective_daemon_status
 from app.gitinfo import daemon_outdated as _daemon_outdated
 
 
@@ -130,6 +131,11 @@ class Device(Base):
         네 군데라, 라우터마다 계산하면 한 곳만 고쳐져 화면끼리 어긋난다.
         """
         return _daemon_outdated(self.daemon_version)
+
+    @property
+    def effective_daemon_status(self) -> str:
+        """하트비트까지 본 데몬 상태 (app/device_health) — 끊겼으면 stopped/lost."""
+        return _effective_daemon_status(self.daemon_status, self.last_heartbeat, _now())
 
     groups = relationship("Group", secondary="device_groups", back_populates="devices")
     # passive_deletes=True: 장비 삭제 시 자식 로그를 ORM이 로드/UPDATE하지 않고

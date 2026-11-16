@@ -10,6 +10,10 @@ function daemonBadge(s, errMsg) {
     degraded: {cls:'warning',  icon:'bi-exclamation-triangle-fill', label:'저하'},
     error:    {cls:'danger',   icon:'bi-x-circle-fill', label:'오류'},
     stopping: {cls:'secondary',icon:'bi-stop-circle', label:'종료중'},
+    // 아래 둘은 서버가 하트비트까지 보고 정한 값(effective_daemon_status) — 120초 넘게 소식 없음
+    stopped:  {cls:'danger',   icon:'bi-stop-circle-fill', label:'종료됨'},
+    lost:     {cls:'danger',   icon:'bi-wifi-off', label:'응답 없음'},
+    disabled: {cls:'secondary',icon:'bi-slash-circle', label:'비활성'},
     unknown:  {cls:'light',    icon:'bi-question-circle', label:'미확인'},
   };
   const c = cfg[s] || cfg.unknown;
@@ -64,13 +68,10 @@ async function loadDevices() {
   }
 
   tbody.innerHTML = devices.map(d => {
-    const hbDiff = d.last_heartbeat ? (Date.now() - new Date(d.last_heartbeat)) / 1000 : 9999;
-    const offline = hbDiff > 120;
-    const _offlineOverride = {running: 'degraded', stopping: 'unknown', degraded: 'degraded'};
-    const dStatus = offline && d.daemon_status in _offlineOverride
-        ? _offlineOverride[d.daemon_status]
-        : (d.daemon_status || 'unknown');
-    const errMsg = d.error_message || (offline ? `마지막 하트비트: ${timeAgo(d.last_heartbeat)}` : null);
+    // 끊김 판정은 서버(app/device_health) 한 곳 — 대시보드·알림과 같은 규칙
+    const dStatus = d.effective_daemon_status || d.daemon_status || 'unknown';
+    const offline = dStatus === 'stopped' || dStatus === 'lost';
+    const errMsg = offline ? `마지막 하트비트: ${timeAgo(d.last_heartbeat)}` : d.error_message;
 
     return `<tr class="${dStatus==='error'?'table-danger-subtle':''}">
       <td class="text-center"><input class="form-check-input dev-pick" type="checkbox" value="${d.id}" onchange="updateDevicePickCount()"></td>
@@ -157,7 +158,7 @@ function showDeviceStatus(id) {
   if (!d) return;
   document.getElementById('dsHostname').textContent = d.hostname;
   const rows = [
-    ['데몬 상태',       daemonBadge(d.daemon_status||'unknown', d.error_message)],
+    ['데몬 상태',       daemonBadge(d.effective_daemon_status || d.daemon_status || 'unknown', d.error_message)],
     ['에러 메시지',     d.error_message ? `<span class="text-danger">${esc(d.error_message)}</span>` : '-'],
     ['마지막 전송',     d.last_send_time ? new Date(d.last_send_time).toLocaleString('ko-KR') : '-'],
     ['연속 실패',       d.consecutive_failures != null ? `${d.consecutive_failures}회` : '-'],

@@ -22,7 +22,9 @@ const _centerPlugin = {
 };
 if (!Chart.registry.plugins.get('centerText')) Chart.register(_centerPlugin);
 
-const METRIC_LABEL = {fail_rate:'전송 실패율', throughput:'전송 속도', login_fail_rate:'로그인 실패율', cwd_fail_spike:'CWD 실패 급증'};
+const METRIC_LABEL = {fail_rate:'전송 실패율', throughput:'전송 속도', login_fail_rate:'로그인 실패율', cwd_fail_spike:'CWD 실패 급증', heartbeat:'데몬 하트비트'};
+// 하트비트가 끊긴 데몬 상태 (서버 app/device_health) — 알림이 나가기 전에도 장비 목록에 이유로 보인다
+const DAEMON_DOWN_LABEL = {stopped: '데몬 종료됨', lost: '데몬 응답 없음'};
 
 function fmtPct(v) { return v == null ? '-' : (v*100).toFixed(1) + '%'; }
 function fmtBytesPerSec(v) { return v == null ? '-' : (v / 1024 / 1024).toFixed(2) + ' MB/s'; }
@@ -46,7 +48,14 @@ function _fmtBucketLabel(b, unit, withDate) {
   const d = new Date(b);
   return `${pad2(d.getUTCMonth() + 1)}/${pad2(d.getUTCDate())}`;
 }
-function fmtMetricVal(metric, v) { return metric === 'throughput' ? fmtBytesPerSec(v) : fmtPct(v); }
+// 서버 알림 문안(notifier._fmt_metric)과 같은 단위로 보여준다
+function fmtMetricVal(metric, v) {
+  if (v == null) return '-';
+  if (metric === 'throughput') return fmtBytesPerSec(v);
+  if (metric === 'cwd_fail_spike') return `${Math.round(v)}건`;
+  if (metric === 'heartbeat') return `${Math.round(v)}분째 없음`;
+  return fmtPct(v);
+}
 
 function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
@@ -747,7 +756,9 @@ function _renderHealthDeviceList() {
     .map(d => {
       const meta = HEALTH_STATUS_META[d.status] || {color: 'var(--st-muted)', label: d.status};
       // 진행 중인 지표를 함께 보여준다 — 어떤 장비가 '왜' 주의인지
-      const why = (d.open_metrics || []).map(m => METRIC_LABEL[m] || m).join(' · ');
+      const down = DAEMON_DOWN_LABEL[d.daemon_status];
+      const why = [down, ...(d.open_metrics || []).filter(m => !(down && m === 'heartbeat'))
+                                .map(m => METRIC_LABEL[m] || m)].filter(Boolean).join(' · ');
       return `<div class="d-flex align-items-center gap-1 py-1" style="border-bottom:1px solid var(--st-border)">
         <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${meta.color};flex-shrink:0"></span>
         <div style="min-width:0;flex:1">
