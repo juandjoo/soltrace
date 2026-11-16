@@ -162,6 +162,11 @@ async function openGroupModal(id) {
   document.getElementById('groupUploadDomains').value = g?.upload_domains || '';
   document.getElementById('groupApplication').value = g?.application || '';
   renderPurgeTargetRows(g?.purge_targets || []);
+  // 비밀번호는 서버가 돌려주지 않는다 — 저장돼 있으면 비워 둔 채 '바꿀 때만 입력'
+  document.getElementById('groupApiUser').value = g?.api_username || '';
+  document.getElementById('groupApiPass').value = '';
+  document.getElementById('groupApiPass').placeholder = g?.has_api_password ? '••••••• (저장됨)' : '';
+  _groupApiMsg('muted', g?.api_token_at ? `토큰 발급: ${fmtLocalDateTime(new Date(g.api_token_at))}` : '');
   await getTelcos();
   populateGroupTelco(g?.telco || '');
   document.getElementById('groupModalTitle').textContent = id ? '그룹 수정' : '그룹 추가';
@@ -198,6 +203,29 @@ function readPurgeTargetRows() {
   })).filter(t => t.ftp_username || t.service || t.volume || t.strip_prefix);
 }
 
+function _groupApiMsg(kind, text) {
+  const el = document.getElementById('groupApiMsg');
+  el.className = `small mb-2 text-${kind}`;
+  el.textContent = text;
+}
+
+// 저장 전에 입력 중인 통신사·계정으로 시험한다. 비밀번호를 비우면 저장된 것을 쓴다.
+async function testGroupToken() {
+  const body = {
+    telco: document.getElementById('groupTelco').value,
+    api_username: document.getElementById('groupApiUser').value.trim(),
+    api_password: document.getElementById('groupApiPass').value.trim() || null,
+    group_id: Number(document.getElementById('groupId').value) || null,
+  };
+  if (!body.telco) return _groupApiMsg('danger', '통신사를 먼저 지정하세요.');
+  if (!body.api_username) return _groupApiMsg('danger', 'API 계정을 입력하세요.');
+  _groupApiMsg('muted', '토큰 발급 중…');
+  try {
+    const r = await api('POST', '/groups/token-test', body);
+    _groupApiMsg(r.ok ? 'success' : 'danger', r.message);
+  } catch (e) { _groupApiMsg('danger', e.message); }
+}
+
 async function saveGroup() {
   const id = document.getElementById('groupId').value;
   const body = {
@@ -208,11 +236,14 @@ async function saveGroup() {
     upload_domains: document.getElementById('groupUploadDomains').value.trim() || null,
     application: document.getElementById('groupApplication').value.trim() || null,
     purge_targets: readPurgeTargetRows(),
+    api_username: document.getElementById('groupApiUser').value.trim() || null,
+    api_password: document.getElementById('groupApiPass').value.trim() || null,
   };
   if (!body.name) return alert('그룹명을 입력하세요.');
   const badRow = body.purge_targets.find(t => !t.ftp_username || !t.service || !t.volume);
   if (badRow) return alert('purge 행마다 FTP ID · 서비스 · 볼륨을 모두 입력하세요.');
   if (body.purge_targets.length && !body.telco) return alert('purge 를 쓰려면 통신사를 지정하세요 — 그 통신사의 API 로 보냅니다.');
+  if (body.purge_targets.length && !body.api_username) return alert('purge 를 쓰려면 API 계정을 입력하세요.');
   try {
     if (id) {
       await api('PUT', `/groups/${id}`, body);

@@ -6,11 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import Principal, get_current_user, require_admin
-from app.models import Device, DeviceGroup, Group, PurgeTarget
+from app.models import Device, DeviceGroup, Group, PurgeTarget, Telco
+from app import purge
 from app import daemon_update
 from app.schemas import (
     DaemonUpdateGroups, DaemonUpdateResult, GroupCreate, GroupDeviceAssign, GroupResponse,
-    GroupUpdate,
+    GroupUpdate, TokenTestRequest, TokenTestResult,
 )
 
 router = APIRouter(prefix="/api/v1/groups", tags=["groups"])
@@ -21,6 +22,27 @@ def _to_response(group: Group, db: Session) -> GroupResponse:
     resp = GroupResponse.model_validate(group)
     resp.device_count = count or 0
     return resp
+
+
+def _clean(value):
+    """붙여넣기에 섞여 오는 공백·NBSP·탭 제거. 비면 None."""
+    value = (value or "").strip()
+    return value or None
+
+
+def _apply_api_account(group: Group, body, old_telco) -> None:
+    """텔코 API 계정. 비밀번호를 비우면 기존 값 유지. 계정·비밀번호·통신사가 바뀌면 토큰은 버린다."""
+    fields = body.model_fields_set
+    before = (group.api_username, group.api_password, old_telco)
+    if "api_username" in fields:
+        group.api_username = _clean(body.api_username)
+    if _clean(body.api_password):
+        group.api_password = _clean(body.api_password)
+    if group.api_username is None:
+        group.api_password = None    # 계정을 지우면 비밀번호도 같이
+    if (group.api_username, group.api_password, group.telco) != before:
+        group.api_token = None
+        group.api_token_at = None
 
 
 def _replace_purge_targets(db: Session, group: Group, targets) -> None:
@@ -57,7 +79,9 @@ def list_groups(db: Session = Depends(get_db), user: Principal = Depends(get_cur
     resp = [_to_response(g, db) for g in groups]
     if not user.is_admin:
         for r in resp:
-            r.purge_targets = []   # 운영 설정 — 고객 화면에는 쓸 데가 없다
+            # 운영 설정 — 고객 화면에는 쓸 데가 없다
+            r.purge_targets = []
+            r.api_username, r.has_api_password, r.api_token_at = None, False, None
     return resp
 
 
@@ -65,8 +89,9 @@ def list_groups(db: Session = Depends(get_db), user: Principal = Depends(get_cur
 def create_group(body: GroupCreate, db: Session = Depends(get_db), _: str = Depends(require_admin)):
     if db.query(Group).filter(Group.name == body.name).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
-    data = body.model_dump(exclude={"purge_targets"})
+    data = body.model_dump(exclude={"purge_targets", "api_username", "api_password"})
     group = Group(**data)
+    _apply_api_account(group, body, group.telco)
     _replace_purge_targets(db, group, body.purge_targets)
     db.add(group)
     db.commit()
@@ -87,13 +112,36 @@ def update_group(
     if body.name and body.name != group.name:
         if db.query(Group).filter(Group.name == body.name).first():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
-    for field, value in body.model_dump(exclude_unset=True, exclude={"purge_targets"}).items():
+    old_telco = group.telco
+    skip = {"purge_targets", "api_username", "api_password"}
+    for field, value in body.model_dump(exclude_unset=True, exclude=skip).items():
         setattr(group, field, value)
+    _apply_api_account(group, body, old_telco)
     if "purge_targets" in body.model_fields_set:
         _replace_purge_targets(db, group, body.purge_targets)
     db.commit()
     db.refresh(group)
     return _to_response(group, db)
+
+
+@router.post("/token-test", response_model=TokenTestResult)
+def test_group_token(body: TokenTestRequest, db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    """그룹 모달의 '토큰 발급 테스트' — 입력 중인 통신사·계정으로 실제 발급해 본다(저장하지 않음).
+
+    비밀번호를 비우면 group_id 그룹에 저장된 비밀번호를 쓴다(수정 화면은 비밀번호를 다시 보여주지 않는다).
+    """
+    telco = db.query(Telco).filter(Telco.name == body.telco).first()
+    if telco is None or not telco.api_auth_url:
+        return TokenTestResult(ok=False, message=f"통신사 '{body.telco}' 에 토큰 발급 URL 이 없습니다 (설정 › 텔코 정보)")
+    password = _clean(body.api_password)
+    if not password and body.group_id:
+        group = db.query(Group).filter(Group.id == body.group_id).first()
+        password = group.api_password if group else None
+    try:
+        token = purge.request_token(telco.api_auth_url, _clean(body.api_username), password)
+    except purge.PurgeApiError as e:
+        return TokenTestResult(ok=False, message=str(e))
+    return TokenTestResult(ok=True, message=f"토큰 발급 성공 (길이 {len(token)}자)")
 
 
 @router.put("/{group_id}/devices", response_model=GroupResponse)

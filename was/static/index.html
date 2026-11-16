@@ -1571,20 +1571,9 @@
           <input class="form-control form-control-sm" id="telcoApiPurgeUrl" placeholder="http://host:8000/v2/management/service/{service}/volume/{volume}/purge">
           <div class="form-text"><code>{service}</code> <code>{volume}</code> 자리에 그룹의 FTP ID별 서비스·볼륨이 들어갑니다.</div>
         </div>
-        <div class="row g-2">
-          <div class="col-6">
-            <label class="form-label small fw-semibold">API 계정</label>
-            <input class="form-control form-control-sm" id="telcoApiUser" autocomplete="off">
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-semibold">API 비밀번호</label>
-            <input class="form-control form-control-sm" id="telcoApiPass" type="password" autocomplete="new-password">
-          </div>
-        </div>
-        <div class="small text-muted mt-2" id="telcoApiTokenInfo"></div>
+        <div class="small text-muted">API 계정·비밀번호와 토큰 발급 테스트는 <b>그룹 관리 › 수정</b>에서 그룹마다 넣습니다.</div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline-success btn-sm me-auto" onclick="testTelcoToken()"><i class="bi bi-key me-1"></i>토큰 발급 테스트</button>
         <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">닫기</button>
         <button class="btn btn-primary btn-sm" onclick="saveTelcoApi()">저장</button>
       </div>
@@ -1621,8 +1610,23 @@
           <textarea class="form-control form-control-sm" id="groupUploadDomains" rows="6" placeholder="한 줄에 하나씩 입력&#10;예) vivasambackup-ftp.lgucdn.com&#10;    cjclip-ftp.lgucdn.com"></textarea>
         </div>
         <div class="mb-3 border rounded p-2">
+          <div class="small fw-semibold mb-2">업로드 자동 purge</div>
+          <div class="row g-2 align-items-end mb-2">
+            <div class="col-sm-4">
+              <label class="form-label small mb-1">API 계정 <span class="text-muted">(그룹 통신사 API)</span></label>
+              <input class="form-control form-control-sm" id="groupApiUser" autocomplete="off">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label small mb-1">API 비밀번호</label>
+              <input class="form-control form-control-sm" id="groupApiPass" type="password" autocomplete="new-password">
+            </div>
+            <div class="col-sm-4">
+              <button type="button" class="btn btn-sm btn-outline-success w-100" onclick="testGroupToken()"><i class="bi bi-key me-1"></i>토큰 발급 테스트</button>
+            </div>
+          </div>
+          <div id="groupApiMsg" class="small mb-2 text-muted"></div>
           <div class="d-flex align-items-center mb-2">
-            <span class="small fw-semibold">업로드 자동 purge — FTP ID별</span>
+            <span class="small fw-semibold">FTP ID별 서비스 · 볼륨</span>
             <button type="button" class="btn btn-xs btn-outline-primary ms-auto" onclick="addPurgeTargetRow()"><i class="bi bi-plus-lg me-1"></i>ID 추가</button>
           </div>
           <div class="table-responsive">

@@ -4,7 +4,8 @@
   1. /ingest/logs 로 들어온 업로드 성공 로그 중, 그 장비가 속한 그룹의 purge_targets 에
      등록된 FTP 계정 것만 purge_jobs 에 쌓는다(enqueue_uploads).
   2. 워커 스레드가 쌓인 작업을 그룹 텔코·서비스·볼륨별로 묶어 filelist 한 번에 보낸다.
-  3. 토큰은 텔코 계정으로 발급해 telcos.api_token 에 두고, 401 이면 다시 받아 한 번 더 보낸다.
+  3. 주소는 텔코(telcos.api_*_url), 계정은 그룹(groups.api_username/password)이다.
+     토큰은 그룹 계정으로 발급해 groups.api_token 에 두고, 401 이면 다시 받아 한 번 더 보낸다.
   4. 실패하면 간격을 늘려 재시도하고, MAX_ATTEMPTS 를 넘기면 failed 로 남겨 화면에서 본다.
 
 Gunicorn 워커마다 스레드가 하나씩 돌지만 `FOR UPDATE SKIP LOCKED` 로 집어 같은 작업을
@@ -187,14 +188,14 @@ def extract_token(headers: dict, body: str) -> Tuple[Optional[str], str]:
     return None, ""
 
 
-def issue_token(db: Session, telco: Telco) -> str:
-    """텔코 계정으로 토큰을 새로 받아 저장한다."""
-    url = _check_url(telco.api_auth_url, "인증 URL")
-    if not telco.api_username or not telco.api_password:
-        raise PurgeApiError("API 계정·비밀번호가 없습니다")
+def request_token(auth_url: Optional[str], username: Optional[str], password: Optional[str]) -> str:
+    """토큰을 발급받아 돌려준다(저장하지 않는다). 그룹 모달의 '토큰 발급 테스트'도 이것을 쓴다."""
+    url = _check_url(auth_url, "토큰 발급 URL")
+    if not username or not password:
+        raise PurgeApiError("그룹에 API 계정·비밀번호가 없습니다")
     status, headers, body = _http_post(url, {
-        "username": telco.api_username,
-        "password": telco.api_password,
+        "username": username,
+        "password": password,
         "expiresIn": TOKEN_EXPIRES_IN,
     }, {})
     if not 200 <= status < 300:
@@ -202,17 +203,23 @@ def issue_token(db: Session, telco: Telco) -> str:
     token, _ = extract_token(headers, body)
     if not token:
         raise PurgeApiError(f"응답에서 토큰을 찾지 못함: {body[:ERROR_SNIPPET]}")
-    telco.api_token = token
-    telco.api_token_at = datetime.now(timezone.utc)
+    return token
+
+
+def issue_token(db: Session, telco: Telco, group: Group) -> str:
+    """그룹 계정으로 토큰을 새로 받아 그룹에 저장한다."""
+    token = request_token(telco.api_auth_url, group.api_username, group.api_password)
+    group.api_token = token
+    group.api_token_at = datetime.now(timezone.utc)
     db.flush()
     return token
 
 
-def _usable_token(db: Session, telco: Telco) -> str:
-    fresh = telco.api_token_at and datetime.now(timezone.utc) - telco.api_token_at < TOKEN_MAX_AGE
-    if telco.api_token and fresh:
-        return telco.api_token
-    return issue_token(db, telco)
+def _usable_token(db: Session, telco: Telco, group: Group) -> str:
+    fresh = group.api_token_at and datetime.now(timezone.utc) - group.api_token_at < TOKEN_MAX_AGE
+    if group.api_token and fresh:
+        return group.api_token
+    return issue_token(db, telco, group)
 
 
 def build_purge_url(template: str, service: str, volume: str) -> str:
@@ -222,14 +229,15 @@ def build_purge_url(template: str, service: str, volume: str) -> str:
     return url.replace("{service}", quote(service, safe="")).replace("{volume}", quote(volume, safe=""))
 
 
-def send_purge(db: Session, telco: Telco, service: str, volume: str, paths: List[str]) -> None:
+def send_purge(db: Session, telco: Telco, group: Group, service: str, volume: str,
+               paths: List[str]) -> None:
     """filelist 한 번 호출. 401 이면 토큰을 다시 받아 한 번 더. 실패면 PurgeApiError."""
     url = build_purge_url(telco.api_purge_url, service, volume)
     payload = {"filelist": paths}
-    token = _usable_token(db, telco)
+    token = _usable_token(db, telco, group)
     status, _, body = _http_post(url, payload, {"X-Auth-Token": token})
     if status == 401:
-        token = issue_token(db, telco)
+        token = issue_token(db, telco, group)
         status, _, body = _http_post(url, payload, {"X-Auth-Token": token})
     if not 200 <= status < 300:
         raise PurgeApiError(f"purge HTTP {status}: {body[:ERROR_SNIPPET]}", status)
@@ -252,14 +260,14 @@ def _mark_failed_attempt(jobs: List[PurgeJob], error: str, now: datetime) -> Non
             j.next_try_at = now + _backoff(j.attempts)
 
 
-def _telcos_by_group(db: Session, group_ids: set) -> Dict[int, Optional[Telco]]:
+def _groups_with_telco(db: Session, group_ids: set) -> Dict[int, Tuple[Group, Optional[Telco]]]:
     rows = (
-        db.query(Group.id, Telco)
+        db.query(Group, Telco)
         .outerjoin(Telco, Telco.name == Group.telco)
         .filter(Group.id.in_(group_ids))
         .all()
     )
-    return {gid: telco for gid, telco in rows}
+    return {g.id: (g, telco) for g, telco in rows}
 
 
 def process_due(db: Session) -> int:
@@ -275,21 +283,24 @@ def process_due(db: Session) -> int:
     )
     if not jobs:
         return 0
-    telcos = _telcos_by_group(db, {j.group_id for j in jobs if j.group_id})
+    groups = _groups_with_telco(db, {j.group_id for j in jobs if j.group_id})
     buckets: Dict[tuple, List[PurgeJob]] = {}
     for j in jobs:
         buckets.setdefault((j.group_id, j.service, j.volume), []).append(j)
 
     for (group_id, service, volume), bucket in buckets.items():
-        telco = telcos.get(group_id)
+        group, telco = groups.get(group_id, (None, None))
+        if group is None:
+            _mark_failed_attempt(bucket, "그룹이 삭제됨", now)
+            continue
         if telco is None or not telco.api_purge_url:
-            _mark_failed_attempt(bucket, "그룹의 통신사에 purge API 가 설정되지 않음", now)
+            _mark_failed_attempt(bucket, "그룹의 통신사에 purge API 주소가 설정되지 않음", now)
             continue
         for i in range(0, len(bucket), FILELIST_MAX):
             chunk = bucket[i:i + FILELIST_MAX]
             paths = list(dict.fromkeys(j.purge_path for j in chunk))
             try:
-                send_purge(db, telco, service, volume, paths)
+                send_purge(db, telco, group, service, volume, paths)
             except PurgeApiError as e:
                 log.warning("purge 실패 [%s %s/%s] %d건: %s", telco.name, service, volume, len(chunk), e)
                 _mark_failed_attempt(chunk, str(e), now)

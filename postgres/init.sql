@@ -112,13 +112,18 @@ CREATE TABLE IF NOT EXISTS telcos (
     name VARCHAR(100) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
--- 텔코 CDN API (업로드 자동 purge) — 비밀번호·토큰은 화면/API 응답에 다시 내보내지 않는다
+-- 텔코 CDN API 주소 (업로드 자동 purge). 계정·비밀번호·토큰은 그룹별(groups.api_*)이다.
 ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_auth_url   TEXT;
 ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_purge_url  TEXT;
-ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_username   TEXT;
-ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_password   TEXT;
-ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_token      TEXT;
-ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_token_at   TIMESTAMPTZ;
+ALTER TABLE telcos DROP COLUMN IF EXISTS api_username;
+ALTER TABLE telcos DROP COLUMN IF EXISTS api_password;
+ALTER TABLE telcos DROP COLUMN IF EXISTS api_token;
+ALTER TABLE telcos DROP COLUMN IF EXISTS api_token_at;
+-- 그룹별 텔코 API 계정 — 비밀번호·토큰은 화면/API 응답에 다시 내보내지 않는다
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS api_username TEXT;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS api_password TEXT;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS api_token    TEXT;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS api_token_at TIMESTAMPTZ;
 
 -- 업로드 자동 purge 대상 — 그룹 장비에서 이 FTP 계정이 올린 파일을 그룹 텔코 API 로 지운다
 CREATE TABLE IF NOT EXISTS purge_targets (

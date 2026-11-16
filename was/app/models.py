@@ -83,17 +83,9 @@ class Telco(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(100), unique=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=_now)
-    # 업로드 자동 purge 용 CDN API (app/purge.py). 비밀번호·토큰은 응답에 싣지 않는다.
+    # 업로드 자동 purge 용 CDN API 주소 (app/purge.py). 계정은 그룹별(Group.api_*).
     api_auth_url = Column(Text)
     api_purge_url = Column(Text)     # {service} {volume} 자리표시자
-    api_username = Column(Text)
-    api_password = Column(Text)
-    api_token = Column(Text)
-    api_token_at = Column(DateTime(timezone=True))
-
-    @property
-    def has_password(self) -> bool:
-        return bool(self.api_password)
 
 
 class Device(Base):
@@ -155,7 +147,16 @@ class Group(Base):
     customer = Column(Text)
     upload_domains = Column(Text)
     application = Column(Text)
+    # 업로드 자동 purge — 그룹 통신사 API 에 쓰는 계정. 비밀번호·토큰은 응답에 싣지 않는다.
+    api_username = Column(Text)
+    api_password = Column(Text)
+    api_token = Column(Text)
+    api_token_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=_now)
+
+    @property
+    def has_api_password(self) -> bool:
+        return bool(self.api_password)
 
     devices = relationship("Device", secondary="device_groups", back_populates="groups")
     purge_targets = relationship(
