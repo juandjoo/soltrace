@@ -2,6 +2,9 @@
 
 커밋 히스토리를 날짜별(최신 순)로 정리한 기계적 기록. 사람이 읽는 요약은 [README.md](README.md) 참고.
 
+## 2026-11-16
+- 업로드 자동 purge 를 텔코 CDN API 호출로 — 장비마다 IP 를 관리하지 않고 설정의 텔코 API·그룹의 FTP ID별 서비스/볼륨으로 WAS 가 보낸다 (`d7f480f`)
+
 ## 2026-11-13
 - 업로드 자동 purge — 별도 장비의 cjenm-purge(Node·MySQL·Redis·Gmail) 대신 데몬이 xferlog 업로드 완료를 읽어 바로 CDN 캐시를 지운다 (`fe7e511`)
 
