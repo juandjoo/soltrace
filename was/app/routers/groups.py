@@ -6,9 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import Principal, get_current_user, require_admin
-from app.models import Device, DeviceGroup, Group
+from app.models import Device, DeviceGroup, Group, PurgeTarget
 from app import daemon_update
-from app.purge_accounts import normalize_accounts
 from app.schemas import (
     DaemonUpdateGroups, DaemonUpdateResult, GroupCreate, GroupDeviceAssign, GroupResponse,
     GroupUpdate,
@@ -24,6 +23,29 @@ def _to_response(group: Group, db: Session) -> GroupResponse:
     return resp
 
 
+def _replace_purge_targets(db: Session, group: Group, targets) -> None:
+    """purge 대상 전체 교체. 같은 FTP 계정이 두 번 오면 422."""
+    targets = targets or []
+    names = [t.ftp_username.strip() for t in targets]
+    dup = {n for n in names if names.count(n) > 1}
+    if dup:
+        raise HTTPException(status_code=422, detail=f"purge 대상 FTP 계정 중복: {', '.join(sorted(dup))}")
+    if group.id is not None and group.purge_targets:
+        # 한 flush 안에서는 INSERT 가 DELETE 보다 먼저 나가 같은 계정을 다시 넣으면
+        # UNIQUE(group_id, ftp_username) 에 걸린다 — 지우기를 먼저 반영한다.
+        group.purge_targets = []
+        db.flush()
+    group.purge_targets = [
+        PurgeTarget(
+            ftp_username=t.ftp_username.strip(),
+            service=t.service.strip(),
+            volume=t.volume.strip(),
+            strip_prefix=(t.strip_prefix or "").strip().rstrip("/") or None,
+        )
+        for t in targets
+    ]
+
+
 @router.get("", response_model=List[GroupResponse])
 def list_groups(db: Session = Depends(get_db), user: Principal = Depends(get_current_user)):
     # 통신사 > 서비스 순: 소속 통신사로 묶고(미지정은 뒤로) 그 안에서 이름순
@@ -32,16 +54,20 @@ def list_groups(db: Session = Depends(get_db), user: Principal = Depends(get_cur
         # 고객 계정은 본인 customer 그룹만
         q = q.filter(Group.customer == (user.customer or ""))
     groups = q.order_by(Group.telco.nullslast(), Group.name).all()
-    return [_to_response(g, db) for g in groups]
+    resp = [_to_response(g, db) for g in groups]
+    if not user.is_admin:
+        for r in resp:
+            r.purge_targets = []   # 운영 설정 — 고객 화면에는 쓸 데가 없다
+    return resp
 
 
 @router.post("", response_model=GroupResponse, status_code=status.HTTP_201_CREATED)
 def create_group(body: GroupCreate, db: Session = Depends(get_db), _: str = Depends(require_admin)):
     if db.query(Group).filter(Group.name == body.name).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
-    data = body.model_dump()
-    data["purge_accounts"] = normalize_accounts(data.get("purge_accounts"))
+    data = body.model_dump(exclude={"purge_targets"})
     group = Group(**data)
+    _replace_purge_targets(db, group, body.purge_targets)
     db.add(group)
     db.commit()
     db.refresh(group)
@@ -61,12 +87,10 @@ def update_group(
     if body.name and body.name != group.name:
         if db.query(Group).filter(Group.name == body.name).first():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
-    for field, value in body.model_dump(exclude_unset=True).items():
-        if field == "purge_enabled" and value is None:
-            continue  # NOT NULL 컬럼 — 명시적 null 은 '안 바꿈'으로 본다
-        if field == "purge_accounts":
-            value = normalize_accounts(value)
+    for field, value in body.model_dump(exclude_unset=True, exclude={"purge_targets"}).items():
         setattr(group, field, value)
+    if "purge_targets" in body.model_fields_set:
+        _replace_purge_targets(db, group, body.purge_targets)
     db.commit()
     db.refresh(group)
     return _to_response(group, db)

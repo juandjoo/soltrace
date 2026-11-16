@@ -15,10 +15,11 @@ from app.migrations import run_migrations
 from app.models import Base
 from app.security import ensure_admin_user
 from app.routers import (
-    api_keys, auth, dashboard, devices, groups, ingest, logs, settings, telcos, users,
+    api_keys, auth, dashboard, devices, groups, ingest, logs, purge_jobs, settings, telcos, users,
 )
 from app import retention
 from app import write_buffer as wb
+from app import purge
 from app import service_monitor as sm
 
 log = logging.getLogger("soltrace.main")
@@ -95,9 +96,11 @@ async def lifespan(app: FastAPI):
         _ensure_partitions(db)
     wb.init_buffer(SessionLocal, flush_interval=3, max_size=2000)
     sm.init_monitor(SessionLocal)
+    purge.init_worker(SessionLocal)
     global _INDEX_HTML
     _INDEX_HTML = _load_index_html()
     yield
+    purge.shutdown_worker()
     sm.shutdown_monitor()
     wb.shutdown_buffer()
 
@@ -150,6 +153,7 @@ app.include_router(logs.router)
 app.include_router(dashboard.router)
 app.include_router(settings.router)
 app.include_router(telcos.router)
+app.include_router(purge_jobs.router)
 app.include_router(users.router)
 app.include_router(api_keys.router)
 

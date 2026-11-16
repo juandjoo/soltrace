@@ -66,7 +66,7 @@ function renderGroupPage(page) {
 
   const groupRowHtml = g => `
       <td class="text-center"><input class="form-check-input grp-pick" type="checkbox" value="${g.id}" onchange="updateGroupPickCount()"></td>
-      <td class="fw-semibold" style="word-break:break-word">${esc(g.name)}${g.purge_enabled ? ` <span class="badge bg-info-subtle text-info-emphasis border fw-normal" title="업로드 자동 purge 계정&#10;${esc(g.purge_accounts || '')}">purge</span>` : ''}</td>
+      <td class="fw-semibold" style="word-break:break-word">${esc(g.name)}${g.purge_targets?.length ? ` <span class="badge bg-info-subtle text-info-emphasis border fw-normal" title="업로드 자동 purge&#10;${esc(g.purge_targets.map(t => `${t.ftp_username} → ${t.service}/${t.volume}`).join('\n'))}">purge ${g.purge_targets.length}</span>` : ''}</td>
       <td class="text-center"><span class="badge bg-light text-dark border">${g.device_count}대</span></td>
       <td class="small" style="white-space:pre-wrap;word-break:break-word">${g.customer ? esc(g.customer) : '<span class="text-muted">-</span>'}</td>
       <td class="small text-muted" style="white-space:pre-wrap;word-break:break-all">${g.upload_domains ? esc(g.upload_domains) : '-'}</td>
@@ -161,12 +161,41 @@ async function openGroupModal(id) {
   document.getElementById('groupCustomer').value = g?.customer || '';
   document.getElementById('groupUploadDomains').value = g?.upload_domains || '';
   document.getElementById('groupApplication').value = g?.application || '';
-  document.getElementById('groupPurgeEnabled').checked = !!g?.purge_enabled;
-  document.getElementById('groupPurgeAccounts').value = g?.purge_accounts || '';
+  renderPurgeTargetRows(g?.purge_targets || []);
   await getTelcos();
   populateGroupTelco(g?.telco || '');
   document.getElementById('groupModalTitle').textContent = id ? '그룹 수정' : '그룹 추가';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('groupModal')).show();
+}
+
+// ── 업로드 자동 purge — FTP ID별 서비스·볼륨·뗄 경로 ─────────────────────────
+function _purgeRowHtml(t = {}) {
+  const cell = (cls, v, ph) => `<td><input class="form-control form-control-sm ${cls}" value="${esc(v || '')}" placeholder="${ph}"></td>`;
+  return `<tr>
+    ${cell('pt-user', t.ftp_username, 'FTP ID')}
+    ${cell('pt-svc', t.service, '서비스명')}
+    ${cell('pt-vol', t.volume, '볼륨')}
+    ${cell('pt-strip', t.strip_prefix, '/mnt1/…/cjenm')}
+    <td><button type="button" class="btn btn-xs btn-outline-danger" onclick="this.closest('tr').remove()"><i class="bi bi-x-lg"></i></button></td>
+  </tr>`;
+}
+
+function renderPurgeTargetRows(targets) {
+  document.getElementById('purgeTargetRows').innerHTML = targets.map(_purgeRowHtml).join('');
+}
+
+function addPurgeTargetRow() {
+  document.getElementById('purgeTargetRows').insertAdjacentHTML('beforeend', _purgeRowHtml());
+}
+
+// 네 칸이 모두 빈 행은 버린다(추가만 누르고 안 채운 행)
+function readPurgeTargetRows() {
+  return [...document.querySelectorAll('#purgeTargetRows tr')].map(tr => ({
+    ftp_username: tr.querySelector('.pt-user').value.trim(),
+    service: tr.querySelector('.pt-svc').value.trim(),
+    volume: tr.querySelector('.pt-vol').value.trim(),
+    strip_prefix: tr.querySelector('.pt-strip').value.trim() || null,
+  })).filter(t => t.ftp_username || t.service || t.volume || t.strip_prefix);
 }
 
 async function saveGroup() {
@@ -178,11 +207,12 @@ async function saveGroup() {
     customer: document.getElementById('groupCustomer').value.trim() || null,
     upload_domains: document.getElementById('groupUploadDomains').value.trim() || null,
     application: document.getElementById('groupApplication').value.trim() || null,
-    purge_enabled: document.getElementById('groupPurgeEnabled').checked,
-    purge_accounts: document.getElementById('groupPurgeAccounts').value.trim() || null,
+    purge_targets: readPurgeTargetRows(),
   };
   if (!body.name) return alert('그룹명을 입력하세요.');
-  if (body.purge_enabled && !body.purge_accounts) return alert('자동 purge 를 켜려면 FTP 계정을 입력하세요.');
+  const badRow = body.purge_targets.find(t => !t.ftp_username || !t.service || !t.volume);
+  if (badRow) return alert('purge 행마다 FTP ID · 서비스 · 볼륨을 모두 입력하세요.');
+  if (body.purge_targets.length && !body.telco) return alert('purge 를 쓰려면 통신사를 지정하세요 — 그 통신사의 API 로 보냅니다.');
   try {
     if (id) {
       await api('PUT', `/groups/${id}`, body);

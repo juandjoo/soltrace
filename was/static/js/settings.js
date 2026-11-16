@@ -258,12 +258,121 @@ async function loadTelcos() {
     const telcos = await getTelcos();
     list.innerHTML = telcos.length
       ? telcos.map(t => `
-          <li class="list-group-item d-flex align-items-center px-0">
+          <li class="list-group-item d-flex align-items-center gap-2 px-0">
             <span>${esc(t.name)}</span>
-            <button class="btn btn-xs btn-outline-danger ms-auto" onclick="deleteTelco(${t.id})"><i class="bi bi-trash"></i></button>
+            ${telcoApiBadge(t)}
+            <button class="btn btn-xs btn-outline-primary ms-auto" onclick="openTelcoApi(${t.id})"><i class="bi bi-plug me-1"></i>purge API</button>
+            <button class="btn btn-xs btn-outline-danger" onclick="deleteTelco(${t.id})"><i class="bi bi-trash"></i></button>
           </li>`).join('')
       : '<li class="list-group-item text-muted small px-0">등록된 통신사가 없습니다.</li>';
   } catch (e) { settingsMsg('telcoMsg', 'danger', e.message); }
+  loadPurgeJobs();
+}
+
+// ── 텔코 purge API ───────────────────────────────────────────────────────────
+// 비밀번호·토큰 값은 서버가 돌려주지 않는다 — '저장됨'과 발급 시각만 보인다.
+function telcoApiBadge(t) {
+  if (!t.api_purge_url) return '<span class="badge bg-light text-muted border fw-normal">API 미설정</span>';
+  return t.api_token_at
+    ? `<span class="badge bg-success-subtle text-success-emphasis border fw-normal" title="토큰 발급 ${esc(fmtLocalDateTime(new Date(t.api_token_at)))}">API · 토큰 있음</span>`
+    : '<span class="badge bg-warning-subtle text-warning-emphasis border fw-normal">API · 토큰 없음</span>';
+}
+
+function _telcoApiTokenInfo(t) {
+  const pw = t.has_password ? '비밀번호 저장됨 — 바꿀 때만 입력하세요.' : '비밀번호 없음.';
+  const tk = t.api_token_at ? `토큰 발급: ${fmtLocalDateTime(new Date(t.api_token_at))}` : '토큰 아직 없음 (첫 purge 또는 테스트 때 발급)';
+  document.getElementById('telcoApiTokenInfo').textContent = `${pw} ${tk}`;
+  document.getElementById('telcoApiPass').placeholder = t.has_password ? '••••••• (저장됨)' : '';
+}
+
+function openTelcoApi(id) {
+  const t = allTelcos.find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('telcoApiId').value = id;
+  document.getElementById('telcoApiTitle').textContent = t.name;
+  document.getElementById('telcoApiAuthUrl').value = t.api_auth_url || '';
+  document.getElementById('telcoApiPurgeUrl').value = t.api_purge_url || '';
+  document.getElementById('telcoApiUser').value = t.api_username || '';
+  document.getElementById('telcoApiPass').value = '';
+  document.getElementById('telcoApiMsg').className = 'alert d-none py-2 small';
+  _telcoApiTokenInfo(t);
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('telcoApiModal')).show();
+}
+
+async function saveTelcoApi(silent) {
+  const id = document.getElementById('telcoApiId').value;
+  const body = {
+    api_auth_url: document.getElementById('telcoApiAuthUrl').value.trim() || null,
+    api_purge_url: document.getElementById('telcoApiPurgeUrl').value.trim() || null,
+    api_username: document.getElementById('telcoApiUser').value.trim() || null,
+    api_password: document.getElementById('telcoApiPass').value.trim() || null,
+  };
+  try {
+    const t = await api('PUT', `/telcos/${id}/api`, body);
+    document.getElementById('telcoApiPass').value = '';
+    _telcoApiTokenInfo(t);
+    if (!silent) settingsMsg('telcoApiMsg', 'success', '저장했습니다.');
+    loadTelcos();
+    return t;
+  } catch (e) {
+    settingsMsg('telcoApiMsg', 'danger', e.message);
+    return null;
+  }
+}
+
+// 입력 중인 값으로 바로 시험할 수 있게 먼저 저장한 뒤 발급한다.
+async function testTelcoToken() {
+  const id = document.getElementById('telcoApiId').value;
+  if (!(await saveTelcoApi(true))) return;
+  settingsMsg('telcoApiMsg', 'secondary', '토큰 발급 중…');
+  try {
+    const r = await api('POST', `/telcos/${id}/api/token-test`);
+    settingsMsg('telcoApiMsg', r.ok ? 'success' : 'danger', r.message);
+    const t = (await getTelcos()).find(x => x.id === Number(id));
+    if (t) _telcoApiTokenInfo(t);
+    loadTelcos();
+  } catch (e) { settingsMsg('telcoApiMsg', 'danger', e.message); }
+}
+
+// ── purge 이력 ───────────────────────────────────────────────────────────────
+const PURGE_STATUS_LABEL = {
+  pending: '<span class="badge bg-secondary-subtle text-secondary-emphasis border">대기</span>',
+  done: '<span class="badge bg-success-subtle text-success-emphasis border">완료</span>',
+  failed: '<span class="badge bg-danger-subtle text-danger-emphasis border">실패</span>',
+};
+
+async function loadPurgeJobs() {
+  const box = document.getElementById('purgeJobList');
+  const params = new URLSearchParams({limit: '200'});
+  const st = document.getElementById('purgeStatus').value;
+  const q = document.getElementById('purgeQuery').value.trim();
+  if (st) params.set('status', st);
+  if (q) params.set('q', q);
+  try {
+    const jobs = await api('GET', `/purge/jobs?${params}`) || [];
+    if (!jobs.length) { box.innerHTML = '<div class="text-muted">이력이 없습니다.</div>'; return; }
+    box.innerHTML = `<div class="table-responsive" style="max-height:420px">
+      <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed">
+        <colgroup><col style="width:120px"><col style="width:58px"><col style="width:16%"><col style="width:12%"><col><col style="width:22%"></colgroup>
+        <thead class="table-light"><tr><th>시각</th><th>상태</th><th>그룹 · 통신사</th><th>FTP ID</th><th>purge 경로 (서비스/볼륨)</th><th>오류</th></tr></thead>
+        <tbody>${jobs.map(j => `<tr>
+          <td class="text-nowrap">${esc(fmtLocalDateTime(new Date(j.created_at)))}</td>
+          <td>${PURGE_STATUS_LABEL[j.status] || esc(j.status)}${j.attempts > 1 ? `<div class="text-muted" style="font-size:.7rem">${j.attempts}회</div>` : ''}</td>
+          <td style="word-break:break-word">${esc(j.group_name || '-')}${j.telco ? `<div class="text-muted">${esc(j.telco)}</div>` : ''}</td>
+          <td style="word-break:break-all">${esc(j.ftp_username || '-')}</td>
+          <td style="word-break:break-all" title="업로드 경로: ${esc(j.file_path)}">${esc(j.purge_path || j.file_path)}<div class="text-muted">${esc(j.service || '')} / ${esc(j.volume || '')}</div></td>
+          <td class="text-danger" style="word-break:break-word">${esc(j.last_error || '')}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+  } catch (e) { box.innerHTML = `<div class="text-danger">${esc(e.message)}</div>`; }
+}
+
+async function retryFailedPurges() {
+  try {
+    const r = await api('POST', '/purge/jobs/retry');
+    settingsMsg('purgeMsg', 'success', `실패 ${r.requeued}건을 다시 대기열에 넣었습니다.`);
+    loadPurgeJobs();
+  } catch (e) { settingsMsg('purgeMsg', 'danger', e.message); }
 }
 
 async function addTelco() {

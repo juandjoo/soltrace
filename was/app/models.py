@@ -82,6 +82,17 @@ class Telco(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(100), unique=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=_now)
+    # 업로드 자동 purge 용 CDN API (app/purge.py). 비밀번호·토큰은 응답에 싣지 않는다.
+    api_auth_url = Column(Text)
+    api_purge_url = Column(Text)     # {service} {volume} 자리표시자
+    api_username = Column(Text)
+    api_password = Column(Text)
+    api_token = Column(Text)
+    api_token_at = Column(DateTime(timezone=True))
+
+    @property
+    def has_password(self) -> bool:
+        return bool(self.api_password)
 
 
 class Device(Base):
@@ -138,12 +149,13 @@ class Group(Base):
     customer = Column(Text)
     upload_domains = Column(Text)
     application = Column(Text)
-    # 업로드 자동 purge (app/purge_accounts.py) — 계정은 한 줄에 하나
-    purge_enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
-    purge_accounts = Column(Text)
     created_at = Column(DateTime(timezone=True), default=_now)
 
     devices = relationship("Device", secondary="device_groups", back_populates="groups")
+    purge_targets = relationship(
+        "PurgeTarget", cascade="all, delete-orphan", order_by="PurgeTarget.ftp_username",
+        passive_deletes=True,
+    )
 
 
 class DeviceGroup(Base):
@@ -176,6 +188,52 @@ class UserFtpAccount(Base):
 
     __table_args__ = (
         Index("idx_user_ftp_accounts_user", "user_id"),
+    )
+
+
+class PurgeTarget(Base):
+    """업로드 자동 purge 대상 — 이 그룹 장비에서 이 FTP 계정이 올린 파일을 지운다.
+
+    어느 텔코 API 로 보낼지는 그룹의 telco 로 정한다(telcos.name 과 같은 값).
+    strip_prefix: 업로드 경로 앞에서 떼어 CDN 경로로 만든다
+      예) /mnt1/8000000000000004549/cjenm 을 떼면 /mnt1/8000000000000004549/cjenm/CLIP/a.mp4 → /CLIP/a.mp4
+    """
+    __tablename__ = "purge_targets"
+
+    id = Column(Integer, primary_key=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+    ftp_username = Column(String(255), nullable=False)
+    service = Column(String(255), nullable=False)
+    volume = Column(String(255), nullable=False)
+    strip_prefix = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=_now, server_default=text("NOW()"))
+
+    __table_args__ = (UniqueConstraint("group_id", "ftp_username"),)
+
+
+class PurgeJob(Base):
+    """purge 요청 한 건 — 큐이자 이력. 워커가 같은 텔코·서비스·볼륨끼리 묶어 보낸다."""
+    __tablename__ = "purge_jobs"
+
+    id = Column(BigInteger, primary_key=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"))
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"))
+    ftp_username = Column(String(255))
+    file_path = Column(Text, nullable=False)
+    purge_path = Column(Text)
+    service = Column(String(255))
+    volume = Column(String(255))
+    # pending → done | failed. 경로가 strip_prefix 와 안 맞으면 바로 failed.
+    status = Column(String(20), nullable=False, default="pending", server_default=text("'pending'"))
+    attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    last_error = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now, server_default=text("NOW()"))
+    next_try_at = Column(DateTime(timezone=True), nullable=False, default=_now, server_default=text("NOW()"))
+    done_at = Column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_purge_jobs_due", "next_try_at", postgresql_where=text("status = 'pending'")),
+        Index("idx_purge_jobs_created", created_at.desc()),
     )
 
 

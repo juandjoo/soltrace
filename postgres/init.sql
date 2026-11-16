@@ -102,10 +102,9 @@ ALTER TABLE groups DROP COLUMN IF EXISTS group_type;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS customer TEXT;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS upload_domains TEXT;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS auth TEXT;
--- 업로드 자동 purge — 이 그룹 장비에서 아래 FTP 계정이 올린 파일만 CDN 캐시를 지운다.
--- 경로 규칙·PURGE 대상 서버 IP 는 장비 config.ini [purge] 에서 따로 관리한다.
-ALTER TABLE groups ADD COLUMN IF NOT EXISTS purge_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE groups ADD COLUMN IF NOT EXISTS purge_accounts TEXT;
+-- 1.2.0 의 장비별 purge 설정 — 텔코 API 방식(purge_targets)으로 바뀌어 쓰지 않는다
+ALTER TABLE groups DROP COLUMN IF EXISTS purge_enabled;
+ALTER TABLE groups DROP COLUMN IF EXISTS purge_accounts;
 
 -- 통신사 목록
 CREATE TABLE IF NOT EXISTS telcos (
@@ -113,6 +112,45 @@ CREATE TABLE IF NOT EXISTS telcos (
     name VARCHAR(100) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- 텔코 CDN API (업로드 자동 purge) — 비밀번호·토큰은 화면/API 응답에 다시 내보내지 않는다
+ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_auth_url   TEXT;
+ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_purge_url  TEXT;
+ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_username   TEXT;
+ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_password   TEXT;
+ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_token      TEXT;
+ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_token_at   TIMESTAMPTZ;
+
+-- 업로드 자동 purge 대상 — 그룹 장비에서 이 FTP 계정이 올린 파일을 그룹 텔코 API 로 지운다
+CREATE TABLE IF NOT EXISTS purge_targets (
+    id           SERIAL PRIMARY KEY,
+    group_id     INT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    ftp_username VARCHAR(255) NOT NULL,
+    service      VARCHAR(255) NOT NULL,
+    volume       VARCHAR(255) NOT NULL,
+    strip_prefix TEXT,
+    created_at   TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (group_id, ftp_username)
+);
+
+-- purge 요청 큐 + 이력 — 워커 재시작에도 잃지 않게 DB 에 둔다
+CREATE TABLE IF NOT EXISTS purge_jobs (
+    id           BIGSERIAL PRIMARY KEY,
+    group_id     INT REFERENCES groups(id) ON DELETE SET NULL,
+    device_id    INT REFERENCES devices(id) ON DELETE SET NULL,
+    ftp_username VARCHAR(255),
+    file_path    TEXT NOT NULL,
+    purge_path   TEXT,
+    service      VARCHAR(255),
+    volume       VARCHAR(255),
+    status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+    attempts     INT NOT NULL DEFAULT 0,
+    last_error   TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    next_try_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    done_at      TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_purge_jobs_due ON purge_jobs (next_try_at) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_purge_jobs_created ON purge_jobs (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS device_groups (
     device_id INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,

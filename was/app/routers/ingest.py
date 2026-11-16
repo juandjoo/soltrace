@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,10 +10,11 @@ from app.models import Device, FtpLog
 from app.schemas import (
     DeviceRegister, HeartbeatRequest, IngestResponse, LogBatch,
 )
+from app import purge
 from app import write_buffer as wb
-from app.purge_accounts import accounts_for_device
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
+log = logging.getLogger("soltrace.ingest")
 
 VALID_ACTIONS = {"upload", "download", "delete", "rename", "login", "logout", "mkdir", "rmdir",
                  "cwd_fail", "client_error"}
@@ -96,8 +98,6 @@ def heartbeat(req: HeartbeatRequest, db: Session = Depends(get_db)):
             setattr(device, field, val)
 
     resp: dict = {"status": device.status}
-    # 업로드 자동 purge 대상 계정 — 빈 목록도 늘 보낸다(그룹에서 끄면 데몬도 바로 멈추도록)
-    resp["purge_accounts"] = accounts_for_device(db, device.id)
     if device.update_requested:
         resp["update"] = True
         device.update_requested = False
@@ -156,5 +156,11 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
     if entries:
         # 즉시 DB 쓰기 대신 버퍼(lifespan 에서 워커마다 초기화)에 넣어 워커 블로킹 제거
         buf.add(entries)
+        # 업로드 자동 purge — 실패해도 로그 수신은 성공으로 둔다(500 이면 데몬이 같은 배치를 다시 보낸다)
+        try:
+            purge.enqueue_uploads(db, device.id, entries)
+        except Exception:
+            db.rollback()
+            log.exception("purge 큐 적재 실패 device=%s", device.id)
 
     return IngestResponse(accepted=accepted, rejected=rejected)

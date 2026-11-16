@@ -104,11 +104,31 @@ class TelcoCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
 class TelcoItem(BaseModel):
+    """비밀번호·토큰 값은 싣지 않는다 — 있는지와 발급 시각만."""
     id: int
     name: str
+    api_auth_url: Optional[str] = None
+    api_purge_url: Optional[str] = None
+    api_username: Optional[str] = None
+    has_password: bool = False
+    api_token_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class TelcoApiUpdate(BaseModel):
+    """텔코 CDN API 정보. api_password 를 빼거나 비우면 기존 비밀번호를 유지한다."""
+    api_auth_url: Optional[str] = Field(default=None, max_length=1000)
+    api_purge_url: Optional[str] = Field(default=None, max_length=1000)
+    api_username: Optional[str] = Field(default=None, max_length=255)
+    api_password: Optional[str] = Field(default=None, max_length=1000)
+
+
+class TelcoTokenTest(BaseModel):
+    ok: bool
+    message: str
+    api_token_at: Optional[datetime] = None
 
 class VersionInfo(BaseModel):
     branch: Optional[str] = None
@@ -261,6 +281,18 @@ class DeviceGroupAssign(BaseModel):
 
 # ── Group ─────────────────────────────────────────────────────────────────────
 
+class PurgeTargetIn(BaseModel):
+    ftp_username: str = Field(min_length=1, max_length=255)
+    service: str = Field(min_length=1, max_length=255)
+    volume: str = Field(min_length=1, max_length=255)
+    strip_prefix: Optional[str] = Field(default=None, max_length=1000)
+
+
+class PurgeTargetOut(PurgeTargetIn):
+    class Config:
+        from_attributes = True
+
+
 class GroupCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = None
@@ -268,8 +300,7 @@ class GroupCreate(BaseModel):
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
     application: Optional[str] = None
-    purge_enabled: bool = False
-    purge_accounts: Optional[str] = Field(default=None, max_length=20000)
+    purge_targets: Optional[List[PurgeTargetIn]] = None   # 주면 전체 교체
 
 class GroupUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
@@ -278,8 +309,7 @@ class GroupUpdate(BaseModel):
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
     application: Optional[str] = None
-    purge_enabled: Optional[bool] = None
-    purge_accounts: Optional[str] = Field(default=None, max_length=20000)
+    purge_targets: Optional[List[PurgeTargetIn]] = None   # 주면 전체 교체
 
 class GroupDeviceAssign(BaseModel):
     device_ids: List[int]
@@ -292,10 +322,9 @@ class GroupResponse(BaseModel):
     customer: Optional[str] = None
     upload_domains: Optional[str] = None
     application: Optional[str] = None
-    purge_enabled: bool = False
-    purge_accounts: Optional[str] = None
     created_at: datetime
     device_count: int = 0
+    purge_targets: List[PurgeTargetOut] = []
 
     class Config:
         from_attributes = True
@@ -548,3 +577,26 @@ class ServiceHealthResponse(BaseModel):
     alerts: List[ServiceAlertItem]
     trend: List[ServiceTrendPoint] = []
     fail_totals: FailTotals = FailTotals()
+
+
+# ── Purge ─────────────────────────────────────────────────────────────────────
+
+class PurgeJobItem(BaseModel):
+    id: int
+    group_id: Optional[int] = None
+    group_name: Optional[str] = None
+    telco: Optional[str] = None
+    ftp_username: Optional[str] = None
+    file_path: str
+    purge_path: Optional[str] = None
+    service: Optional[str] = None
+    volume: Optional[str] = None
+    status: str
+    attempts: int
+    last_error: Optional[str] = None
+    created_at: datetime
+    done_at: Optional[datetime] = None
+
+
+class PurgeRetryResult(BaseModel):
+    requeued: int = 0
