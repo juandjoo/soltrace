@@ -30,42 +30,36 @@ def _clean(value):
     return value or None
 
 
-def _apply_api_account(group: Group, body, old_telco) -> None:
-    """텔코 API 계정. 비밀번호를 비우면 기존 값 유지. 계정·비밀번호·통신사가 바뀌면 토큰은 버린다."""
-    fields = body.model_fields_set
-    before = (group.api_username, group.api_password, old_telco)
-    if "api_username" in fields:
-        group.api_username = _clean(body.api_username)
-    if _clean(body.api_password):
-        group.api_password = _clean(body.api_password)
-    if group.api_username is None:
-        group.api_password = None    # 계정을 지우면 비밀번호도 같이
-    if (group.api_username, group.api_password, group.telco) != before:
-        group.api_token = None
-        group.api_token_at = None
+def _sync_purge_targets(group: Group, targets, telco_changed: bool) -> None:
+    """업로드 ID 목록을 맞춘다 — 같은 FTP ID 는 그 행을 고치고(비밀번호·토큰 유지), 빠진 ID 는 지운다.
 
-
-def _replace_purge_targets(db: Session, group: Group, targets) -> None:
-    """purge 대상 전체 교체. 같은 FTP 계정이 두 번 오면 422."""
+    전체를 지우고 다시 넣으면 화면이 다시 보내지 않는 비밀번호와 발급받은 토큰이 사라진다.
+    비밀번호 칸을 비우면 기존 값 유지. 계정·비밀번호·통신사가 바뀐 ID 의 토큰은 버린다.
+    """
     targets = targets or []
     names = [t.ftp_username.strip() for t in targets]
     dup = {n for n in names if names.count(n) > 1}
     if dup:
-        raise HTTPException(status_code=422, detail=f"purge 대상 FTP 계정 중복: {', '.join(sorted(dup))}")
-    if group.id is not None and group.purge_targets:
-        # 한 flush 안에서는 INSERT 가 DELETE 보다 먼저 나가 같은 계정을 다시 넣으면
-        # UNIQUE(group_id, ftp_username) 에 걸린다 — 지우기를 먼저 반영한다.
-        group.purge_targets = []
-        db.flush()
-    group.purge_targets = [
-        PurgeTarget(
-            ftp_username=t.ftp_username.strip(),
-            service=t.service.strip(),
-            volume=t.volume.strip(),
-            strip_prefix=(t.strip_prefix or "").strip().rstrip("/") or None,
-        )
-        for t in targets
-    ]
+        raise HTTPException(status_code=422, detail=f"purge 대상 FTP ID 중복: {', '.join(sorted(dup))}")
+    existing = {t.ftp_username: t for t in group.purge_targets}
+    synced = []
+    for t in targets:
+        name = t.ftp_username.strip()
+        row = existing.get(name) or PurgeTarget(ftp_username=name)
+        before = (row.api_username, row.api_password)
+        row.service = t.service.strip()
+        row.volume = t.volume.strip()
+        row.strip_prefix = (t.strip_prefix or "").strip().rstrip("/") or None
+        row.api_username = _clean(t.api_username)
+        if _clean(t.api_password):
+            row.api_password = _clean(t.api_password)
+        if row.api_username is None:
+            row.api_password = None    # 계정을 지우면 비밀번호도 같이
+        if telco_changed or (row.api_username, row.api_password) != before:
+            row.api_token = None
+            row.api_token_at = None
+        synced.append(row)
+    group.purge_targets = synced      # 빠진 행은 delete-orphan 으로 지워진다
 
 
 @router.get("", response_model=List[GroupResponse])
@@ -81,7 +75,6 @@ def list_groups(db: Session = Depends(get_db), user: Principal = Depends(get_cur
         for r in resp:
             # 운영 설정 — 고객 화면에는 쓸 데가 없다
             r.purge_targets = []
-            r.api_username, r.has_api_password, r.api_token_at = None, False, None
     return resp
 
 
@@ -89,10 +82,9 @@ def list_groups(db: Session = Depends(get_db), user: Principal = Depends(get_cur
 def create_group(body: GroupCreate, db: Session = Depends(get_db), _: str = Depends(require_admin)):
     if db.query(Group).filter(Group.name == body.name).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
-    data = body.model_dump(exclude={"purge_targets", "api_username", "api_password"})
+    data = body.model_dump(exclude={"purge_targets"})
     group = Group(**data)
-    _apply_api_account(group, body, group.telco)
-    _replace_purge_targets(db, group, body.purge_targets)
+    _sync_purge_targets(group, body.purge_targets, telco_changed=False)
     db.add(group)
     db.commit()
     db.refresh(group)
@@ -113,12 +105,15 @@ def update_group(
         if db.query(Group).filter(Group.name == body.name).first():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
     old_telco = group.telco
-    skip = {"purge_targets", "api_username", "api_password"}
-    for field, value in body.model_dump(exclude_unset=True, exclude=skip).items():
+    for field, value in body.model_dump(exclude_unset=True, exclude={"purge_targets"}).items():
         setattr(group, field, value)
-    _apply_api_account(group, body, old_telco)
+    telco_changed = group.telco != old_telco
     if "purge_targets" in body.model_fields_set:
-        _replace_purge_targets(db, group, body.purge_targets)
+        _sync_purge_targets(group, body.purge_targets, telco_changed)
+    elif telco_changed:
+        # 통신사가 바뀌면 발급처가 달라진다 — 들고 있던 토큰은 못 쓴다
+        for t in group.purge_targets:
+            t.api_token, t.api_token_at = None, None
     db.commit()
     db.refresh(group)
     return _to_response(group, db)
@@ -126,17 +121,20 @@ def update_group(
 
 @router.post("/token-test", response_model=TokenTestResult)
 def test_group_token(body: TokenTestRequest, db: Session = Depends(get_db), _: str = Depends(require_admin)):
-    """그룹 모달의 '토큰 발급 테스트' — 입력 중인 통신사·계정으로 실제 발급해 본다(저장하지 않음).
+    """그룹 모달 업로드 ID 행의 '토큰 테스트' — 입력 중인 통신사·계정으로 실제 발급해 본다(저장하지 않음).
 
-    비밀번호를 비우면 group_id 그룹에 저장된 비밀번호를 쓴다(수정 화면은 비밀번호를 다시 보여주지 않는다).
+    비밀번호를 비우면 그 그룹·FTP ID 에 저장된 비밀번호를 쓴다(수정 화면은 비밀번호를 다시 보여주지 않는다).
     """
     telco = db.query(Telco).filter(Telco.name == body.telco).first()
     if telco is None or not telco.api_auth_url:
         return TokenTestResult(ok=False, message=f"통신사 '{body.telco}' 에 토큰 발급 URL 이 없습니다 (설정 › 텔코 정보)")
     password = _clean(body.api_password)
-    if not password and body.group_id:
-        group = db.query(Group).filter(Group.id == body.group_id).first()
-        password = group.api_password if group else None
+    if not password and body.group_id and body.ftp_username:
+        stored = (db.query(PurgeTarget)
+                  .filter(PurgeTarget.group_id == body.group_id,
+                          PurgeTarget.ftp_username == body.ftp_username.strip())
+                  .first())
+        password = stored.api_password if stored else None
     try:
         token = purge.request_token(telco.api_auth_url, _clean(body.api_username), password)
     except purge.PurgeApiError as e:

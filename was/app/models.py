@@ -83,7 +83,7 @@ class Telco(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(100), unique=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=_now)
-    # 업로드 자동 purge 용 CDN API 주소 (app/purge.py). 계정은 그룹별(Group.api_*).
+    # 업로드 자동 purge 용 CDN API 주소 (app/purge.py). 계정은 업로드 ID별(PurgeTarget.api_*).
     api_auth_url = Column(Text)
     api_purge_url = Column(Text)     # {service} {volume} 자리표시자
 
@@ -147,16 +147,7 @@ class Group(Base):
     customer = Column(Text)
     upload_domains = Column(Text)
     application = Column(Text)
-    # 업로드 자동 purge — 그룹 통신사 API 에 쓰는 계정. 비밀번호·토큰은 응답에 싣지 않는다.
-    api_username = Column(Text)
-    api_password = Column(Text)
-    api_token = Column(Text)
-    api_token_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=_now)
-
-    @property
-    def has_api_password(self) -> bool:
-        return bool(self.api_password)
 
     devices = relationship("Device", secondary="device_groups", back_populates="groups")
     purge_targets = relationship(
@@ -213,9 +204,18 @@ class PurgeTarget(Base):
     service = Column(String(255), nullable=False)
     volume = Column(String(255), nullable=False)
     strip_prefix = Column(Text)
+    # 이 업로드 ID 가 쓰는 텔코 API 계정. 비밀번호·토큰은 응답에 싣지 않는다.
+    api_username = Column(Text)
+    api_password = Column(Text)
+    api_token = Column(Text)
+    api_token_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=_now, server_default=text("NOW()"))
 
     __table_args__ = (UniqueConstraint("group_id", "ftp_username"),)
+
+    @property
+    def has_api_password(self) -> bool:
+        return bool(self.api_password)
 
 
 class PurgeJob(Base):
@@ -224,6 +224,8 @@ class PurgeJob(Base):
 
     id = Column(BigInteger, primary_key=True)
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"))
+    # 토큰을 어느 계정으로 받을지 — 업로드 ID 설정을 지우면 NULL 이 되고 실패로 남는다
+    target_id = Column(Integer, ForeignKey("purge_targets.id", ondelete="SET NULL"))
     device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"))
     ftp_username = Column(String(255))
     file_path = Column(Text, nullable=False)

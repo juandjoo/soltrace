@@ -112,18 +112,18 @@ CREATE TABLE IF NOT EXISTS telcos (
     name VARCHAR(100) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
--- 텔코 CDN API 주소 (업로드 자동 purge). 계정·비밀번호·토큰은 그룹별(groups.api_*)이다.
+-- 텔코 CDN API 주소 (업로드 자동 purge). 계정·비밀번호·토큰은 업로드 ID별(purge_targets.api_*)이다.
 ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_auth_url   TEXT;
 ALTER TABLE telcos ADD COLUMN IF NOT EXISTS api_purge_url  TEXT;
 ALTER TABLE telcos DROP COLUMN IF EXISTS api_username;
 ALTER TABLE telcos DROP COLUMN IF EXISTS api_password;
 ALTER TABLE telcos DROP COLUMN IF EXISTS api_token;
 ALTER TABLE telcos DROP COLUMN IF EXISTS api_token_at;
--- 그룹별 텔코 API 계정 — 비밀번호·토큰은 화면/API 응답에 다시 내보내지 않는다
-ALTER TABLE groups ADD COLUMN IF NOT EXISTS api_username TEXT;
-ALTER TABLE groups ADD COLUMN IF NOT EXISTS api_password TEXT;
-ALTER TABLE groups ADD COLUMN IF NOT EXISTS api_token    TEXT;
-ALTER TABLE groups ADD COLUMN IF NOT EXISTS api_token_at TIMESTAMPTZ;
+-- 6b5f993 의 그룹별 API 계정 — 업로드 ID별(purge_targets)로 옮겨 쓰지 않는다
+ALTER TABLE groups DROP COLUMN IF EXISTS api_username;
+ALTER TABLE groups DROP COLUMN IF EXISTS api_password;
+ALTER TABLE groups DROP COLUMN IF EXISTS api_token;
+ALTER TABLE groups DROP COLUMN IF EXISTS api_token_at;
 
 -- 업로드 자동 purge 대상 — 그룹 장비에서 이 FTP 계정이 올린 파일을 그룹 텔코 API 로 지운다
 CREATE TABLE IF NOT EXISTS purge_targets (
@@ -136,11 +136,17 @@ CREATE TABLE IF NOT EXISTS purge_targets (
     created_at   TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (group_id, ftp_username)
 );
+-- 업로드 ID별 텔코 API 계정 — 비밀번호·토큰은 화면/API 응답에 다시 내보내지 않는다
+ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS api_username TEXT;
+ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS api_password TEXT;
+ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS api_token    TEXT;
+ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS api_token_at TIMESTAMPTZ;
 
 -- purge 요청 큐 + 이력 — 워커 재시작에도 잃지 않게 DB 에 둔다
 CREATE TABLE IF NOT EXISTS purge_jobs (
     id           BIGSERIAL PRIMARY KEY,
     group_id     INT REFERENCES groups(id) ON DELETE SET NULL,
+    target_id    INT REFERENCES purge_targets(id) ON DELETE SET NULL,
     device_id    INT REFERENCES devices(id) ON DELETE SET NULL,
     ftp_username VARCHAR(255),
     file_path    TEXT NOT NULL,
@@ -154,6 +160,7 @@ CREATE TABLE IF NOT EXISTS purge_jobs (
     next_try_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     done_at      TIMESTAMPTZ
 );
+ALTER TABLE purge_jobs ADD COLUMN IF NOT EXISTS target_id INT REFERENCES purge_targets(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_purge_jobs_due ON purge_jobs (next_try_at) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_purge_jobs_created ON purge_jobs (created_at DESC);
 

@@ -3,9 +3,9 @@
 흐름:
   1. /ingest/logs 로 들어온 업로드 성공 로그 중, 그 장비가 속한 그룹의 purge_targets 에
      등록된 FTP 계정 것만 purge_jobs 에 쌓는다(enqueue_uploads).
-  2. 워커 스레드가 쌓인 작업을 그룹 텔코·서비스·볼륨별로 묶어 filelist 한 번에 보낸다.
-  3. 주소는 텔코(telcos.api_*_url), 계정은 그룹(groups.api_username/password)이다.
-     토큰은 그룹 계정으로 발급해 groups.api_token 에 두고, 401 이면 다시 받아 한 번 더 보낸다.
+  2. 워커 스레드가 쌓인 작업을 업로드 ID(=계정·서비스·볼륨)별로 묶어 filelist 한 번에 보낸다.
+  3. 주소는 그룹 통신사(telcos.api_*_url), 계정은 업로드 ID(purge_targets.api_username/password)다.
+     토큰은 그 계정으로 발급해 purge_targets.api_token 에 두고, 401 이면 다시 받아 한 번 더 보낸다.
   4. 실패하면 간격을 늘려 재시도하고, MAX_ATTEMPTS 를 넘기면 failed 로 남겨 화면에서 본다.
 
 Gunicorn 워커마다 스레드가 하나씩 돌지만 `FOR UPDATE SKIP LOCKED` 로 집어 같은 작업을
@@ -96,7 +96,7 @@ def enqueue_uploads(db: Session, device_id: int, logs: list) -> int:
         for t in by_user.get(e.username, []):
             path = purge_path(e.file_path, t.strip_prefix)
             job = PurgeJob(
-                group_id=t.group_id, device_id=device_id, ftp_username=e.username,
+                group_id=t.group_id, target_id=t.id, device_id=device_id, ftp_username=e.username,
                 file_path=e.file_path, purge_path=path, service=t.service, volume=t.volume,
                 created_at=now, next_try_at=now,
             )
@@ -192,7 +192,7 @@ def request_token(auth_url: Optional[str], username: Optional[str], password: Op
     """토큰을 발급받아 돌려준다(저장하지 않는다). 그룹 모달의 '토큰 발급 테스트'도 이것을 쓴다."""
     url = _check_url(auth_url, "토큰 발급 URL")
     if not username or not password:
-        raise PurgeApiError("그룹에 API 계정·비밀번호가 없습니다")
+        raise PurgeApiError("업로드 ID 에 API 계정·비밀번호가 없습니다")
     status, headers, body = _http_post(url, {
         "username": username,
         "password": password,
@@ -206,20 +206,20 @@ def request_token(auth_url: Optional[str], username: Optional[str], password: Op
     return token
 
 
-def issue_token(db: Session, telco: Telco, group: Group) -> str:
-    """그룹 계정으로 토큰을 새로 받아 그룹에 저장한다."""
-    token = request_token(telco.api_auth_url, group.api_username, group.api_password)
-    group.api_token = token
-    group.api_token_at = datetime.now(timezone.utc)
+def issue_token(db: Session, telco: Telco, target: PurgeTarget) -> str:
+    """업로드 ID 계정으로 토큰을 새로 받아 그 ID 에 저장한다."""
+    token = request_token(telco.api_auth_url, target.api_username, target.api_password)
+    target.api_token = token
+    target.api_token_at = datetime.now(timezone.utc)
     db.flush()
     return token
 
 
-def _usable_token(db: Session, telco: Telco, group: Group) -> str:
-    fresh = group.api_token_at and datetime.now(timezone.utc) - group.api_token_at < TOKEN_MAX_AGE
-    if group.api_token and fresh:
-        return group.api_token
-    return issue_token(db, telco, group)
+def _usable_token(db: Session, telco: Telco, target: PurgeTarget) -> str:
+    fresh = target.api_token_at and datetime.now(timezone.utc) - target.api_token_at < TOKEN_MAX_AGE
+    if target.api_token and fresh:
+        return target.api_token
+    return issue_token(db, telco, target)
 
 
 def build_purge_url(template: str, service: str, volume: str) -> str:
@@ -229,15 +229,15 @@ def build_purge_url(template: str, service: str, volume: str) -> str:
     return url.replace("{service}", quote(service, safe="")).replace("{volume}", quote(volume, safe=""))
 
 
-def send_purge(db: Session, telco: Telco, group: Group, service: str, volume: str,
+def send_purge(db: Session, telco: Telco, target: PurgeTarget, service: str, volume: str,
                paths: List[str]) -> None:
     """filelist 한 번 호출. 401 이면 토큰을 다시 받아 한 번 더. 실패면 PurgeApiError."""
     url = build_purge_url(telco.api_purge_url, service, volume)
     payload = {"filelist": paths}
-    token = _usable_token(db, telco, group)
+    token = _usable_token(db, telco, target)
     status, _, body = _http_post(url, payload, {"X-Auth-Token": token})
     if status == 401:
-        token = issue_token(db, telco, group)
+        token = issue_token(db, telco, target)
         status, _, body = _http_post(url, payload, {"X-Auth-Token": token})
     if not 200 <= status < 300:
         raise PurgeApiError(f"purge HTTP {status}: {body[:ERROR_SNIPPET]}", status)
@@ -260,14 +260,15 @@ def _mark_failed_attempt(jobs: List[PurgeJob], error: str, now: datetime) -> Non
             j.next_try_at = now + _backoff(j.attempts)
 
 
-def _groups_with_telco(db: Session, group_ids: set) -> Dict[int, Tuple[Group, Optional[Telco]]]:
+def _targets_with_telco(db: Session, target_ids: set) -> Dict[int, Tuple[PurgeTarget, Optional[Telco]]]:
     rows = (
-        db.query(Group, Telco)
+        db.query(PurgeTarget, Telco)
+        .join(Group, Group.id == PurgeTarget.group_id)
         .outerjoin(Telco, Telco.name == Group.telco)
-        .filter(Group.id.in_(group_ids))
+        .filter(PurgeTarget.id.in_(target_ids))
         .all()
     )
-    return {g.id: (g, telco) for g, telco in rows}
+    return {t.id: (t, telco) for t, telco in rows}
 
 
 def process_due(db: Session) -> int:
@@ -283,15 +284,15 @@ def process_due(db: Session) -> int:
     )
     if not jobs:
         return 0
-    groups = _groups_with_telco(db, {j.group_id for j in jobs if j.group_id})
+    targets = _targets_with_telco(db, {j.target_id for j in jobs if j.target_id})
     buckets: Dict[tuple, List[PurgeJob]] = {}
     for j in jobs:
-        buckets.setdefault((j.group_id, j.service, j.volume), []).append(j)
+        buckets.setdefault((j.target_id, j.service, j.volume), []).append(j)
 
-    for (group_id, service, volume), bucket in buckets.items():
-        group, telco = groups.get(group_id, (None, None))
-        if group is None:
-            _mark_failed_attempt(bucket, "그룹이 삭제됨", now)
+    for (target_id, service, volume), bucket in buckets.items():
+        target, telco = targets.get(target_id, (None, None))
+        if target is None:
+            _mark_failed_attempt(bucket, "업로드 ID 설정이 삭제됨", now)
             continue
         if telco is None or not telco.api_purge_url:
             _mark_failed_attempt(bucket, "그룹의 통신사에 purge API 주소가 설정되지 않음", now)
@@ -300,7 +301,7 @@ def process_due(db: Session) -> int:
             chunk = bucket[i:i + FILELIST_MAX]
             paths = list(dict.fromkeys(j.purge_path for j in chunk))
             try:
-                send_purge(db, telco, group, service, volume, paths)
+                send_purge(db, telco, target, service, volume, paths)
             except PurgeApiError as e:
                 log.warning("purge 실패 [%s %s/%s] %d건: %s", telco.name, service, volume, len(chunk), e)
                 _mark_failed_attempt(chunk, str(e), now)

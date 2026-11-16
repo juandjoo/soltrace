@@ -120,12 +120,13 @@ class TelcoApiUpdate(BaseModel):
 
 
 class TokenTestRequest(BaseModel):
-    """그룹 모달에서 저장 전에 시험 — 입력 중인 값으로 발급해 본다.
-    api_password 를 비우면 group_id 그룹에 저장된 비밀번호를 쓴다."""
+    """그룹 모달의 업로드 ID 행에서 저장 전에 시험 — 입력 중인 값으로 발급해 본다.
+    api_password 를 비우면 group_id 그룹의 그 ftp_username 에 저장된 비밀번호를 쓴다."""
     telco: str = Field(min_length=1, max_length=100)
     api_username: str = Field(min_length=1, max_length=255)
     api_password: Optional[str] = Field(default=None, max_length=1000)
     group_id: Optional[int] = None
+    ftp_username: Optional[str] = Field(default=None, max_length=255)
 
 
 class TokenTestResult(BaseModel):
@@ -291,9 +292,21 @@ class PurgeTargetIn(BaseModel):
     service: str = Field(min_length=1, max_length=255)
     volume: str = Field(min_length=1, max_length=255)
     strip_prefix: Optional[str] = Field(default=None, max_length=1000)
+    api_username: Optional[str] = Field(default=None, max_length=255)
+    # 비우면 같은 FTP ID 에 저장돼 있던 비밀번호 유지 (화면은 비밀번호를 다시 보여주지 않는다)
+    api_password: Optional[str] = Field(default=None, max_length=1000)
 
 
-class PurgeTargetOut(PurgeTargetIn):
+class PurgeTargetOut(BaseModel):
+    """비밀번호·토큰 값은 싣지 않는다 — 있는지와 발급 시각만."""
+    ftp_username: str
+    service: str
+    volume: str
+    strip_prefix: Optional[str] = None
+    api_username: Optional[str] = None
+    has_api_password: bool = False
+    api_token_at: Optional[datetime] = None
+
     class Config:
         from_attributes = True
 
@@ -306,8 +319,6 @@ class GroupCreate(BaseModel):
     upload_domains: Optional[str] = None
     application: Optional[str] = None
     purge_targets: Optional[List[PurgeTargetIn]] = None   # 주면 전체 교체
-    api_username: Optional[str] = Field(default=None, max_length=255)
-    api_password: Optional[str] = Field(default=None, max_length=1000)   # 비우면 기존 유지
 
 class GroupUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
@@ -317,8 +328,6 @@ class GroupUpdate(BaseModel):
     upload_domains: Optional[str] = None
     application: Optional[str] = None
     purge_targets: Optional[List[PurgeTargetIn]] = None   # 주면 전체 교체
-    api_username: Optional[str] = Field(default=None, max_length=255)
-    api_password: Optional[str] = Field(default=None, max_length=1000)   # 비우면 기존 유지
 
 class GroupDeviceAssign(BaseModel):
     device_ids: List[int]
@@ -334,10 +343,6 @@ class GroupResponse(BaseModel):
     created_at: datetime
     device_count: int = 0
     purge_targets: List[PurgeTargetOut] = []
-    # 비밀번호·토큰 값은 싣지 않는다 — 있는지와 발급 시각만
-    api_username: Optional[str] = None
-    has_api_password: bool = False
-    api_token_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

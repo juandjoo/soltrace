@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import require_admin
-from app.models import Group, Telco
+from app.models import Group, PurgeTarget, Telco
 from app.schemas import TelcoApiUpdate, TelcoCreate, TelcoItem
 
 router = APIRouter(prefix="/api/v1/telcos", tags=["telcos"])
@@ -53,9 +53,10 @@ def update_telco_api(telco_id: int, body: TelcoApiUpdate,
     if purge_url and ("{service}" not in purge_url or "{volume}" not in purge_url):
         raise HTTPException(status_code=422, detail="purge URL 에 {service} 와 {volume} 자리표시자가 있어야 합니다")
     if auth_url != telco.api_auth_url:
-        # 발급처가 바뀌면 그 통신사 그룹들이 들고 있던 토큰은 못 쓴다 — 다음 호출 때 새로 받는다
-        db.query(Group).filter(Group.telco == telco.name).update(
-            {Group.api_token: None, Group.api_token_at: None}, synchronize_session=False)
+        # 발급처가 바뀌면 그 통신사 그룹의 업로드 ID 들이 들고 있던 토큰은 못 쓴다 — 다음 호출 때 새로 받는다
+        group_ids = db.query(Group.id).filter(Group.telco == telco.name)
+        db.query(PurgeTarget).filter(PurgeTarget.group_id.in_(group_ids)).update(
+            {PurgeTarget.api_token: None, PurgeTarget.api_token_at: None}, synchronize_session=False)
     telco.api_auth_url = auth_url
     telco.api_purge_url = purge_url
     db.commit()
