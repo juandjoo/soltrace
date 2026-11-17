@@ -273,11 +273,6 @@ class DaemonUpdateDevices(BaseModel):
     device_ids: List[int] = []
 
 
-class DaemonUpdateGroups(BaseModel):
-    """체크한 그룹들의 장비를 한꺼번에 업데이트."""
-    group_ids: List[int] = []
-
-
 # ── 로그 재전송(backfill) ── app/backfill.py ────────────────────────────────────
 
 class BackfillRequest(BaseModel):
@@ -374,9 +369,6 @@ class GroupUpdate(BaseModel):
     application: Optional[str] = None
     purge_active: Optional[bool] = None
     purge_targets: Optional[List[PurgeTargetIn]] = None   # 주면 전체 교체
-
-class GroupDeviceAssign(BaseModel):
-    device_ids: List[int]
 
 class GroupResponse(BaseModel):
     id: int
