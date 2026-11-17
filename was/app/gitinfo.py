@@ -71,6 +71,13 @@ def daemon_outdated(reported: str | None) -> bool:
     return a < b
 
 
+def version_at_least(reported: str | None, minimum: str) -> bool:
+    """보고된 버전이 minimum 이상인가. 모르는 버전(미보고·형식 불명)은 False —
+    기능 지원 여부를 묻는 것이라 모르면 '없다'로 본다(daemon_outdated 와 반대 방향)."""
+    a, b = _version_tuple(reported), _version_tuple(minimum)
+    return a is not None and b is not None and a >= b
+
+
 def latest_daemon_version() -> str | None:
     """배포된 저장소가 담고 있는 데몬 버전. 파일이 없거나 못 읽으면 None."""
     global _daemon_ver_cache

@@ -75,6 +75,7 @@ function renderGroupPage(page) {
       <td><div class="d-flex gap-1 justify-content-end">
         <button class="btn btn-xs btn-outline-secondary" onclick="openGroupDevices(${g.id})" title="이 그룹에 장비 등록">장비</button>
         <button class="btn btn-xs btn-outline-success" onclick="requestGroupDaemonUpdate(${g.id})" title="이 그룹 장비의 데몬을 한 번에 업데이트" ${g.device_count ? '' : 'disabled'}>업데이트</button>
+        <button class="btn btn-xs btn-outline-secondary" onclick="openBackfill(${g.id})" title="장비에 남은 로그 중 빠진 것을 다시 받기" ${g.device_count ? '' : 'disabled'}>재전송</button>
         <button class="btn btn-xs btn-outline-primary" onclick="openGroupModal(${g.id})">수정</button>
         <button class="btn btn-xs btn-outline-danger" onclick="deleteGroup(${g.id})">삭제</button>
       </div></td>`;

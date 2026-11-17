@@ -32,7 +32,7 @@ import requests
 
 # 데몬 버전 — 하트비트로 WAS 에 보고하고, WAS 는 배포된 저장소의 이 값을 "최신"으로 삼아
 # 장비별 구버전 여부를 판정한다. 파싱·전송 동작이 바뀌면 올린다 (여기가 유일한 출처).
-DAEMON_VERSION = "1.2.1"
+DAEMON_VERSION = "1.3.0"
 
 # 자가 업데이트 후 스스로 종료해 재시작될 때 쓰는 종료 코드.
 # 유닛이 Restart=on-failure + RestartPreventExitStatus=1 이므로 0 도 1 도 아니어야 한다.
@@ -673,6 +673,7 @@ class SolTraceDaemon:
         self.poll_interval = int(self.cfg["poll_interval"])
         self.heartbeat_interval = int(self.cfg["heartbeat_interval"])
         self.skip_login_logout = self.cfg.getboolean("skip_login_logout", fallback=False)
+        self._backfill_proc = None   # 웹 로그 재전송 bulk 프로세스 (_start_backfill)
 
         self.tailers = [
             FileTailer(self.cfg["transfer_log"], parse_transfer_log, state_dir),
@@ -912,6 +913,10 @@ class SolTraceDaemon:
             time.sleep(self.heartbeat_interval)
             if not self.running:
                 break
+            # 끝난 재전송 프로세스를 거둔다(좀비 방지) — 결과는 bulk 가 WAS 에 직접 보고했다
+            if self._backfill_proc is not None and self._backfill_proc.poll() is not None:
+                log.info("Backfill process exited (code=%s)", self._backfill_proc.returncode)
+                self._backfill_proc = None
             status_payload = self._collect_status()
             try:
                 result = self.client.heartbeat(self.hostname, self.ip, status_payload)
@@ -932,8 +937,80 @@ class SolTraceDaemon:
                     if result.get("update"):
                         log.info("Update requested by WAS — starting self-update")
                         threading.Thread(target=self._self_update, daemon=True).start()
+                    if result.get("backfill"):
+                        self._start_backfill(result["backfill"])
                 else:
                     log.warning("Heartbeat failed")
+
+    _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    # 웹이 고른 파일 이름 패턴 — 설정된 로그 폴더 안의 파일 이름만. WAS(app/backfill.PATTERN_RE)와
+    # 같은 규칙으로 여기서도 막는다: 웹 요청으로 장비의 임의 경로를 읽게 하지 않는다.
+    _PATTERN_RE = re.compile(r"^[A-Za-z0-9._*?\[\]-]{1,100}$")
+
+    @classmethod
+    def _backfill_file_args(cls, job: dict) -> Optional[list]:
+        """작업의 파일 패턴 → bulk 인자. 규칙에 어긋나면 None."""
+        args = []
+        for key, name_opt, skip_opt in (("transfer_pattern", "--transfer-name", "--no-transfer"),
+                                        ("extended_pattern", "--extended-name", "--no-extended")):
+            pat = job.get(key)
+            if not pat:
+                args.append(skip_opt)
+            elif ".." in pat or not cls._PATTERN_RE.match(pat):
+                return None
+            else:
+                args += [name_opt, pat]
+        return args
+
+    def _start_backfill(self, job: dict):
+        """웹 로그 재전송 — soltrace_bulk.py 를 별도 프로세스로 띄운다.
+
+        같은 프로세스의 스레드로 돌리면 파서의 세션 상태(USER·RNFR, 모듈 전역)가 실시간 수집과
+        섞인다. 진행 보고는 bulk 가 WAS 에 직접 한다. 데몬이 재시작되면 systemd 가 같은
+        cgroup 의 bulk 도 정리하고, WAS 는 보고가 끊긴 작업을 실패로 닫는다.
+        """
+        try:
+            job_id = int(job["job_id"])
+            date_from, date_to = str(job["date_from"]), str(job["date_to"])
+        except (KeyError, TypeError, ValueError):
+            log.error("Backfill: malformed job from WAS: %r", job)
+            return
+        if not (self._DATE_RE.match(date_from) and self._DATE_RE.match(date_to)):
+            log.error("Backfill: malformed dates from WAS: %r", job)
+            return
+        file_args = self._backfill_file_args(job)
+        if file_args is None:
+            log.error("Backfill job %d: bad file pattern from WAS: %r", job_id, job)
+            self._report_backfill(job_id, "failed", "허용되지 않는 파일 패턴")
+            return
+        if self._backfill_proc is not None and self._backfill_proc.poll() is None:
+            log.warning("Backfill job %d refused — previous one still running", job_id)
+            self._report_backfill(job_id, "failed", "이전 재전송이 아직 실행 중")
+            return
+        cmd = [sys.executable, str(BASE_DIR / "soltrace_bulk.py"),
+               "--job-id", str(job_id), "--date-from", date_from, "--date-to", date_to] + file_args
+        try:
+            self._backfill_proc = subprocess.Popen(
+                cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            log.error("Backfill job %d failed to start: %s", job_id, e)
+            self._report_backfill(job_id, "failed", "장비에서 실행 실패: %s" % e)
+            return
+        log.info("Backfill job %d started (%s ~ %s, %s, pid=%d) — see backfill.log",
+                 job_id, date_from, date_to, " ".join(file_args), self._backfill_proc.pid)
+
+    def _report_backfill(self, job_id: int, state: str, message: str):
+        # _post 는 실패 시 재시도하며 잠들어 하트비트 스레드를 붙잡는다 — 한 번만 보낸다
+        try:
+            self.client.session.post(
+                "%s/api/v1/ingest/backfill/progress" % self.client.base_url,
+                json={"device_key": self.device_key, "job_id": job_id,
+                      "state": state, "sent": 0, "message": message},
+                timeout=self.client.http_timeout,
+            )
+        except Exception as e:     # 실패해도 WAS 가 시간 초과로 닫는다
+            log.warning("Backfill job %d: report failed: %s", job_id, e)
 
     def _flush_startup_buffer(self) -> bool:
         """시작 시 이전 실패 버퍼를 먼저 전송한다. WAS 미응답 시에도 True를 반환해 계속 실행한다."""

@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Device, FtpLog
 from app.schemas import (
-    DeviceRegister, HeartbeatRequest, IngestResponse, LogBatch,
+    BackfillProgress, DeviceRegister, HeartbeatRequest, IngestResponse, LogBatch,
 )
+from app import backfill
 from app import purge
 from app import write_buffer as wb
 
@@ -101,8 +102,30 @@ def heartbeat(req: HeartbeatRequest, db: Session = Depends(get_db)):
     if device.update_requested:
         resp["update"] = True
         device.update_requested = False
+    # 로그 재전송 지시 — 자가 업데이트와 같은 통로(하트비트 응답)로 내려간다.
+    # 비활성 장비는 /logs 가 403 이라 보내 봐야 실패하므로 내리지 않는다.
+    if device.status != "disabled":
+        job = backfill.dispatch(db, device.id)
+        if job:
+            resp["backfill"] = job
     db.commit()
     return resp
+
+
+@router.post("/backfill/progress")
+def backfill_progress(req: BackfillProgress, db: Session = Depends(get_db)):
+    """장비의 bulk 프로세스가 재전송 진행 상황을 보고한다.
+
+    410 이면 그 작업은 이미 끝난 것(응답 없음으로 실패 처리됨 등)이라 bulk 가 멈춘다.
+    """
+    device = db.query(Device).filter(Device.device_key == req.device_key).first()
+    if not device:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown device key")
+    try:
+        backfill.report_progress(db, device.id, req.job_id, req.state, req.sent, req.message)
+    except backfill.JobNotActive:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Backfill job is not active")
+    return {"ok": True}
 
 
 @router.post("/logs", response_model=IngestResponse)
@@ -156,11 +179,14 @@ def ingest_logs(batch: LogBatch, db: Session = Depends(get_db)):
     if entries:
         # 즉시 DB 쓰기 대신 버퍼(lifespan 에서 워커마다 초기화)에 넣어 워커 블로킹 제거
         buf.add(entries)
-        # 업로드 자동 purge — 실패해도 로그 수신은 성공으로 둔다(500 이면 데몬이 같은 배치를 다시 보낸다)
-        try:
-            purge.enqueue_uploads(db, device.id, entries)
-        except Exception:
-            db.rollback()
-            log.exception("purge 큐 적재 실패 device=%s", device.id)
+        # 업로드 자동 purge — 실패해도 로그 수신은 성공으로 둔다(500 이면 데몬이 같은 배치를 다시 보낸다).
+        # 재전송분은 과거 업로드라 지금 purge 할 이유가 없고, 이미 들어와 있던 행까지 다시 오므로
+        # 걸면 같은 파일 purge 가 한 번 더 나간다.
+        if not batch.backfill:
+            try:
+                purge.enqueue_uploads(db, device.id, entries)
+            except Exception:
+                db.rollback()
+                log.exception("purge 큐 적재 실패 device=%s", device.id)
 
     return IngestResponse(accepted=accepted, rejected=rejected)

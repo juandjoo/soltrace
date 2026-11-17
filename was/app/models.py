@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    BigInteger, Boolean, Column, DateTime, Float, ForeignKey,
+    BigInteger, Boolean, Column, Date, DateTime, Float, ForeignKey,
     Identity, Index, Integer, String, Text, UniqueConstraint, text,
 )
 from sqlalchemy.orm import relationship
@@ -247,6 +247,37 @@ class PurgeJob(Base):
     __table_args__ = (
         Index("idx_purge_jobs_due", "next_try_at", postgresql_where=text("status = 'pending'")),
         Index("idx_purge_jobs_created", created_at.desc()),
+    )
+
+
+class BackfillJob(Base):
+    """로그 재전송 요청 한 건(장비 단위) — 큐이자 이력. 흐름은 app/backfill.py 참고."""
+    __tablename__ = "backfill_jobs"
+
+    id = Column(BigInteger, primary_key=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"))
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    date_from = Column(Date, nullable=False)
+    date_to = Column(Date, nullable=False)
+    # queued → sent → running → done | failed, 요청 시점에 대상이 아니면 skipped
+    status = Column(String(20), nullable=False, default="queued", server_default=text("'queued'"))
+    sent_count = Column(BigInteger, nullable=False, default=0, server_default=text("0"))  # WAS 가 받은 건수
+    # 읽을 파일 이름 패턴(설정된 로그 폴더 안). NULL = 그 로그는 읽지 않음
+    transfer_pattern = Column(String(100))
+    extended_pattern = Column(String(100))
+    message = Column(Text)
+    requested_by = Column(String(64))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now, server_default=text("NOW()"))
+    started_at = Column(DateTime(timezone=True))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, server_default=text("NOW()"))
+    finished_at = Column(DateTime(timezone=True))
+
+    device = relationship("Device")
+
+    __table_args__ = (
+        Index("idx_backfill_jobs_active", "device_id",
+              postgresql_where=text("status IN ('queued', 'sent', 'running')")),
+        Index("idx_backfill_jobs_group", "group_id", "device_id"),
     )
 
 

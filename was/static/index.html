@@ -1678,6 +1678,54 @@
   </div>
 </div>
 
+<!-- 로그 재전송 모달 (backfill.js) -->
+<div class="modal fade" id="backfillModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">로그 재전송 - <span id="bfGroupName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="bfGroupId">
+        <p class="small text-muted mb-2">
+          장비 디스크에 남아 있는 로그를 다시 보냅니다. 이미 들어와 있는 로그는 걸러지고 <b>빠진 것만</b> 추가됩니다.
+          기간은 최대 31일, 전체에서 2대씩 차례로 진행합니다. 재전송분은 업로드 자동 purge 를 걸지 않습니다.
+        </p>
+        <div class="d-flex align-items-end gap-2 flex-wrap mb-3">
+          <div><label class="form-label small mb-1" for="bfFrom">시작일</label>
+            <input type="date" class="form-control form-control-sm" id="bfFrom"></div>
+          <div><label class="form-label small mb-1" for="bfTo">종료일 (포함)</label>
+            <input type="date" class="form-control form-control-sm" id="bfTo"></div>
+        </div>
+        <div class="d-flex flex-column gap-1 mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <div class="form-check mb-0" style="width:150px"><input class="form-check-input" type="checkbox" id="bfUseTransfer" checked onchange="syncBackfillPatterns()">
+              <label class="form-check-label small" for="bfUseTransfer">TransferLog</label></div>
+            <input class="form-control form-control-sm font-monospace" id="bfTransferPattern" style="max-width:260px" placeholder="TransferLog*">
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <div class="form-check mb-0" style="width:150px"><input class="form-check-input" type="checkbox" id="bfUseExtended" checked onchange="syncBackfillPatterns()">
+              <label class="form-check-label small" for="bfUseExtended">ExtendedAllLog</label></div>
+            <input class="form-control form-control-sm font-monospace" id="bfExtendedPattern" style="max-width:260px" placeholder="ExtendedAllLog*">
+          </div>
+          <div class="form-text mt-0">장비 설정(config.ini)의 로그 폴더 안 <b>파일 이름</b> 패턴입니다. 예) <code>ExtendedAllLog.*.gz</code> = 압축본만,
+            <code>ExtendedAllLog*</code> = 현재 파일·.1·.gz 전부. 파일 이름에 날짜가 없어도 기간은 각 줄의 시각으로 거릅니다.</div>
+        </div>
+        <div class="mb-3"><button class="btn btn-primary btn-sm" id="bfSubmit" onclick="submitBackfill()">재전송 요청</button></div>
+        <div class="d-flex align-items-center mb-1">
+          <span class="small fw-semibold">장비별 최근 재전송</span>
+          <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="loadBackfillJobs()" title="새로고침"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+        <div id="bfJobs"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 장비 그룹 배정 모달 -->
 <div class="modal fade" id="deviceGroupModal" tabindex="-1">
   <div class="modal-dialog">
@@ -1734,6 +1782,7 @@
 <script src="/static/js/settings.js?v=__VER__"></script>
 <script src="/static/js/settings-login.js?v=__VER__"></script>
 <script src="/static/js/groups.js?v=__VER__"></script>
+<script src="/static/js/backfill.js?v=__VER__"></script>
 <script src="/static/js/logs.js?v=__VER__"></script>
 <script src="/static/js/apiguide.js?v=__VER__"></script>
 <script src="/static/js/changelog.js?v=__VER__"></script>

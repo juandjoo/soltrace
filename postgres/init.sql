@@ -167,6 +167,28 @@ ALTER TABLE purge_jobs ADD COLUMN IF NOT EXISTS target_id INT REFERENCES purge_t
 CREATE INDEX IF NOT EXISTS idx_purge_jobs_due ON purge_jobs (next_try_at) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_purge_jobs_created ON purge_jobs (created_at DESC);
 
+-- 로그 재전송(backfill) 요청 — 장비 단위 큐 + 이력 (app/backfill.py)
+CREATE TABLE IF NOT EXISTS backfill_jobs (
+    id           BIGSERIAL PRIMARY KEY,
+    group_id     INT REFERENCES groups(id) ON DELETE SET NULL,
+    device_id    INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    date_from    DATE NOT NULL,
+    date_to      DATE NOT NULL,
+    status       VARCHAR(20) NOT NULL DEFAULT 'queued',
+    sent_count   BIGINT NOT NULL DEFAULT 0,
+    message      TEXT,
+    requested_by VARCHAR(64),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at   TIMESTAMPTZ,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at  TIMESTAMPTZ
+);
+ALTER TABLE backfill_jobs ADD COLUMN IF NOT EXISTS transfer_pattern VARCHAR(100);
+ALTER TABLE backfill_jobs ADD COLUMN IF NOT EXISTS extended_pattern VARCHAR(100);
+CREATE INDEX IF NOT EXISTS idx_backfill_jobs_active ON backfill_jobs (device_id)
+    WHERE status IN ('queued', 'sent', 'running');
+CREATE INDEX IF NOT EXISTS idx_backfill_jobs_group ON backfill_jobs (group_id, device_id);
+
 CREATE TABLE IF NOT EXISTS device_groups (
     device_id INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     group_id INT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,

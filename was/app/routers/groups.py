@@ -7,9 +7,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import Principal, get_current_user, require_admin
 from app.models import Device, DeviceGroup, Group, PurgeTarget, Telco
+from app import backfill
 from app import purge
 from app import daemon_update
 from app.schemas import (
+    BackfillJobResponse, BackfillRequest, BackfillRequestResult,
     DaemonUpdateGroups, DaemonUpdateResult, GroupCreate, GroupDeviceAssign, GroupResponse,
     GroupUpdate, TokenTestRequest, TokenTestResult,
 )
@@ -200,6 +202,46 @@ def request_group_daemon_update_bulk(
     두 그룹에 겹쳐 속한 장비는 한 번만 센다.
     """
     return DaemonUpdateResult(requested=daemon_update.for_groups(db, body.group_ids))
+
+
+def _get_group(db: Session, group_id: int) -> Group:
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+    return group
+
+
+@router.post("/{group_id}/backfill", response_model=BackfillRequestResult)
+def request_group_backfill(
+    group_id: int,
+    body: BackfillRequest,
+    db: Session = Depends(get_db),
+    user: Principal = Depends(require_admin),
+):
+    """그룹 장비들에 로그 재전송을 요청한다 — 장비 디스크에 남은 로그 중 WAS 에 없는 행만 들어온다.
+
+    각 장비의 다음 하트비트에서 시작하고, 전체에서 동시에 backfill.MAX_RUNNING 대씩 돈다.
+    """
+    _get_group(db, group_id)
+    try:
+        r = backfill.request_for_group(db, group_id, body.date_from, body.date_to, user.username,
+                                       body.transfer_pattern, body.extended_pattern)
+    except backfill.BackfillRequestError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return BackfillRequestResult(**r)
+
+
+@router.get("/{group_id}/backfill", response_model=List[BackfillJobResponse])
+def list_group_backfill(group_id: int, db: Session = Depends(get_db), _: str = Depends(require_admin)):
+    """그룹 장비별 가장 최근 재전송 작업."""
+    _get_group(db, group_id)
+    jobs = backfill.latest_for_group(db, group_id)
+    out = []
+    for j in jobs:
+        item = BackfillJobResponse.model_validate(j, from_attributes=True)
+        item.hostname = j.device.hostname if j.device else None
+        out.append(item)
+    return out
 
 
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import List, Optional
+from datetime import date, datetime
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -278,6 +278,48 @@ class DaemonUpdateGroups(BaseModel):
     group_ids: List[int] = []
 
 
+# ── 로그 재전송(backfill) ── app/backfill.py ────────────────────────────────────
+
+class BackfillRequest(BaseModel):
+    date_from: date
+    date_to: date
+    # 설정된 로그 폴더 안의 파일 이름 패턴(예: ExtendedAllLog.*.gz). None/빈 값 = 그 로그는 읽지 않음
+    transfer_pattern: Optional[str] = "TransferLog*"
+    extended_pattern: Optional[str] = "ExtendedAllLog*"
+
+
+class BackfillRequestResult(BaseModel):
+    queued: int = 0       # 작업을 만든 장비 수
+    skipped: int = 0      # 대상이 아니라 건너뛴 장비 수 (사유는 진행 상황 목록에)
+
+
+class BackfillJobResponse(BaseModel):
+    id: int
+    device_id: int
+    hostname: Optional[str] = None
+    date_from: date
+    date_to: date
+    status: str
+    sent_count: int = 0
+    transfer_pattern: Optional[str] = None
+    extended_pattern: Optional[str] = None
+    message: Optional[str] = None
+    requested_by: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    updated_at: datetime
+    finished_at: Optional[datetime] = None
+
+
+class BackfillProgress(BaseModel):
+    """장비의 bulk 프로세스가 보내는 진행 보고 (device_key 로 인증)."""
+    device_key: str
+    job_id: int
+    state: Literal["running", "done", "failed"]
+    sent: int = 0
+    message: Optional[str] = Field(default=None, max_length=2000)
+
+
 class DeviceConfirm(BaseModel):
     status: str = Field(default="confirmed", pattern="^(confirmed|disabled|pending)$")
 
@@ -388,6 +430,8 @@ class LogEntry(BaseModel):
 class LogBatch(BaseModel):
     device_key: str
     logs: List[LogEntry] = Field(max_length=500)
+    # 과거 로그 재전송분 — 업로드 자동 purge 를 걸지 않는다(몇 주 전 업로드를 지금 purge 하지 않게)
+    backfill: bool = False
 
 class IngestResponse(BaseModel):
     accepted: int
