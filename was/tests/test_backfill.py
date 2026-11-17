@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.backfill import (
-    MAX_DAYS, SKIP_BUSY, SKIP_DISABLED, SKIP_OUTDATED, SKIP_PENDING,
+    SKIP_BUSY, SKIP_DISABLED, SKIP_OUTDATED, SKIP_PENDING,
     BackfillRequestError, _months_ago, clean_pattern, skip_reason, validate_range,
 )
 from app.gitinfo import version_at_least
@@ -21,12 +21,11 @@ TODAY = date(2026, 11, 17)
 
 # ── 기간 ─────────────────────────────────────────────────────────────────────
 
-def test_range_ok_31_days():
-    validate_range(date(2026, 10, 18), TODAY, TODAY, 36)   # 시작·끝 포함 31일
+def test_range_has_no_length_limit():
+    validate_range(date(2024, 1, 1), TODAY, TODAY, 36)     # 기간 상한 없음 — 보존 기간 안이면 된다
 
 
 @pytest.mark.parametrize("f,t,msg", [
-    (date(2026, 10, 17), TODAY, f"최대 {MAX_DAYS}일"),
     (date(2026, 11, 10), date(2026, 11, 9), "시작일이"),
     (date(2026, 11, 10), date(2026, 11, 18), "오늘보다"),
     (date(2026, 9, 30), date(2026, 10, 2), "보존 기간"),   # 보존 1개월 → 2026-10-01 부터

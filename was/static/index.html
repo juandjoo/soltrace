@@ -90,8 +90,7 @@
   <nav id="sidenav">
     <a class="nav-link active" href="#" onclick="nav('dashboard')" title="대시보드"><i class="bi bi-speedometer2"></i><span>대시보드</span></a>
     <a class="nav-link" href="#" onclick="nav('logs')" title="로그 조회"><i class="bi bi-list-ul"></i><span>로그 조회</span></a>
-    <a class="nav-link" href="#" onclick="nav('devices')" title="장비 관리" data-admin-only><i class="bi bi-hdd-stack-fill"></i><span>장비 관리</span></a>
-    <a class="nav-link" href="#" onclick="nav('groups')" title="그룹 관리" data-admin-only><i class="bi bi-diagram-3-fill"></i><span>그룹 관리</span></a>
+    <a class="nav-link" href="#" onclick="nav('devices')" title="장비·그룹" data-admin-only><i class="bi bi-hdd-stack-fill"></i><span>장비·그룹</span></a>
     <a class="nav-link" href="#" onclick="nav('apiguide')" title="API 가이드"><i class="bi bi-code-slash"></i><span>API 가이드</span></a>
     <a class="nav-link" href="#" onclick="nav('architecture')" title="구성도" data-admin-only><i class="bi bi-diagram-2"></i><span>구성도</span></a>
     <a class="nav-link" href="#" onclick="nav('changelog')" title="변경 이력" data-admin-only><i class="bi bi-clock-history"></i><span>변경 이력</span></a>
@@ -421,67 +420,26 @@
       </div>
     </div>
 
-    <!-- 장비 관리 -->
+    <!-- 장비·그룹 (device-view.js) -->
     <div id="page-devices" class="page">
-      <div class="d-flex align-items-center mb-3">
-        <h5 class="mb-0 fw-bold"><i class="bi bi-hdd-stack-fill me-2 text-brand"></i>장비 관리</h5>
+      <div class="d-flex align-items-center mb-3 gap-2">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-hdd-stack-fill me-2 text-brand"></i>장비·그룹</h5>
         <div class="ms-auto d-flex gap-2">
-          <select class="form-select form-select-sm" id="deviceFilter" onchange="loadDevices()" style="width:120px">
-            <option value="">전체</option>
-            <option value="pending">대기중</option>
-            <option value="confirmed">확인됨</option>
-            <option value="disabled">비활성</option>
-          </select>
-          <button class="btn btn-sm btn-outline-success" id="devBulkBtn" onclick="requestPickedDaemonUpdate()" disabled>
-            <i class="bi bi-arrow-repeat me-1"></i>선택 업데이트 <span id="devPickCount">0</span>
-          </button>
-          <button class="btn btn-sm btn-outline-primary" onclick="loadDevices()"><i class="bi bi-arrow-clockwise"></i></button>
+          <button class="btn btn-sm btn-outline-primary" onclick="loadDevices()" title="새로고침"><i class="bi bi-arrow-clockwise"></i></button>
+          <button class="btn btn-sm btn-primary" onclick="openGroupModal()"><i class="bi bi-plus-lg me-1"></i>그룹 추가</button>
         </div>
       </div>
-      <div class="card">
-        <div class="table-responsive">
-          <table class="table table-hover mb-0">
-            <thead class="table-light">
-              <tr>
-                <th class="text-center" style="width:38px"><input class="form-check-input" type="checkbox" id="devPickAll" onchange="togglePickAllDevices(this.checked)" title="전체 선택"></th>
-                <th class="text-center">호스트명</th><th class="text-center">IP</th><th class="text-center">장비상태</th><th class="text-center">데몬상태</th>
-                <th class="text-center">CPU / MEM / Disk</th><th class="text-center">버퍼</th>
-                <th class="text-center">마지막 연결</th><th class="text-center">그룹</th><th></th>
-              </tr>
-            </thead>
-            <tbody id="deviceTable"><tr><td colspan="10" class="text-center text-muted py-4">로딩 중...</td></tr></tbody>
-          </table>
-        </div>
+      <!-- 좁은 화면에서는 왼쪽 목록 대신 이 선택 상자 -->
+      <select class="form-select form-select-sm mb-2 dg-mobile-pick" id="dgMobilePick" onchange="selectDeviceView(this.value)"></select>
+      <div class="dg-wrap">
+        <aside class="dg-side">
+          <div class="p-2 border-bottom">
+            <input class="form-control form-control-sm" id="dgSearch" placeholder="그룹 / 고객사 / 호스트명 / IP" oninput="renderDeviceSide()">
+          </div>
+          <div class="dg-list" id="dgSide"><div class="text-center text-muted py-4 small">로딩 중...</div></div>
+        </aside>
+        <section id="dgRight" class="min-w-0"></section>
       </div>
-    </div>
-
-    <!-- 그룹 관리 -->
-    <div id="page-groups" class="page">
-      <div class="d-flex align-items-center mb-3">
-        <h5 class="mb-0 fw-bold"><i class="bi bi-diagram-3-fill me-2 text-brand"></i>그룹 관리</h5>
-        <button class="btn btn-sm btn-outline-success ms-auto" id="grpBulkBtn" onclick="requestPickedGroupDaemonUpdate()" disabled>
-          <i class="bi bi-arrow-repeat me-1"></i>선택 업데이트 <span id="grpPickCount">0</span>
-        </button>
-        <button class="btn btn-sm btn-primary ms-2" onclick="openGroupModal()">
-          <i class="bi bi-plus-lg me-1"></i>그룹 추가
-        </button>
-      </div>
-      <div class="d-flex align-items-center mb-2 gap-2 flex-wrap">
-        <div id="groupFilter" class="d-flex gap-2 flex-wrap"></div>
-        <div class="ms-auto d-flex align-items-center gap-1">
-          <label class="form-label mb-0 small text-muted">페이지당</label>
-          <select class="form-select form-select-sm" style="width:72px" id="groupPageSize" onchange="renderGroupPage(1)">
-            <option value="10">10</option>
-            <option value="20" selected>20</option>
-            <option value="50">50</option>
-            <option value="0">전체</option>
-          </select>
-        </div>
-      </div>
-      <div id="groupCards">
-        <div class="text-center text-muted py-4">로딩 중...</div>
-      </div>
-      <div id="groupPager" class="d-flex justify-content-center mt-2"></div>
     </div>
 
     <!-- API 가이드 -->
@@ -792,8 +750,8 @@
               <table class="table table-sm mb-0" style="font-size:0.75rem">
                 <tbody>
                   <tr><td class="text-muted" style="width:42%">WAS 업데이트</td><td>설정 &gt; 시스템 업데이트 버튼<br>또는 서버에서 <code>sudo bash scripts/update_rocky8.sh main</code></td></tr>
-                  <tr><td class="text-muted">새 장비 붙이기</td><td>장비에 데몬 설치 → 장비 관리에서 <b>확인(Confirm)</b> → 그룹 배정</td></tr>
-                  <tr><td class="text-muted">데몬 업데이트</td><td>장비 관리 &gt; 해당 장비 ↻ · 여러 대는 체크 후 <b>선택 업데이트</b> · 그룹째는 그룹 관리 ↻ 또는 체크 후 <b>선택 업데이트</b></td></tr>
+                  <tr><td class="text-muted">새 장비 붙이기</td><td>장비에 데몬 설치 → 장비·그룹 › <b>승인 대기</b>에서 <b>승인</b> → ⋯ › <b>그룹 이동</b></td></tr>
+                  <tr><td class="text-muted">데몬 업데이트</td><td>장비·그룹 › 장비 행 ⋯ › <b>데몬 업데이트</b> · 여러 대는 체크 후 <b>업데이트</b> · 그룹째는 그룹을 골라 <b>전체 업데이트</b></td></tr>
                   <tr><td class="text-muted">고객사 계정 · API 키</td><td>설정 &gt; 고객 계정 — <b>FTP 계정 매핑을 반드시 등록</b>한다(그룹 + FTP 아이디). 없으면 그 계정은 아무것도 보지 못한다</td></tr>
                   <tr><td class="text-muted">알림 채널</td><td>설정 &gt; 알림 설정 (웹훅 · HMS) · 테스트 발송 버튼</td></tr>
                   <tr><td class="text-muted">알림이 잦을 때</td><td>설정 &gt; 이상 감지 임계값 — 먼저 <b>발송 전 지속 버킷 수</b>를 올리고, 그래도 잦으면 해당 지표의 하한을 올린다</td></tr>
@@ -811,7 +769,7 @@
               <table class="table table-sm mb-0" style="font-size:0.75rem">
                 <tbody>
                   <tr><td class="text-muted" style="width:38%">화면이 안 뜨거나 500</td><td><code>systemctl status soltrace-was</code> → <code>/var/log/soltrace/error.log</code> 마지막 트레이스백. 배포 직후면 <code>selfupdate.log</code></td></tr>
-                  <tr><td class="text-muted">로그가 안 들어옴</td><td>장비 관리에서 <b>데몬 상태</b> 확인(하트비트 120초) → 장비에서 <code>systemctl status soltrace-daemon</code>, <code>daemon.log</code>. 데몬이 멀쩡하면 <b>원본 로그가 쌓이는지</b> 본다(<code>tail -f</code> 로 위 TransferLog · ExtendedAllLog) — 비어 있으면 proftpd 설정·경로 문제다. WAS 가 살아나면 장비 버퍼가 자동 재전송한다</td></tr>
+                  <tr><td class="text-muted">로그가 안 들어옴</td><td>장비·그룹에서 <b>데몬 상태</b> 확인(하트비트 120초) → 장비에서 <code>systemctl status soltrace-daemon</code>, <code>daemon.log</code>. 데몬이 멀쩡하면 <b>원본 로그가 쌓이는지</b> 본다(<code>tail -f</code> 로 위 TransferLog · ExtendedAllLog) — 비어 있으면 proftpd 설정·경로 문제다. WAS 가 살아나면 장비 버퍼가 자동 재전송한다</td></tr>
                   <tr><td class="text-muted">알림이 쏟아짐</td><td>같은 장비·지표면 대개 임계가 그 장비에 안 맞는 것 — 위 '알림이 잦을 때'. 작업 중이면 음소거</td></tr>
                   <tr><td class="text-muted">디스크 부족</td><td>설정 &gt; DB 저장소에서 사용률·파티션 확인. 자동 정리가 켜져 있으면 오래된 월부터 <b>되돌릴 수 없이</b> 지운다 — 필요한 달은 먼저 백업 확인. DB 데이터 디렉토리를 다른 볼륨으로 옮겼다면 같은 화면의 <b>디스크 감시 경로</b>도 그 마운트로 바꿔야 한다(README '디스크 확장 · DB 위치 이동')</td></tr>
                   <tr><td class="text-muted">배포가 오래 걸림</td><td>스키마 단계에서 락 대기일 수 있다(<code>lock_timeout=5s</code>·3회 재시도). 로그를 보고 기다리되, 반복 실패면 한산한 시간에 다시 시도</td></tr>
@@ -1571,7 +1529,7 @@
           <input class="form-control form-control-sm" id="telcoApiPurgeUrl" placeholder="http://host:8000/v2/management/service/{service}/volume/{volume}/purge">
           <div class="form-text"><code>{service}</code> <code>{volume}</code> 자리에 그룹의 FTP ID별 서비스·볼륨이 들어갑니다.</div>
         </div>
-        <div class="small text-muted">API 계정·비밀번호와 토큰 발급 테스트는 <b>그룹 관리 › 수정</b>에서 그룹마다 넣습니다.</div>
+        <div class="small text-muted">API 계정·비밀번호와 토큰 발급 테스트는 <b>장비·그룹 › 그룹 설정</b>에서 그룹마다 넣습니다.</div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">닫기</button>
@@ -1652,32 +1610,6 @@
   </div>
 </div>
 
-<!-- 그룹 장비 등록 모달 (그룹 관리 → 장비) -->
-<div class="modal fade" id="groupDeviceModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title">장비 등록 - <span id="gdGroupName"></span></h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="gdGroupId">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <input class="form-control form-control-sm" id="gdSearch" placeholder="호스트명 / IP / 버전 — 미등록 장비도 검색" oninput="filterGroupDevices()" style="max-width:300px">
-          <button class="btn btn-xs btn-outline-secondary" onclick="toggleGroupDevices(true)">전체 선택</button>
-          <button class="btn btn-xs btn-outline-secondary" onclick="toggleGroupDevices(false)">전체 해제</button>
-          <span class="ms-auto small text-muted"><span id="gdCount">0</span>대 선택됨</span>
-        </div>
-        <div id="gdDeviceList" class="d-flex flex-column gap-1"></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
-        <button class="btn btn-primary btn-sm" onclick="saveGroupDevices()">저장</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- 로그 재전송 모달 (backfill.js) -->
 <div class="modal fade" id="backfillModal" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -1690,7 +1622,7 @@
         <input type="hidden" id="bfGroupId">
         <p class="small text-muted mb-2">
           장비 디스크에 남아 있는 로그를 다시 보냅니다. 이미 들어와 있는 로그는 걸러지고 <b>빠진 것만</b> 추가됩니다.
-          기간은 최대 31일, 전체에서 2대씩 차례로 진행합니다. 재전송분은 업로드 자동 purge 를 걸지 않습니다.
+          기간 제한은 없고(보존 기간 안), 전체에서 2대씩 차례로 진행합니다. 재전송분은 업로드 자동 purge 를 걸지 않습니다.
         </p>
         <div class="d-flex align-items-end gap-2 flex-wrap mb-3">
           <div><label class="form-label small mb-1" for="bfFrom">시작일</label>
@@ -1726,21 +1658,22 @@
   </div>
 </div>
 
-<!-- 장비 그룹 배정 모달 -->
-<div class="modal fade" id="deviceGroupModal" tabindex="-1">
+<!-- 그룹 이동 모달 — 장비 하나 또는 체크한 여러 대 (devices.js) -->
+<div class="modal fade" id="deviceMoveModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h6 class="modal-title">그룹 배정 - <span id="dgDeviceName"></span></h6>
+        <h6 class="modal-title">그룹 이동 - <span id="dmTitle"></span></h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <input type="hidden" id="dgDeviceId">
-        <div id="dgGroupList" class="d-flex flex-column gap-2"></div>
+        <label class="form-label small" for="dmGroup">옮길 그룹</label>
+        <select class="form-select form-select-sm" id="dmGroup"></select>
+        <div class="form-text">장비는 고른 그룹 <b>하나</b>에만 속하게 됩니다. '그룹 없음'을 고르면 미배정이 됩니다.</div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
-        <button class="btn btn-primary btn-sm" onclick="saveDeviceGroups()">저장</button>
+        <button class="btn btn-primary btn-sm" onclick="saveDeviceMove()">이동</button>
       </div>
     </div>
   </div>
@@ -1779,6 +1712,7 @@
 <script src="/static/js/utils.js?v=__VER__"></script>
 <script src="/static/js/dashboard.js?v=__VER__"></script>
 <script src="/static/js/devices.js?v=__VER__"></script>
+<script src="/static/js/device-view.js?v=__VER__"></script>
 <script src="/static/js/settings.js?v=__VER__"></script>
 <script src="/static/js/settings-login.js?v=__VER__"></script>
 <script src="/static/js/groups.js?v=__VER__"></script>

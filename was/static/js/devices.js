@@ -31,128 +31,6 @@ function groupBadge(g) {
   return `<span class="badge bg-light text-dark border me-1 fw-normal" title="${esc(title)}">${telco}${esc(g.name)}</span>`;
 }
 
-function metricBar(val, max, unit, warnAt, dangerAt) {
-  if (val == null) return '<span class="text-muted small">-</span>';
-  const pct = Math.min(100, (val / max) * 100);
-  const color = val >= dangerAt ? 'danger' : val >= warnAt ? 'warning' : 'success';
-  return `<div style="min-width:70px">
-    <div class="d-flex justify-content-between" style="font-size:11px">
-      <span>${val.toFixed(1)}${unit}</span>
-    </div>
-    <div class="progress" style="height:4px">
-      <div class="progress-bar bg-${color}" style="width:${pct}%"></div>
-    </div>
-  </div>`;
-}
-
-let _deviceCache = [];
-
-async function loadDevices() {
-  const filter = document.getElementById('deviceFilter').value;
-  const url = '/devices' + (filter ? `?status=${filter}` : '');
-  const devices = await api('GET', url);
-  if (!devices) return;
-  _deviceCache = devices;
-
-  const tbody = document.getElementById('deviceTable');
-  // 이전 렌더의 툴팁을 먼저 정리한다. Bootstrap 은 인스턴스를 element 키의 Map(강한 참조)에
-  // 담으므로, dispose 없이 innerHTML 을 갈아끼우면 떨어져 나간 DOM 이 계속 붙잡혀 있다
-  // (장비 목록은 탭 이동·승인·삭제 때마다 다시 그려진다).
-  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
-    bootstrap.Tooltip.getInstance(el)?.dispose()
-  );
-  if (!devices.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">등록된 장비가 없습니다.</td></tr>';
-    updateDevicePickCount();
-    return;
-  }
-
-  tbody.innerHTML = devices.map(d => {
-    // 끊김 판정은 서버(app/device_health) 한 곳 — 대시보드·알림과 같은 규칙
-    const dStatus = d.effective_daemon_status || d.daemon_status || 'unknown';
-    const offline = dStatus === 'stopped' || dStatus === 'lost';
-    const errMsg = offline ? `마지막 하트비트: ${timeAgo(d.last_heartbeat)}` : d.error_message;
-
-    return `<tr class="${dStatus==='error'?'table-danger-subtle':''}">
-      <td class="text-center"><input class="form-check-input dev-pick" type="checkbox" value="${d.id}" onchange="updateDevicePickCount()"></td>
-      <td>
-        <strong>${esc(d.hostname)}</strong>
-        <div style="font-size:11px" class="${d.daemon_outdated ? 'text-warning fw-semibold' : 'text-muted'}">${esc(d.daemon_version||'')}${d.daemon_outdated ? ' <i class="bi bi-exclamation-triangle-fill" data-bs-toggle="tooltip" title="구버전 — 데몬 업데이트가 필요합니다"></i>' : ''}</div>
-      </td>
-      <td class="text-center text-muted small">${esc(d.ip_address||'-')}</td>
-      <td class="text-center">${statusBadge(d.status)}</td>
-      <td class="text-center">
-        ${daemonBadge(dStatus, errMsg)}
-        <div class="text-muted" style="font-size:11px">${fmtUptime(d.daemon_uptime)} 가동</div>
-      </td>
-      <td class="text-center">
-        <div class="d-flex gap-2 align-items-center justify-content-center">
-          ${metricBar(d.cpu_percent, 100, '%', 70, 90)}
-          ${metricBar(d.mem_mb, 512, 'MB', 400, 480)}
-          ${d.disk_free_gb != null ? `<span class="small text-muted">💾${d.disk_free_gb.toFixed(1)}G</span>` : ''}
-        </div>
-      </td>
-      <td class="text-center small">
-        ${d.buffer_lines > 0 ? `<span class="badge bg-warning text-dark">${d.buffer_lines.toLocaleString()}건</span>` : '<span class="text-muted">-</span>'}
-        ${d.queue_size > 0 ? `<span class="badge bg-info text-dark ms-1">Q:${d.queue_size}</span>` : ''}
-      </td>
-      <td class="text-center text-muted small">${timeAgo(d.last_heartbeat)}</td>
-      <td>${d.groups.map(groupBadge).join('')||'<span class="text-muted small">-</span>'}</td>
-      <td class="text-end text-nowrap">
-        ${d.status === 'pending' ? `<button class="btn btn-xs btn-success me-1" onclick="confirmDevice(${d.id})">확인</button>` : ''}
-        ${d.status === 'confirmed' ? `<button class="btn btn-xs btn-warning me-1" onclick="disableDevice(${d.id})">비활성</button>` : ''}
-        ${d.status === 'disabled' ? `<button class="btn btn-xs btn-success me-1" onclick="enableDevice(${d.id})">활성화</button>` : ''}
-        <button class="btn btn-xs btn-outline-info me-1" onclick="showDeviceStatus(${d.id})">상태</button>
-        <button class="btn btn-xs btn-outline-secondary me-1" onclick="openDeviceGroups(${d.id})">그룹</button>
-        <button class="btn btn-xs ${d.update_requested ? 'btn-warning' : 'btn-outline-success'} me-1" onclick="requestDaemonUpdate(${d.id})" title="이 장비의 데몬을 최신 버전으로 업데이트">업데이트</button>
-        <button class="btn btn-xs btn-outline-danger" onclick="deleteDevice(${d.id})">삭제</button>
-      </td>
-    </tr>`;
-  }).join('');
-
-  // 방금 만든 행에만 붙인다 (예전엔 document 전체를 훑어 다른 화면 요소까지 다시 초기화했다)
-  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
-    new bootstrap.Tooltip(el, {placement:'top'})
-  );
-  updateDevicePickCount();   // 다시 그리면 선택이 풀린다 — 버튼/헤더 체크도 같이 되돌린다
-}
-
-// ── 체크한 장비 일괄 업데이트 ────────────────────────────────────────────────
-// 장비 하나짜리 ↻(requestDaemonUpdate)와 같은 요청을 여러 대에 한 번에 건다.
-
-function _pickedDeviceIds() {
-  return [...document.querySelectorAll('#deviceTable .dev-pick:checked')].map(el => parseInt(el.value));
-}
-
-function updateDevicePickCount() {
-  const n = _pickedDeviceIds().length;
-  const total = document.querySelectorAll('#deviceTable .dev-pick').length;
-  const cnt = document.getElementById('devPickCount');
-  const btn = document.getElementById('devBulkBtn');
-  if (cnt) cnt.textContent = n;
-  if (btn) btn.disabled = n === 0;
-  const all = document.getElementById('devPickAll');
-  if (all) { all.checked = total > 0 && n === total; all.indeterminate = n > 0 && n < total; }
-}
-
-function togglePickAllDevices(checked) {
-  document.querySelectorAll('#deviceTable .dev-pick').forEach(el => { el.checked = checked; });
-  updateDevicePickCount();
-}
-
-async function requestPickedDaemonUpdate() {
-  const ids = _pickedDeviceIds();
-  if (!ids.length) return;
-  const names = ids.map(id => _deviceCache.find(d => d.id === id)?.hostname || `#${id}`);
-  const preview = names.slice(0, 5).join(', ') + (names.length > 5 ? ` 외 ${names.length - 5}대` : '');
-  if (!confirm(`장비 ${ids.length}대의 데몬을 업데이트하시겠습니까?\n${preview}\n\n각 장비의 다음 하트비트에서 최신 데몬을 내려받고 재시작합니다.`)) return;
-  try {
-    const r = await api('POST', '/devices/bulk-update', {device_ids: ids});
-    alert(`${r?.requested ?? ids.length}대에 업데이트 요청이 전송되었습니다.`);
-    loadDevices();
-  } catch (e) { alert('업데이트 요청 실패: ' + e.message); }
-}
-
 function showDeviceStatus(id) {
   const d = _deviceCache.find(x => x.id === id);
   if (!d) return;
@@ -210,33 +88,63 @@ async function requestDaemonUpdate(id) {
   } catch(e) { alert('업데이트 요청 실패: ' + e.message); }
 }
 
-async function openDeviceGroups(deviceId) {
-  const d = _deviceCache.find(x => x.id === deviceId);
-  if (!d) return;
-  document.getElementById('dgDeviceId').value = deviceId;
-  document.getElementById('dgDeviceName').textContent = d.hostname;
-  const currentGroupIds = d.groups.map(g => g.id);
-  const groups = await api('GET', '/groups');
-  if (!groups) return;
-  allGroups = groups;
-  const list = document.getElementById('dgGroupList');
-  list.innerHTML = groups.map(g => `
-    <div class="form-check">
-      <input class="form-check-input" type="checkbox" id="dgg${g.id}" value="${g.id}"
-        ${currentGroupIds.includes(g.id)?'checked':''}>
-      <label class="form-check-label" for="dgg${g.id}">
-        ${g.telco ? `<span class="badge bg-info text-dark me-1">${esc(g.telco)}</span>` : ''}
-        ${esc(g.name)}
-      </label>
-    </div>
-  `).join('');
-  bootstrap.Modal.getOrCreateInstance(document.getElementById('deviceGroupModal')).show();
+
+// ── 체크한 장비 일괄 작업 (오른쪽 표 위 막대) ───────────────────────────────
+
+function pickedDeviceIds() {
+  return [...document.querySelectorAll('#dgRight .dev-pick:checked')].map(el => parseInt(el.value));
 }
 
-async function saveDeviceGroups() {
-  const id = document.getElementById('dgDeviceId').value;
-  const checked = [...document.querySelectorAll('#dgGroupList input:checked')].map(el=>parseInt(el.value));
-  await api('PUT', `/devices/${id}/groups`, {group_ids: checked});
-  bootstrap.Modal.getInstance(document.getElementById('deviceGroupModal')).hide();
+function _pickedPreview(ids) {
+  const names = ids.map(id => _deviceCache.find(d => d.id === id)?.hostname || `#${id}`);
+  return names.slice(0, 5).join(', ') + (names.length > 5 ? ` 외 ${names.length - 5}대` : '');
+}
+
+async function requestPickedDaemonUpdate() {
+  const ids = pickedDeviceIds();
+  if (!ids.length) return;
+  if (!confirm(`장비 ${ids.length}대의 데몬을 업데이트하시겠습니까?\n${_pickedPreview(ids)}\n\n각 장비의 다음 하트비트에서 최신 데몬을 내려받고 재시작합니다.`)) return;
+  try {
+    const r = await api('POST', '/devices/bulk-update', {device_ids: ids});
+    alert(`${r?.requested ?? ids.length}대에 업데이트 요청이 전송되었습니다.`);
+    loadDevices();
+  } catch (e) { alert('업데이트 요청 실패: ' + e.message); }
+}
+
+async function disablePickedDevices() {
+  const ids = pickedDeviceIds();
+  if (!ids.length) return;
+  if (!confirm(`장비 ${ids.length}대를 비활성화하시겠습니까?\n${_pickedPreview(ids)}\n\n비활성 장비의 로그는 받지 않습니다.`)) return;
+  try {
+    for (const id of ids) await api('PUT', `/devices/${id}/status`, {status: 'disabled'});
+  } catch (e) { alert('비활성화 실패: ' + e.message); }
+  loadDevices();
+}
+
+// ── 그룹 이동 — 장비 하나(행 메뉴) 또는 체크한 여러 대 ──────────────────────
+// 장비는 그룹 하나에만 둔다(운영 데이터상 여러 그룹 소속이 0대 — 2026-11-17).
+// 서버 매핑(device_groups)은 여러 그룹을 허용하므로, 이동은 '그 그룹 하나로 바꾸기'다.
+let _moveIds = [];
+
+function openDeviceMove(ids) {
+  _moveIds = ids.length ? ids : pickedDeviceIds();
+  if (!_moveIds.length) return;
+  document.getElementById('dmTitle').textContent = _moveIds.length === 1
+    ? (_deviceCache.find(d => d.id === _moveIds[0])?.hostname || '') : `${_moveIds.length}대`;
+  const cur = _deviceCache.find(d => d.id === _moveIds[0])?.groups?.[0]?.id;
+  const telcos = [...new Set(allGroups.map(g => g.telco || ''))].sort((a, b) => (!a) - (!b) || a.localeCompare(b));
+  document.getElementById('dmGroup').innerHTML = '<option value="">(그룹 없음)</option>' + telcos.map(t =>
+    `<optgroup label="${esc(t || '통신사 미지정')}">${allGroups.filter(g => (g.telco || '') === t)
+      .map(g => `<option value="${g.id}" ${g.id === cur ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</optgroup>`).join('');
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('deviceMoveModal')).show();
+}
+
+async function saveDeviceMove() {
+  const gid = document.getElementById('dmGroup').value;
+  const groupIds = gid ? [parseInt(gid)] : [];
+  try {
+    for (const id of _moveIds) await api('PUT', `/devices/${id}/groups`, {group_ids: groupIds});
+    bootstrap.Modal.getInstance(document.getElementById('deviceMoveModal')).hide();
+  } catch (e) { alert('그룹 이동 실패: ' + e.message); }
   loadDevices();
 }

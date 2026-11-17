@@ -25,7 +25,6 @@ from app.models import BackfillJob, Device, DeviceGroup
 
 log = logging.getLogger("soltrace.backfill")
 
-MAX_DAYS = 31                  # 한 번에 요청할 수 있는 최대 기간(시작·끝 포함)
 MAX_RUNNING = 2                # 전체에서 동시에 보내는 장비 수 — 쓰기 버퍼 포화 방지
 MIN_DAEMON_VERSION = "1.3.0"   # 하트비트의 backfill 지시를 알아듣는 첫 데몬 버전
 # 지시를 내려보냈는데 bulk 가 시작 보고를 안 하면(데몬 재시작·구버전) 슬롯을 비운다
@@ -83,9 +82,8 @@ def validate_range(date_from: date, date_to: date, today: date, retention_months
         raise BackfillRequestError("시작일이 종료일보다 늦습니다")
     if date_to > today:
         raise BackfillRequestError("종료일이 오늘보다 늦습니다")
-    days = (date_to - date_from).days + 1
-    if days > MAX_DAYS:
-        raise BackfillRequestError(f"기간은 최대 {MAX_DAYS}일입니다 (요청 {days}일)")
+    # 기간 길이에는 상한을 두지 않는다(2026-11-17 운영 결정) — 동시 2대 제한과 '기간 이전 파일은
+    # 열지 않음'(bulk)이 부하를 막는다. 보존 기간 밖만 막는다: 파티션이 없어 default 로 가거나 곧 지워진다.
     earliest = _months_ago(today, retention_months)
     if date_from < earliest:
         raise BackfillRequestError(

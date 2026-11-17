@@ -1,8 +1,7 @@
 // ── 그룹 → 로그 재전송(backfill) ────────────────────────────────────────────
-// 서버 규칙(기간 31일·보존 기간·동시 2대)은 app/backfill.py 한 곳에 있다. 여기서는
+// 서버 규칙(보존 기간·오늘까지·동시 2대 — 기간 길이 상한은 없다)은 app/backfill.py 한 곳에 있다. 여기서는
 // 입력 편의만 돕고 판정은 서버 응답(400 메시지)을 그대로 보여준다.
 
-const BACKFILL_MAX_DAYS = 31;
 const BACKFILL_POLL_MS = 10000;
 const BACKFILL_DEFAULT_PATTERNS = {Transfer: 'TransferLog*', Extended: 'ExtendedAllLog*'};
 const BACKFILL_ACTIVE = new Set(['queued', 'sent', 'running']);
@@ -65,7 +64,6 @@ async function submitBackfill() {
   if (!dateFrom || !dateTo) { alert('시작일과 종료일을 입력하세요.'); return; }
   const days = Math.round((new Date(dateTo) - new Date(dateFrom)) / 86400000) + 1;
   if (days < 1) { alert('시작일이 종료일보다 늦습니다.'); return; }
-  if (days > BACKFILL_MAX_DAYS) { alert(`기간은 최대 ${BACKFILL_MAX_DAYS}일입니다 (선택 ${days}일).`); return; }
   const transferPattern = _backfillPattern('Transfer');
   const extendedPattern = _backfillPattern('Extended');
   if (!transferPattern && !extendedPattern) { alert('TransferLog·ExtendedAllLog 중 하나 이상을 선택하세요.'); return; }

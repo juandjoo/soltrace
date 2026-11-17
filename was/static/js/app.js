@@ -3,9 +3,10 @@ const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {k
 let currentSettingsTab = 'telco';
 
 // 관리자 전용 페이지 — 고객 계정은 서버에서도 막히지만 UI 에서도 진입을 막는다.
-const ADMIN_PAGES = ['settings', 'changelog', 'architecture', 'devices', 'groups'];
+const ADMIN_PAGES = ['settings', 'changelog', 'architecture', 'devices'];
 
 function nav(page) {
+  if (page === 'groups') page = 'devices';   // 그룹 관리는 장비·그룹 화면에 합쳐졌다(2026-11-17)
   if (ADMIN_PAGES.includes(page) && getRole() !== 'admin') page = 'dashboard';
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
@@ -20,7 +21,6 @@ function nav(page) {
   else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
   if (page === 'logs') initLogsPage();
   if (page === 'devices') loadDevices();
-  if (page === 'groups') loadGroups();
   if (page === 'apiguide') initApiGuide();
   if (page === 'changelog') initChangelogPage();
   if (page === 'settings') settingsTab(currentSettingsTab);

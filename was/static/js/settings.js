@@ -270,7 +270,7 @@ async function loadTelcos() {
 }
 
 // ── 텔코 purge API 주소 ─────────────────────────────────────────────────────
-// 계정·비밀번호·토큰은 그룹마다(그룹 관리 › 수정) — 여기는 주소만.
+// 계정·비밀번호·토큰은 그룹마다(장비·그룹 › 그룹 설정) — 여기는 주소만.
 function telcoApiBadge(t) {
   return t.api_purge_url && t.api_auth_url
     ? '<span class="badge bg-success-subtle text-success-emphasis border fw-normal">API 주소 설정됨</span>'
@@ -729,7 +729,7 @@ function renderFtpMap(kind) {
     return;
   }
   if (!groups.length) {
-    box.innerHTML = `<div class="text-warning small">'${esc(customer)}' 고객사로 지정된 그룹이 없습니다. 그룹 관리에서 먼저 그룹의 고객사를 지정하세요.</div>`;
+    box.innerHTML = `<div class="text-warning small">'${esc(customer)}' 고객사로 지정된 그룹이 없습니다. 장비·그룹 › 그룹 설정에서 먼저 그룹의 고객사를 지정하세요.</div>`;
     return;
   }
   if (!_ftpMap[kind].length) _ftpMap[kind] = [{group_id: groups[0].id, usernames: []}];

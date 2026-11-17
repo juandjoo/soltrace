@@ -259,3 +259,30 @@ body        { background: var(--st-bg); font-size: 14px; }
 .pt-card.off .pt-fields { opacity: .5; }
 .pt-card .pt-lbl { font-size: .72rem; color: var(--st-muted); margin-bottom: 2px; display: block; }
 .pt-card .pt-name { font-weight: 600; }
+
+/* ── 장비·그룹 (왼쪽 그룹 목록 + 오른쪽 장비 표) — devices.js ─────────────── */
+.dg-wrap { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
+.dg-side { background: var(--st-surface); border: 1px solid var(--st-border); border-radius: 8px;
+           position: sticky; top: calc(var(--st-topbar-h) + 12px);
+           max-height: calc(100vh - var(--st-topbar-h) - 32px); display: flex; flex-direction: column; }
+.dg-list { overflow-y: auto; padding-bottom: 6px; }
+.dg-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; border-left: 3px solid transparent; }
+.dg-item:hover { background: var(--st-bg); }
+.dg-item.active { background: var(--st-brand-bg); border-left-color: var(--st-brand); }
+.dg-item .dg-nm { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dg-item .dg-sub { font-size: 11px; color: var(--st-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dg-telco { font-size: 11px; font-weight: 700; color: var(--st-muted); padding: 8px 12px 4px; display: flex; align-items: center;
+            cursor: pointer; user-select: none; border-top: 1px solid var(--st-border); margin-top: 4px; }
+.dg-telco:hover { color: var(--st-text); }
+.dg-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--st-border); }
+.dg-dot.ok { background: var(--bs-success); }
+.dg-dot.warn { background: var(--bs-warning); }
+.dg-dot.bad { background: var(--bs-danger); }
+.dg-bulk { background: var(--st-brand-bg); border: 1px solid var(--st-brand); border-radius: 8px; }
+.dg-mobile-pick { display: none; }
+@media (max-width: 860px) {
+  .dg-wrap { grid-template-columns: minmax(0, 1fr); }
+  .dg-side { display: none; }
+  .dg-mobile-pick { display: block; }
+  .dg-hide-sm { display: none; }
+}
