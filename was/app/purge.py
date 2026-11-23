@@ -2,7 +2,8 @@
 
 흐름:
   1. /ingest/logs 로 들어온 업로드 성공 로그 중, 그 장비가 속한 그룹의 purge_targets 에
-     등록된 FTP 계정 것만 purge_jobs 에 쌓는다(enqueue_uploads). 그룹 스위치(groups.purge_active)와
+     등록된 FTP 계정 것만 purge_jobs 에 쌓는다(enqueue_uploads). 한 계정을 마운트 경로별로 여러 개
+     등록할 수 있고, 업로드 경로에 맞는 마운트 경로 중 가장 긴 것 하나로 보낸다(pick_target). 그룹 스위치(groups.purge_active)와
      ID 스위치(purge_targets.enabled)가 둘 다 켜져 있어야 한다. 끈 동안 올라온 파일은 나중에 켜도 지우지 않는다.
   2. 워커 스레드가 쌓인 작업을 업로드 ID(=계정·서비스·볼륨)별로 묶어 filelist 한 번에 보낸다.
   3. 주소는 그룹 통신사(telcos.api_*_url), 계정은 업로드 ID(purge_targets.api_username/password)다.
@@ -70,6 +71,22 @@ def purge_path(file_path: str, strip_prefix: Optional[str]) -> Optional[str]:
     return file_path[len(prefix):]
 
 
+def pick_target(targets: List[PurgeTarget], file_path: str) -> Tuple[Optional[PurgeTarget], Optional[str]]:
+    """한 계정의 업로드 ID 들 중 이 경로에 맞는 것 → (대상, filelist 경로).
+
+    같은 FTP 계정을 마운트 경로별로 여러 개 둘 수 있다 — 경로가 맞는 것 중 **가장 긴** 마운트 경로가
+    이긴다(마운트 경로가 빈 ID 는 모든 경로에 맞는 기본값). 맞는 것이 없으면 (None, None).
+    """
+    best: Tuple[Optional[PurgeTarget], Optional[str]] = (None, None)
+    best_len = -1
+    for t in targets:
+        path = purge_path(file_path, t.strip_prefix)
+        prefix_len = len((t.strip_prefix or "").strip().rstrip("/"))
+        if path is not None and prefix_len > best_len:
+            best, best_len = (t, path), prefix_len
+    return best
+
+
 # ── 큐 적재 (ingest 경로) ─────────────────────────────────────────────────────
 
 def enqueue_uploads(db: Session, device_id: int, logs: list) -> int:
@@ -96,22 +113,36 @@ def enqueue_uploads(db: Session, device_id: int, logs: list) -> int:
     now = datetime.now(timezone.utc)
     jobs = []
     for e in uploads:
+        # 장비가 여러 그룹에 속하면 그룹마다 따로 고른다(그룹마다 통신사가 다르다)
+        by_group: Dict[int, List[PurgeTarget]] = {}
         for t in by_user.get(e.username, []):
-            path = purge_path(e.file_path, t.strip_prefix)
-            job = PurgeJob(
+            by_group.setdefault(t.group_id, []).append(t)
+        for group_targets in by_group.values():
+            t, path = pick_target(group_targets, e.file_path)
+            if t is None:
+                jobs.append(_unmatched_job(group_targets, device_id, e, now))
+                continue
+            jobs.append(PurgeJob(
                 group_id=t.group_id, target_id=t.id, device_id=device_id, ftp_username=e.username,
                 file_path=e.file_path, purge_path=path, service=t.service, volume=t.volume,
                 created_at=now, next_try_at=now,
-            )
-            if path is None:
-                # 설정이 틀린 것이라 재시도해도 같다 — 바로 실패로 남겨 화면에서 보이게
-                job.status = STATUS_FAILED
-                job.last_error = f"경로가 마운트 경로({t.strip_prefix})로 시작하지 않음"
-                job.done_at = now
-            jobs.append(job)
+            ))
     db.add_all(jobs)
     db.commit()
     return len(jobs)
+
+
+def _unmatched_job(targets: List[PurgeTarget], device_id: int, e, now: datetime) -> PurgeJob:
+    """어느 마운트 경로에도 맞지 않는 업로드 — 설정이 틀린 것이라 재시도해도 같다.
+    바로 실패로 남겨 화면에서 보이게 한다. 대상이 여럿이면 첫 번째(이름·경로순)로 기록한다."""
+    t = targets[0]
+    mounts = ", ".join(x.strip_prefix or "/" for x in targets)
+    return PurgeJob(
+        group_id=t.group_id, target_id=t.id, device_id=device_id, ftp_username=e.username,
+        file_path=e.file_path, purge_path=None, service=t.service, volume=t.volume,
+        created_at=now, next_try_at=now, status=STATUS_FAILED, done_at=now,
+        last_error=f"경로가 마운트 경로({mounts})로 시작하지 않음",
+    )
 
 
 # ── HTTP ──────────────────────────────────────────────────────────────────────

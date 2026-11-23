@@ -153,7 +153,7 @@ class Group(Base):
 
     devices = relationship("Device", secondary="device_groups", back_populates="groups")
     purge_targets = relationship(
-        "PurgeTarget", cascade="all, delete-orphan", order_by="PurgeTarget.ftp_username",
+        "PurgeTarget", cascade="all, delete-orphan", order_by="[PurgeTarget.ftp_username, PurgeTarget.strip_prefix]",
         passive_deletes=True,
     )
 
@@ -215,7 +215,11 @@ class PurgeTarget(Base):
     api_token_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=_now, server_default=text("NOW()"))
 
-    __table_args__ = (UniqueConstraint("group_id", "ftp_username"),)
+    # 같은 FTP 계정도 마운트 경로가 다르면 따로 둔다 — 경로별로 다른 서비스·볼륨으로 purge
+    __table_args__ = (
+        Index("uq_purge_targets_user_mount", "group_id", "ftp_username",
+              text("COALESCE(strip_prefix, '')"), unique=True),
+    )
 
     @property
     def has_api_password(self) -> bool:

@@ -133,9 +133,13 @@ CREATE TABLE IF NOT EXISTS purge_targets (
     service      VARCHAR(255) NOT NULL,
     volume       VARCHAR(255) NOT NULL,
     strip_prefix TEXT,
-    created_at   TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (group_id, ftp_username)
+    created_at   TIMESTAMPTZ DEFAULT NOW()
 );
+-- 같은 FTP 계정도 마운트 경로가 다르면 따로 둔다 — 경로별로 다른 서비스·볼륨으로 purge (2026-11-23)
+-- 예전 (group_id, ftp_username) 유일 제약을 (그룹, 계정, 마운트 경로) 유일 인덱스로 바꾼다
+ALTER TABLE purge_targets DROP CONSTRAINT IF EXISTS purge_targets_group_id_ftp_username_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_purge_targets_user_mount
+    ON purge_targets (group_id, ftp_username, COALESCE(strip_prefix, ''));
 -- 업로드 ID별 텔코 API 계정 — 비밀번호·토큰은 화면/API 응답에 다시 내보내지 않는다
 ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS api_username TEXT;
 ALTER TABLE purge_targets ADD COLUMN IF NOT EXISTS api_password TEXT;

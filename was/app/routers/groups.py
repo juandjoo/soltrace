@@ -32,27 +32,49 @@ def _clean(value):
     return value or None
 
 
-def _sync_purge_targets(group: Group, targets, telco_changed: bool) -> None:
-    """업로드 ID 목록을 맞춘다 — 같은 FTP ID 는 그 행을 고치고(비밀번호·토큰 유지), 빠진 ID 는 지운다.
+def _mount_key(strip_prefix) -> str:
+    """마운트 경로 비교용 — 화면 입력의 끝 '/' 와 공백 차이를 같은 것으로 본다."""
+    return (strip_prefix or "").strip().rstrip("/")
 
+
+def _stored_password(rows, api_username):
+    """같은 API 계정으로 이미 저장된 비밀번호 — 같은 계정에 마운트 경로를 추가할 때 다시 묻지 않는다."""
+    if not api_username:
+        return None
+    return next((r.api_password for r in rows if r.api_username == api_username and r.api_password), None)
+
+
+def _sync_purge_targets(group: Group, targets, telco_changed: bool) -> None:
+    """업로드 ID 목록을 맞춘다 — 같은 행(id, 없으면 FTP ID+마운트 경로)은 고치고(비밀번호·토큰 유지), 빠진 행은 지운다.
+
+    같은 FTP ID 도 마운트 경로가 다르면 따로 둔다(경로별로 다른 서비스·볼륨으로 purge).
     전체를 지우고 다시 넣으면 화면이 다시 보내지 않는 비밀번호와 발급받은 토큰이 사라진다.
-    비밀번호 칸을 비우면 기존 값 유지. 계정·비밀번호·통신사가 바뀐 ID 의 토큰은 버린다.
+    비밀번호 칸을 비우면 그 행에 저장된 값, 없으면 같은 API 계정에 저장된 값을 쓴다.
+    계정·비밀번호·통신사가 바뀐 행의 토큰은 버린다.
     """
     targets = targets or []
-    names = [t.ftp_username.strip() for t in targets]
-    dup = {n for n in names if names.count(n) > 1}
+    keys = [(t.ftp_username.strip(), _mount_key(t.strip_prefix)) for t in targets]
+    dup = sorted({f"{n} {m or '/'}" for n, m in keys if keys.count((n, m)) > 1})
     if dup:
-        raise HTTPException(status_code=422, detail=f"purge 대상 FTP ID 중복: {', '.join(sorted(dup))}")
-    existing = {t.ftp_username: t for t in group.purge_targets}
+        raise HTTPException(status_code=422, detail=f"purge 대상 FTP ID·마운트 경로 중복: {', '.join(dup)}")
+    current = list(group.purge_targets)
+    by_id = {t.id: t for t in current}
+    by_key = {(t.ftp_username, _mount_key(t.strip_prefix)): t for t in current}
+    # 화면이 돌려준 id 가 이 그룹 것일 때만 그 행을 고친다(마운트 경로를 바꿔도 비밀번호·토큰 유지).
+    # id 로 이미 짝지은 행은 FTP ID+경로로 다시 짝짓지 않는다 — 한 행을 두 카드가 나눠 갖지 않게
+    claimed = {t.id for t in targets if t.id in by_id}
     synced = []
-    for t in targets:
-        name = t.ftp_username.strip()
-        row = existing.get(name) or PurgeTarget(ftp_username=name)
+    for t, key in zip(targets, keys):
+        fallback = by_key.get(key)
+        if fallback is not None and fallback.id in claimed:
+            fallback = None
+        row = by_id.get(t.id) or fallback or PurgeTarget()
         before = (row.api_username, row.api_password)
+        row.ftp_username = key[0]
         row.enabled = t.enabled
         row.service = t.service.strip()
         row.volume = t.volume.strip()
-        row.strip_prefix = (t.strip_prefix or "").strip().rstrip("/") or None
+        row.strip_prefix = key[1] or None
         row.api_username = _clean(t.api_username)
         if _clean(t.api_password):
             row.api_password = _clean(t.api_password)
@@ -62,6 +84,10 @@ def _sync_purge_targets(group: Group, targets, telco_changed: bool) -> None:
             row.api_token = None
             row.api_token_at = None
         synced.append(row)
+    # 비밀번호 없는 행은 같은 API 계정의 저장값을 쓴다 — 이번에 함께 들어온 카드도 본다(카드 순서 무관)
+    for row in synced:
+        if row.api_username and not row.api_password:
+            row.api_password = _stored_password(synced + current, row.api_username)
     group.purge_targets = synced      # 빠진 행은 delete-orphan 으로 지워진다
 
 
@@ -128,18 +154,17 @@ def update_group(
 def test_group_token(body: TokenTestRequest, db: Session = Depends(get_db), _: str = Depends(require_admin)):
     """그룹 모달 업로드 ID 행의 '토큰 테스트' — 입력 중인 통신사·계정으로 실제 발급해 본다(저장하지 않음).
 
-    비밀번호를 비우면 그 그룹·FTP ID 에 저장된 비밀번호를 쓴다(수정 화면은 비밀번호를 다시 보여주지 않는다).
+    비밀번호를 비우면 그 행(target_id), 없으면 그 그룹에서 같은 API 계정에 저장된 비밀번호를 쓴다
+    (수정 화면은 비밀번호를 다시 보여주지 않는다).
     """
     telco = db.query(Telco).filter(Telco.name == body.telco).first()
     if telco is None or not telco.api_auth_url:
         return TokenTestResult(ok=False, message=f"통신사 '{body.telco}' 에 토큰 발급 URL 이 없습니다 (설정 › 텔코 정보)")
     password = _clean(body.api_password)
-    if not password and body.group_id and body.ftp_username:
-        stored = (db.query(PurgeTarget)
-                  .filter(PurgeTarget.group_id == body.group_id,
-                          PurgeTarget.ftp_username == body.ftp_username.strip())
-                  .first())
-        password = stored.api_password if stored else None
+    if not password and body.group_id:
+        rows = db.query(PurgeTarget).filter(PurgeTarget.group_id == body.group_id).all()
+        own = next((r for r in rows if r.id == body.target_id), None)
+        password = (own.api_password if own else None) or _stored_password(rows, _clean(body.api_username))
     try:
         token = purge.request_token(telco.api_auth_url, _clean(body.api_username), password)
     except purge.PurgeApiError as e:

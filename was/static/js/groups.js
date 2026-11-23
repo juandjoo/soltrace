@@ -6,7 +6,7 @@ function purgeBadge(g) {
   const ts = g.purge_targets || [];
   if (!ts.length) return '';
   const on = ts.filter(t => t.enabled !== false).length;
-  const tip = ts.map(t => `${t.enabled !== false ? '●' : '○'} ${t.ftp_username} → ${t.service}/${t.volume}`).join('\n');
+  const tip = ts.map(t => `${t.enabled !== false ? '●' : '○'} ${t.ftp_username}${t.strip_prefix ? ` ${t.strip_prefix}` : ''} → ${t.service}/${t.volume}`).join('\n');
   if (g.purge_active === false)
     return ` <span class="badge bg-light text-muted border fw-normal" title="업로드 자동 purge (그룹 꺼짐)&#10;${esc(tip)}">purge 꺼짐</span>`;
   return ` <span class="badge bg-info-subtle text-info-emphasis border fw-normal" title="업로드 자동 purge&#10;${esc(tip)}">purge ${on}/${ts.length}</span>`;
@@ -38,6 +38,8 @@ async function openGroupModal(id) {
 // ── 업로드 자동 purge — 업로드 ID별 카드 ───────────────────────────────────
 // 윗줄 감지(FTP ID · 마운트 경로), 아랫줄 API(계정 · 비밀번호 · 서비스 · 볼륨).
 // 비밀번호는 서버가 돌려주지 않는다 — 저장돼 있으면 비워 둔 채 '바꿀 때만 입력'.
+// 같은 FTP ID 도 마운트 경로가 다르면 카드를 따로 둔다('경로 추가') — 업로드 경로에 맞는 것 중
+// 가장 긴 마운트 경로의 서비스·볼륨으로 purge 한다. 같은 API 계정이면 비밀번호는 다시 넣지 않아도 된다.
 function _purgeCardHtml(t = {}) {
   const on = t.enabled !== false;
   const field = (col, lbl, cls, v, ph, extra = '') =>
@@ -45,7 +47,7 @@ function _purgeCardHtml(t = {}) {
   const tokenInfo = t.api_token_at
     ? `<span class="badge bg-success-subtle text-success-emphasis border fw-normal"><i class="bi bi-check-circle me-1"></i>토큰 발급 ${esc(fmtLocalDateTime(new Date(t.api_token_at)))}</span>`
     : (t.ftp_username ? '<span class="text-muted small">토큰 미발급</span>' : '');
-  return `<div class="pt-card${on ? '' : ' off'}">
+  return `<div class="pt-card${on ? '' : ' off'}" data-id="${t.id || ''}">
     <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
       <div class="form-check form-switch m-0" title="미사용이면 설정은 남기고 감지·purge 만 멈춥니다">
         <input class="form-check-input pt-enabled" type="checkbox" ${on ? 'checked' : ''} onchange="syncPurgeCardStates()">
@@ -54,6 +56,7 @@ function _purgeCardHtml(t = {}) {
       <span class="pt-name"><i class="bi bi-person me-1"></i><span class="pt-name-text">${esc(t.ftp_username || '새 ID')}</span></span>
       <span class="pt-msg">${tokenInfo}</span>
       <div class="ms-auto text-nowrap">
+        <button type="button" class="btn btn-xs btn-outline-primary" onclick="addPurgeMountCard(this)" title="같은 FTP ID·API 계정으로 다른 마운트 경로 추가"><i class="bi bi-signpost-split me-1"></i>경로 추가</button>
         <button type="button" class="btn btn-xs btn-outline-success" onclick="testPurgeTargetToken(this)" title="입력 중인 값으로 토큰 발급 시험"><i class="bi bi-key me-1"></i>토큰 테스트</button>
         <button type="button" class="btn btn-xs btn-outline-danger" onclick="removePurgeCard(this)" title="이 ID 삭제(저장해야 반영)"><i class="bi bi-trash"></i></button>
       </div>
@@ -79,6 +82,20 @@ function addPurgeTargetRow() {
   syncPurgeCardStates();
 }
 
+// 같은 FTP ID·API 계정을 채운 새 카드를 바로 아래에 — 마운트 경로·서비스·볼륨만 새로 넣는다
+function addPurgeMountCard(btn) {
+  const card = btn.closest('.pt-card');
+  const val = cls => card.querySelector(cls).value.trim();
+  const draft = {ftp_username: val('.pt-user'), api_username: val('.pt-api-user'),
+                 has_api_password: !!val('.pt-api-pass') || card.querySelector('.pt-api-pass').placeholder.includes('저장됨')};
+  card.insertAdjacentHTML('afterend', _purgeCardHtml(draft));
+  const added = card.nextElementSibling;
+  // 입력 중인(아직 저장 안 한) 비밀번호는 그대로 옮긴다 — 저장된 것이면 서버가 같은 API 계정 값을 쓴다
+  added.querySelector('.pt-api-pass').value = val('.pt-api-pass');
+  added.querySelector('.pt-strip').focus();
+  syncPurgeCardStates();
+}
+
 function removePurgeCard(btn) {
   btn.closest('.pt-card').remove();
   syncPurgeCardStates();
@@ -99,6 +116,7 @@ function syncPurgeCardStates() {
 // 모든 칸이 빈 카드는 버린다(추가만 누르고 안 채운 카드)
 function readPurgeTargetRows() {
   return [...document.querySelectorAll('#purgeTargetRows .pt-card')].map(card => ({
+    id: Number(card.dataset.id) || null,
     enabled: card.querySelector('.pt-enabled').checked,
     ftp_username: card.querySelector('.pt-user').value.trim(),
     service: card.querySelector('.pt-svc').value.trim(),
@@ -123,7 +141,7 @@ async function testPurgeTargetToken(btn) {
     api_username: card.querySelector('.pt-api-user').value.trim(),
     api_password: card.querySelector('.pt-api-pass').value.trim() || null,
     group_id: Number(document.getElementById('groupId').value) || null,
-    ftp_username: card.querySelector('.pt-user').value.trim() || null,
+    target_id: Number(card.dataset.id) || null,
   };
   if (!body.telco) return show('danger', '그룹 통신사를 먼저 지정하세요.');
   if (!body.api_username) return show('danger', 'API 계정을 입력하세요.');
