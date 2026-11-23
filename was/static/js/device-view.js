@@ -76,6 +76,19 @@ function _dvQuery() {
   return (document.getElementById('dgSearch')?.value || '').trim().toLowerCase();
 }
 
+// 검색은 왼쪽 목록과 오른쪽 표를 함께 다시 그린다 — 왼쪽만 그리면 열어 둔 그룹의 표가
+// 이전 검색 결과로 남아, 찾은 IP 의 그룹을 골라도 그 장비가 안 보였다(2026-11-23).
+// 지금 고른 그룹이 검색에서 빠지면 전체 장비로 옮겨, 찾은 장비가 어느 그룹이든 바로 보이게 한다.
+function onDeviceSearch() {
+  const q = _dvQuery();
+  if (q && typeof _dvView === 'number') {
+    const g = allGroups.find(x => x.id === _dvView);
+    if (g && !_groupMatch(g, q)) _dvView = 'all';
+  }
+  renderDeviceSide();
+  renderDeviceRight();
+}
+
 const _hostMatch = (d, q) => `${d.hostname} ${d.ip_address || ''}`.toLowerCase().includes(q);
 
 function _groupMatch(g, q) {
