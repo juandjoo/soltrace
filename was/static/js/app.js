@@ -17,10 +17,10 @@ function nav(page) {
     initDashLayout();
     if (_dashRelHours || document.getElementById('dashStart').value) loadAll();
     else dashLast24();
-  }
-  else if (typeof _dashTimer !== 'undefined' && _dashTimer) toggleDashAutoRefresh();
+    startDashAutoRefresh();
+  } else stopDashAutoRefresh();
   if (page === 'logs') initLogsPage();
-  if (page === 'devices') loadDevices();
+  if (page === 'devices') { loadDevices(); startDeviceAutoRefresh(); } else stopDeviceAutoRefresh();
   if (page === 'apiguide') initApiGuide();
   if (page === 'changelog') initChangelogPage();
   if (page === 'settings') settingsTab(currentSettingsTab);

@@ -41,6 +41,23 @@ async function loadDevices() {
   renderDeviceRight();
 }
 
+// 자동 새로고침 (60초) — 하트비트·데몬 상태가 화면을 다시 열어야만 바뀌던 것을 따라가게(2026-11-24).
+// 장비를 체크해 두었거나 모달이 열려 있으면 그 주기는 건너뛴다 — 다시 그리면 선택·입력이 사라진다.
+const DV_AUTO_MS = 60000;
+let _dvTimer = null;
+
+function startDeviceAutoRefresh() {
+  stopDeviceAutoRefresh();
+  _dvTimer = setInterval(() => {
+    if (document.hidden || pickedDeviceIds().length || document.querySelector('.modal.show')) return;
+    loadDevices();
+  }, DV_AUTO_MS);
+}
+
+function stopDeviceAutoRefresh() {
+  if (_dvTimer) { clearInterval(_dvTimer); _dvTimer = null; }
+}
+
 function selectDeviceView(key) {
   _dvView = key in DV_SPECIAL ? key : parseInt(key);
   renderDeviceSide();

@@ -320,11 +320,17 @@ def get_service_health(
                  + ftp_scope_sql(params, scope_user, "fl.device_id", "fl.username"))
     scope_d   = _scope_sql(params, scope, "d.id")  # all_devices 쿼리(d 별칭)
 
-    # 최근 알림 (장비 상태 판정에도 사용)
+    # 최근 알림 — 지금도 진행 중인 이상인지 함께 본다. 알림은 이력이라 복구돼도 남는데,
+    # 표시가 없으면 데몬이 돌아온 뒤에도 아직 끊긴 것처럼 읽혔다(2026-11-23).
+    # 같은 장비·지표의 열린 에피소드가 이 알림 버킷 이전부터 이어지고 있으면 진행 중이다.
     alert_rows = db.execute(text(f"""
         SELECT a.id, a.device_id, d.hostname, a.bucket, a.metric, a.severity,
-               a.value, a.baseline, a.message, a.created_at
+               a.value, a.baseline, a.message, a.created_at,
+               (e.device_id IS NOT NULL) AS ongoing
         FROM service_alerts a JOIN devices d ON d.id = a.device_id
+        LEFT JOIN service_alert_episodes e
+               ON e.device_id = a.device_id AND e.metric = a.metric
+              AND e.resolved_at IS NULL AND a.bucket >= e.first_bucket
         WHERE a.created_at >= :since {adev_f}
         ORDER BY a.created_at DESC
         LIMIT 200
@@ -333,7 +339,7 @@ def get_service_health(
     alerts = [ServiceAlertItem(
         id=r.id, device_id=r.device_id, hostname=r.hostname, bucket=r.bucket,
         metric=r.metric, severity=r.severity, value=r.value, baseline=r.baseline,
-        message=r.message, created_at=r.created_at,
+        message=r.message, created_at=r.created_at, ongoing=r.ongoing,
     ) for r in alert_rows]
 
     # 장비 상태는 '지금 진행 중인 이상'으로 본다 (service_alert_episodes.resolved_at IS NULL).

@@ -13,6 +13,7 @@ from app.schemas import (
 from app import backfill
 from app import purge
 from app import write_buffer as wb
+from app.service_monitor import close_heartbeat_episode
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 log = logging.getLogger("soltrace.ingest")
@@ -81,6 +82,7 @@ def heartbeat(req: HeartbeatRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
 
     device.last_heartbeat = datetime.now(timezone.utc)
+    close_heartbeat_episode(db, device.id)
     if req.hostname:
         device.hostname = req.hostname
     if req.ip_address:

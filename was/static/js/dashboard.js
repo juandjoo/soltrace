@@ -693,10 +693,13 @@ async function loadServiceHealth() {
     tb.innerHTML = '<tr><td colspan="7" class="text-muted small">최근 알림이 없습니다.</td></tr>';
   } else {
     tb.innerHTML = data.alerts.map(a => {
-      const sev = a.severity === 'critical'
+      // 복구된 이상은 흐리게 + '복구' 배지 — 알림은 이력이라 남지만 지금 상태와 구분돼야 한다
+      const recovered = a.ongoing === false;
+      const sev = (a.severity === 'critical'
         ? '<span class="badge bg-danger">심각</span>'
-        : '<span class="badge bg-warning text-dark">주의</span>';
-      return `<tr>
+        : '<span class="badge bg-warning text-dark">주의</span>')
+        + (recovered ? ' <span class="badge bg-success-subtle text-success-emphasis border" title="지금은 정상으로 돌아왔습니다">복구</span>' : '');
+      return `<tr${recovered ? ' class="opacity-50"' : ''}>
         <td class="small">${fmtTime(a.bucket)}</td>
         <td class="small">${esc(a.hostname)}</td>
         <td class="small">${esc(METRIC_LABEL[a.metric] || a.metric)}</td>
@@ -770,24 +773,34 @@ function _renderHealthDeviceList() {
   el.innerHTML = head + rows;
 }
 
-// 자동 새로고침 (60초)
+// 자동 새로고침 (60초) — 기본 켜짐(2026-11-24). 버튼으로 끄면 브라우저에 기억한다.
+// 대시보드를 떠나면 타이머만 멈추고(선호는 유지), 돌아오면 선호대로 다시 켠다.
+const DASH_AUTO_KEY = 'dashAutoRefresh';
+const DASH_AUTO_MS = 60000;
 let _dashTimer = null;
-function toggleDashAutoRefresh() {
+
+function _dashAutoWanted() {
+  try { return localStorage.getItem(DASH_AUTO_KEY) !== 'off'; } catch { return true; }
+}
+
+function _setDashAuto(on) {
   const btn = document.getElementById('btnDashAuto');
-  if (_dashTimer) {
-    clearInterval(_dashTimer);
-    _dashTimer = null;
-    btn.classList.remove('btn-primary');
-    btn.classList.add('btn-outline-secondary');
-    btn.title = '자동 새로고침 켜기';
-    btn.querySelector('span').textContent = '자동';
-  } else {
-    _dashTimer = setInterval(() => { loadAll(); }, 60000);
-    btn.classList.add('btn-primary');
-    btn.classList.remove('btn-outline-secondary');
-    btn.title = '자동 새로고침 끄기 (60초)';
-    btn.querySelector('span').textContent = '자동 ON';
-  }
+  if (_dashTimer) { clearInterval(_dashTimer); _dashTimer = null; }
+  if (on) _dashTimer = setInterval(() => { loadAll(); }, DASH_AUTO_MS);
+  btn.classList.toggle('btn-primary', on);
+  btn.classList.toggle('btn-outline-secondary', !on);
+  btn.title = on ? '자동 새로고침 끄기 (60초)' : '자동 새로고침 켜기';
+  btn.querySelector('span').textContent = on ? '자동 ON' : '자동';
+}
+
+// 대시보드에 들어올 때 / 나갈 때 (app.js nav)
+function startDashAutoRefresh() { if (_dashAutoWanted()) _setDashAuto(true); }
+function stopDashAutoRefresh() { if (_dashTimer) _setDashAuto(false); }
+
+function toggleDashAutoRefresh() {
+  const on = !_dashTimer;
+  try { localStorage.setItem(DASH_AUTO_KEY, on ? 'on' : 'off'); } catch { /* 이번 화면에서만 */ }
+  _setDashAuto(on);
 }
 
 // ── CWD 실패 원인 분석 ───────────────────────────────────────────────────────

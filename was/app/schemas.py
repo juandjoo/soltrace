@@ -543,6 +543,7 @@ class ServiceAlertItem(BaseModel):
     baseline: Optional[float] = None
     message: Optional[str] = None
     created_at: datetime
+    ongoing: bool = False      # 같은 장비·지표의 이상이 지금도 이어지는가 (False = 복구됨)
 
 class ServiceTrendPoint(BaseModel):
     bucket: datetime

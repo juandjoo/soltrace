@@ -35,6 +35,20 @@ _CWD_PROBE_WINDOW = "10 minutes"
 _CWD_CLOCK_SKEW = "5 seconds"
 
 
+def close_heartbeat_episode(db, device_id: int) -> None:
+    """하트비트를 받은 장비의 '끊김' 에피소드를 바로 닫는다(커밋은 호출한 쪽이 한다).
+
+    판정 주기(5분)를 기다리면 데몬이 돌아온 뒤에도 그동안 대시보드 장비 상태가 '심각'으로
+    남았다(2026-11-23). 하트비트가 들어왔다는 것 자체가 살아 있다는 뜻이라 여기서 닫는다.
+    복구 알림은 다음 판정 주기의 _notify_recovery 가 보낸다(발송했던 에피소드만).
+    PK(device_id, metric) 한 행만 보므로 매 하트비트마다 불러도 가볍다.
+    """
+    db.execute(text("""
+        UPDATE service_alert_episodes SET resolved_at = NOW()
+        WHERE device_id = :did AND metric = :metric AND resolved_at IS NULL
+    """), {"did": device_id, "metric": HEARTBEAT_METRIC})
+
+
 def cwd_probe_sql(alias: str, since: str, until: str) -> str:
     """이 cwd_fail 이 '존재 확인'인가 — 그 경로가 실제로 있었다는 증거를 두 가지로 본다.
 
