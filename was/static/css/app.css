@@ -121,6 +121,9 @@ body        { background: var(--st-bg); font-size: 14px; }
 .settings-vnav .nav-link        { color: var(--st-text); border-radius: 8px; padding: 8px 14px; margin-bottom: 3px; font-size: 13.5px; }
 .settings-vnav .nav-link i      { font-size: 1.1rem; width: 1.5rem; }
 .settings-vnav .nav-link:hover  { background: var(--st-brand-bg); color: var(--st-brand); }
+/* 설정 탭 내용 폭은 여기 한 곳 — 탭마다 620~1000px 로 달라 탭을 옮길 때마다 폭이 출렁였다(2026-11-23).
+   가장 넓은 내용(고객 계정 표·purge 이력)에 맞춘다. */
+.settings-pane { max-width: 1000px; }
 .settings-vnav .nav-link.active { background: var(--st-brand); color: #fff; }
 
 /* ── 공통 컴포넌트 ─────────────────────────────────────────────── */
